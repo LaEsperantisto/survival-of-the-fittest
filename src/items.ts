@@ -53,7 +53,7 @@ const ITEM_LIST: ItemDef[] = [
   toolItem("shovel", 1, "wood", "#a8834f"), toolItem("shovel", 2, "stone", "#8d8680"), toolItem("shovel", 3, "metal", "#9aa0aa"),
   toolItem("axe", 1, "wood", "#a8834f"), toolItem("axe", 2, "stone", "#8d8680"), toolItem("axe", 3, "metal", "#9aa0aa"),
   toolItem("disassembler", 1, "metal", "#c0c8d8"),
-  I({ id: "backpack1", name: "Backpack I", desc: "Inventory grid grows to 3×4. Weight limit +20 kg.", w: 2, h: 2, mass: 2.0, color: "#7a5a3a" }),
+  I({ id: "backpack1", name: "Backpack I", desc: "Inventory grid grows to 4×5. Weight limit +20 kg.", w: 2, h: 2, mass: 2.0, color: "#7a5a3a" }),
 ];
 
 export const ITEMS: Record<string, ItemDef> = Object.fromEntries(ITEM_LIST.map((d) => [d.id, d]));
@@ -74,7 +74,7 @@ export function slotDims(s: Slot): { w: number; h: number } {
 
 export class Inventory {
   slots: Slot[] = [];
-  w = 2; h = 3;
+  w = 3; h = 4;
   baseLimit = 30; // kg
   bonusLimit = 0;
 

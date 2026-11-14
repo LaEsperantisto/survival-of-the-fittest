@@ -462,6 +462,11 @@ export class Game {
       }
       return;
     }
+    // the only Esc that leaves fullscreen: one pressed while the pause menu is up
+    if (this.paused && document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {});
+      return;
+    }
     this.paused = !this.paused;
     document.getElementById("screen-pause")!.classList.toggle("hidden", !this.paused);
     if (this.paused && document.pointerLockElement) document.exitPointerLock();
@@ -472,6 +477,10 @@ export class Game {
   // mouse; closing one on a user gesture re-acquires it.
 
   requestLock() {
+    // fullscreen-on means fullscreen whenever the mouse is grabbed; outside a user
+    // gesture the browser rejects this, which is fine — the next gesture re-applies it
+    if (this.settings.fullscreen && !document.fullscreenElement)
+      void document.documentElement.requestFullscreen().catch(() => {});
     const p = this.renderer.canvasEl().requestPointerLock() as unknown as Promise<void> | undefined;
     if (p && typeof p.catch === "function") p.catch(() => { /* browser cooldown: canvas click re-locks */ });
   }
@@ -1019,8 +1028,8 @@ export class Game {
         useBtn.textContent = "Wear backpack";
         useBtn.onclick = () => {
           this.inv.removeItem("backpack1", 1);
-          this.inv.setBackpack(3, 4, 20);
-          hud.toast("Backpack I equipped: grid 3×4, +20 kg.");
+          this.inv.setBackpack(4, 5, 20);
+          hud.toast("Backpack I equipped: grid 4×5, +20 kg.");
           this.renderInv();
         };
       } else {

@@ -137,18 +137,23 @@ function renderSettings() {
   }
   units.onchange = () => { settings.units = units.value as Settings["units"]; commit(); };
   row("Temperature units", units);
-  const fsBtn = document.createElement("button");
+  const fsChk = document.createElement("input");
+  fsChk.type = "checkbox";
   if (document.fullscreenEnabled) {
-    fsBtn.textContent = document.fullscreenElement ? "Exit Fullscreen" : "Enter Fullscreen";
-    fsBtn.onclick = () => {
-      if (document.fullscreenElement) void document.exitFullscreen();
-      else void document.documentElement.requestFullscreen().catch(() => {});
+    fsChk.checked = settings.fullscreen;
+    fsChk.onchange = () => {
+      settings.fullscreen = fsChk.checked;
+      commit();
+      if (fsChk.checked) {
+        void document.documentElement.requestFullscreen().catch(() => {
+          fsChk.checked = false; settings.fullscreen = false; commit();
+        });
+      } else if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
     };
   } else {
-    fsBtn.textContent = "Fullscreen unavailable";
-    fsBtn.disabled = true;
+    fsChk.disabled = true;
   }
-  row("Display", fsBtn);
+  row("Fullscreen", fsChk);
 }
 
 function commit() {
@@ -246,6 +251,11 @@ $("btn-win-continue").onclick = () => { if (game) { game.paused = false; show("s
 $("btn-win-title").onclick = () => toTitle();
 
 document.addEventListener("keydown", (e) => {
+  if (e.code === "Escape" && !$("screen-title").classList.contains("hidden") && document.fullscreenElement) {
+    // main menu: Esc drops fullscreen (browsers that deliver Esc to the page at all)
+    void document.exitFullscreen().catch(() => {});
+    return;
+  }
   if (e.code === "F1") {
     e.preventDefault();
     if ($("screen-instructions").classList.contains("hidden")) {
