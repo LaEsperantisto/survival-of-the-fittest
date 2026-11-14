@@ -1,0 +1,47 @@
+# Survival of the Fittest
+
+A browser voxel-survival game. You wake up in a crashed ship in the middle of a desert. The wreck is a small, rounded hull with broken wings: a forward cockpit with an insulating-glass windscreen, a central hall with the wreck's crafting bench, a save room whose stern door is the wreck's only opening to the outside, a water compartment whose tank is a pool sunk into the ground, and a regulator room with a pre-installed Heat Regulator. The hull, doors, and insulating glass keep heat and cold out — inside, you are safe. Outside, the desert swings from ~47 °C by day to ~−5 °C by night, and your body pays for every minute of exposure. No hunger. Water, heat, health — keep all three in their zones.
+
+## Run it
+
+```sh
+npm install
+npm run dev        # dev server
+npm run build      # typecheck + production bundle in dist/
+npm run preview    # serve the built game
+```
+
+The build is fully static — `dist/` can be dropped on GitHub Pages or any static host.
+
+## How it works
+
+- **Bars.** Water drains steadily (faster when hot, sprinting, or overencumbered). Low water dims and vignettes your vision; empty water does damage. Body temperature drifts toward the environment: stand under open sky at noon and you cook, stand in the cold at night and you freeze. Body out of the 36–37.5 °C safe zone stops regen; past ~39.5 °C or below ~31.5 °C you take damage. Health at 0 = death. Best days-survived is stored locally.
+- **Shelter is physical.** Heat protection is the sum of block thermal resistance straight above you (see `docs/adr/0002-sky-column-shelter-model.md`). Sealed ship interior ⇒ body returns to 36.6 °C and you regenerate. Open a door, break a hull panel, or dig a hole and the desert gets in. Doors must be closed to insulate. A craftable Heat Regulator (one is already installed in the wreck's small regulator room) holds a small sealed room (50 open blocks or fewer) at body-neutral temperature — an open door disables it.
+- **World.** Infinite chunked voxel desert (1 voxel = 1 m), seeded and deterministic: dunes, rocky hills, salt flats, mesas, oases with water you can fill canisters from, dead-wood groves, and adobe ruins/towns. A second wreck — and its Engine Core — waits somewhere around 400 m out. 24-minute day/night cycle drives temperature, sky, and light.
+- **Loop.** Follow the quest chain (step under open sky → strip the wreck → find an oasis → carry a canister to a beacon → craft a tool → survive to day 4 → find the second wreck → break free its Engine Core → set it within 10 m of a Save Beacon) tracked in the top-right HUD; block-shaped rewards land as crash pods from the sky. Explore, salvage debris and full water canisters around the wreck, dig up buried canisters, manage a carry-weight budget, campfires (warmth + light, fuel with wood), craft at the ship's bench. Beacons save your run; death stashes your inventory at the spot — play a fresh world to retrieve it. Placing the Engine Core completes the Main Quest: the relay calls rescue and you keep surviving.
+
+## Controls
+
+| Input | Action |
+|---|---|
+| WASD / stick | Move |
+| Mouse / drag | Look |
+| Shift | Sprint (drinks faster) |
+| Space | Jump |
+| E | Interact (doors, canisters, benches, beacons) |
+| Left click | Mine / break (tool tier matters) |
+| Right click / place | Place selected block |
+| 1–9 / scroll | Hotbar |
+| I | Inventory |
+| C | Crafting (near bench) |
+| F | Toggle campfire |
+| Esc | Pause (save / export world / quit) |
+| F1 | Instructions |
+
+Inventory: drag items between cells; click a cell to select it (Rotate / Drop buttons appear beside the grid). A drag released anywhere off the grid parks the item in **Temporary Storage** next to it — the inventory can't be closed while it's occupied; drag the item back from there or use its Drop button. Dropped items pile up in front of you (never inside walls) and need a short beat before they can be picked back up.
+
+Touch: on-screen stick + jump / interact / place buttons.
+
+## Tech
+
+TypeScript + Vite + Three.js with a hand-rolled chunked voxel renderer (greedy-ish per-chunk meshing, dirty-chunk rebuilds, fog-tuned render distance). No workers, no SharedArrayBuffer, no server. World state is delta-saved per slot in localStorage, with JSON export/import for sharing worlds and transferring saves between machines. Design history lives in `docs/adr/`; vocabulary in `GLOSSARY.md`.
