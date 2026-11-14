@@ -455,6 +455,11 @@ export class Game {
     if (!hidden("screen-instructions")) {
       document.getElementById("screen-instructions")!.classList.add("hidden");
       if (this.f1Paused) { this.paused = false; this.f1Paused = false; this.relock(); }
+      else if (this.paused) {
+        this.paused = false;
+        document.getElementById("screen-pause")!.classList.add("hidden");
+        this.relock();
+      }
       return;
     }
     this.paused = !this.paused;
@@ -915,6 +920,11 @@ export class Game {
     }
     this.ui = null; this.openStation = null; this.openCacheId = null;
     for (const id of ["ui-inventory", "ui-craft", "ui-cache"]) document.getElementById(id)!.classList.add("hidden");
+    // closing any in-game menu also drops the pause menu, if one was open
+    if (this.paused) {
+      this.paused = false;
+      document.getElementById("screen-pause")!.classList.add("hidden");
+    }
     this.relock();
   }
 

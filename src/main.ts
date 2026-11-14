@@ -85,11 +85,14 @@ function closeOverlays() {
   show("screen-settings", false);
   show("screen-instructions", false);
   if (game) {
+    // closing any menu always closes the pause menu too
     show("ui-inventory", false);
     show("ui-craft", false);
     show("ui-cache", false);
-    if (game.paused) show("screen-pause");
-    else game.relock();
+    show("screen-pause", false);
+    game.paused = false;
+    game.f1Paused = false;
+    game.relock();
   } else renderTitle();
 }
 
@@ -250,9 +253,7 @@ document.addEventListener("keydown", (e) => {
       if (game && !game.paused) { game.paused = true; game.f1Paused = true; }
       if (document.pointerLockElement) document.exitPointerLock();
     } else {
-      show("screen-instructions", false);
-      if (game?.f1Paused) { game.paused = false; game.f1Paused = false; game.relock(); }
-      if (!game) renderTitle();
+      closeOverlays();
     }
   }
 });
