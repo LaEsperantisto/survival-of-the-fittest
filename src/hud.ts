@@ -48,7 +48,7 @@ export function updateHud(s: Survival, inv: Inventory, tSec: number, days: numbe
   $("clock-day").textContent = "Day " + days;
   $("clock-time").textContent = hh + ":" + mm;
   const t = (v: number) => units === "C" ? Math.round(v) + "°C" : Math.round(v * 9 / 5 + 32) + "°F";
-  $("clock-temp").textContent = `air ${t(s.lastAmbient)}  body ${t(s.body)}`;
+  $("clock-temp").textContent = `air ${t(s.lastAmbientEff)}  body ${t(s.body)}`;
 
   const slot = inv.selectedSlot();
   $("held").textContent = slot ? ITEMS[slot.itemId].name : "—";

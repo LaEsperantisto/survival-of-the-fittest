@@ -57,7 +57,11 @@ function renderTitle() {
 
 function startGame(meta: WorldMeta, run: RunSave | null) {
   hideAll();
+  show("cheats", false);
   $("hud").classList.remove("hidden");
+  // guest worlds are ephemeral: no save/export affordances
+  $("btn-save").classList.toggle("hidden", meta.id.startsWith("guest"));
+  $("btn-exportworld").classList.toggle("hidden", meta.id.startsWith("guest"));
   audio.resume();
   game = new Game(meta, run, $("game-wrap"), settings, audio);
   (globalThis as Record<string, unknown>).game = game;
@@ -188,6 +192,12 @@ $("btn-create").onclick = () => {
   startGame(meta, null);
 };
 
+$("btn-guest").onclick = () => {
+  // never enters the world index, never autosaves, random seed every time
+  const seedStr = Math.random().toString(36).slice(2, 10);
+  startGame({ id: "guest:" + Date.now().toString(36), name: "Guest world", seedStr, updated: Date.now() }, null);
+};
+
 $("btn-import").onclick = () => $("import-file").click();
 ($("import-file") as HTMLInputElement).onchange = async () => {
   const f = ($("import-file") as HTMLInputElement).files?.[0];
@@ -213,10 +223,19 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>(".close-btn"))
     if (!game || !(game.ui === "inv" && game.temp)) closeOverlays();
   };
 
-$("btn-resume").onclick = () => { if (game) { game.paused = false; show("screen-pause", false); game.relock(); } };
+$("btn-resume").onclick = () => { if (game) { game.paused = false; show("screen-pause", false); show("cheats", false); game.relock(); } };
 $("btn-save").onclick = () => hud.toast("Manual saves are not allowed — save at Save Beacons (the world auto-persists).");
 $("btn-exportworld").onclick = () => { if (game) game.exportWorld(); };
 $("btn-quit").onclick = () => toTitle();
+$("btn-cheats").onclick = () => show("cheats", $("cheats").classList.contains("hidden"));
+for (const b of Array.from($("cheats").querySelectorAll("button"))) {
+  (b as HTMLButtonElement).onclick = () => {
+    if (!game) return;
+    const frac = Number((b as HTMLButtonElement).dataset.frac);
+    game.setClock(frac);
+    hud.toast(`Clock set to ${b.textContent}.`);
+  };
+}
 
 $("btn-respawn").onclick = () => { if (game) game.respawn(); };
 $("btn-death-title").onclick = () => toTitle();

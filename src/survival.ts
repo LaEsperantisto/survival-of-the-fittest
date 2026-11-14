@@ -7,13 +7,14 @@ export const BODY_MIN = 20, BODY_MAX = 45;     // heat bar display range (°C bo
 export const SAFE_LO = 36.0, SAFE_HI = 37.5;   // safe body temperature zone
 
 const AMBIENT_MEAN = 21, AMBIENT_AMP = 26;     // 24-min desert day: ~-5 night, ~+47 peak
-export const REGULATOR_ROOM_MAX = 50;          // largest sealed room (open cells) a Heat Regulator can hold
+export const REGULATOR_ROOM_MAX = 100;         // open cells (sealed) one Heat Regulator can hold at neutral
 
 export class Survival {
   health = 100; water = 100; body = 36.6;
   causeOfDeath: string | null = null;
   vision = 0; // 0 fine .. 1 worst (low-water visual)
-  lastAmbient = 0; lastShelterR = 0; lastTarget = 36.6; lastOpenSky = false;
+  lastAmbient = 0; lastAmbientEff = 0; lastShelterR = 0; lastTarget = 36.6; lastOpenSky = false;
+  lastRoom: { size: number; sealed: boolean; regulators: number } = { size: 0, sealed: false, regulators: 0 };
 
   constructor(private weatherSeed: number) {}
 
@@ -38,12 +39,18 @@ export class Survival {
     const amb = this.ambient(opts.biome, frac, opts.tSec);
     const { R, openSky } = world.skyResistance(Math.floor(pos.x), Math.floor(pos.y), Math.floor(pos.z));
     this.lastOpenSky = openSky;
-    const shelter = 1 - Math.exp(-R);          // 0 exposed .. ~0.997 sealed
+    let shelter = 1 - Math.exp(-R);          // 0 exposed .. ~0.997 sealed
     let ambEff = amb;
     if (openSky && opts.sunElev > 0) ambEff += 8 + 10 * opts.sunElev; // direct sun beats down, even when the air is mild
-    // A Heat Regulator in a small sealed room holds it at body-neutral temperature.
+    // A sealed space's air drifts to the outside temperature — walls alone don't
+    // save you. Only Heat Regulators, whose capacity (50 cells each) stacks,
+    // hold a sealed room at body-neutral temperature.
     const room = world.roomInfo(Math.floor(pos.x), Math.floor(pos.y), Math.floor(pos.z));
-    if (room.hasRegulator && room.sealed && room.size <= REGULATOR_ROOM_MAX) ambEff = 36.6;
+    this.lastRoom = room;
+    if (room.sealed) {
+      if (room.regulators * REGULATOR_ROOM_MAX >= room.size) { ambEff = 36.6; shelter = 1; }
+      else { ambEff = amb; shelter = 0; }
+    }
     if (opts.inWater) {
       // desert water is cold: it pulls hard against midday heat, and is a little
       // kinder than freezing night air — the average of air and water temperature
@@ -52,9 +59,10 @@ export class Survival {
     }
     // body always regulates toward 36.6; exposure pulls it toward the effective air temp
     const target = 36.6 + (ambEff - 36.6) * (1 - shelter);
-    this.lastAmbient = amb; this.lastShelterR = R; this.lastTarget = target;
+    this.lastAmbient = amb; this.lastAmbientEff = ambEff; this.lastShelterR = R; this.lastTarget = target;
 
-    const k = 0.0032; // body drifts toward target, τ ≈ 5 min
+    // sealed air moves the body fast — a hot room cooks you in minutes, and so does a cold one
+    const k = room.sealed ? 0.0096 : 0.0032; // tau ~100 s inside, ~5 min out in the open
     this.body += (target - this.body) * k * dt;
     this.body = THREE.MathUtils.clamp(this.body, 12, 44.5);
 

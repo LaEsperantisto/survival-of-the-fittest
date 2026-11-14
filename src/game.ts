@@ -6,7 +6,7 @@ import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, slotDims, type Slot } from "./items";
 import { BLOCKS, AIR, WATER, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, BEACON, BENCH, CAMPFIRE, LAMP, ENGINECORE, CS, CH, DAY_SECONDS, isSolid } from "./blocks";
-import { hashStr, Rng } from "./noise";
+import { hashStr } from "./noise";
 import { heightAt, biomeAt } from "./gen";
 import { RECIPES, SMELT, canCraft, doCraft } from "./crafting";
 import { currentQuest, loadQuestState, questEvent, type QuestDef, type QuestState } from "./quests";
@@ -20,7 +20,7 @@ export interface DroppedItem {
   buried?: boolean; buriedAt?: [number, number, number]; srcIndex?: number; fall?: number;
   repickAt?: number; // game time before which auto-pickup is suppressed (manual drops)
 }
-export interface DeathCache { id: number; x: number; y: number; z: number; items: { itemId: string; count: number }[] }
+export interface DeathCache { id: number; x: number; y: number; z: number; kind: "death" | "chest"; items: { itemId: string; count: number }[] }
 export interface Raycast { hit: { x: number; y: number; z: number } | null; water: { x: number; y: number; z: number } | null; face: THREE.Vector3 }
 
 const GRAVITY_DROP_Y = 0.45;
@@ -42,6 +42,7 @@ export class Game {
   running = false;
   paused = false;
   f1Paused = false;
+  escAt = 0;
   ui: null | "inv" | "bench" | "smelt" | "cache" = null;
   openCacheId: number | null = null;
   openStation: [number, number, number] | null = null;
@@ -72,7 +73,7 @@ export class Game {
     this.quests = loadQuestState(run?.quest);
     this.renderer = new Renderer(parent);
     this.player = new Player(this.world);
-    this.timeSec = run?.time ?? DAY_SECONDS * 0.3;
+    this.timeSec = run?.time ?? DAY_SECONDS * 0.7; // new worlds start mid-afternoon, near the day's hottest
     this.playSec = run?.playSec ?? 0;
 
     if (run) this.restore(run);
@@ -91,21 +92,25 @@ export class Game {
   // ---------- setup / persistence ----------
 
   private spawnStarterEntities() {
-    const r = new Rng(this.seed);
+    // generated loot is only the buried canisters — nothing lies loose on the sand;
+    // ready water comes from the Supply Chest in the cockpit
     this.world.gen.canisters.forEach((c, i) => {
+      if (!c.buried) return;
       const gy = Math.round(heightAt(this.seed, c.x, c.z));
-      this.entities.push({ id: this.entitySeq++, x: c.x + 0.5, y: gy + (c.buried ? 0 : GRAVITY_DROP_Y), z: c.z + 0.5, itemId: "canister_full", count: 1, buried: c.buried, buriedAt: c.buried ? [c.x, gy, c.z] : undefined, srcIndex: i });
+      this.entities.push({ id: this.entitySeq++, x: c.x + 0.5, y: gy, z: c.z + 0.5, itemId: "canister_full", count: 1, buried: c.buried, buriedAt: c.buried ? [c.x, gy, c.z] : undefined, srcIndex: i });
     });
-    // two canisters inside the wreck
-    this.entities.push({ id: this.entitySeq++, x: -9, y: 31.45, z: -4, itemId: "canister_full", count: 1 });
-    this.entities.push({ id: this.entitySeq++, x: 5, y: 31.45, z: 4, itemId: "canister_full", count: 1 });
-    // catalyst loot in towns (2 each) and the second wreck (2)
-    for (const t of this.world.gen.towns)
-      for (const [dx, dz] of [[1, 1], [2, -2]])
-        this.entities.push({ id: this.entitySeq++, x: t.x + dx + 0.5, y: Math.round(heightAt(this.seed, t.x + dx, t.z + dz)) + GRAVITY_DROP_Y, z: t.z + dz + 0.5, itemId: "catalyst", count: 1 });
-    for (const [dx, dz] of [[2, 0], [-2, 1]])
-      this.entities.push({ id: this.entitySeq++, x: this.world.gen.secondShip.x + dx + 0.5, y: Math.round(heightAt(this.seed, this.world.gen.secondShip.x + dx, this.world.gen.secondShip.z + dz)) + GRAVITY_DROP_Y, z: this.world.gen.secondShip.z + dz + 0.5, itemId: "catalyst", count: 1 });
-    void r;
+    this.spawnStarterChest();
+  }
+
+  private spawnStarterChest() {
+    const chest: DeathCache = { id: this.entitySeq++, x: 3, y: 31, z: 0, kind: "chest", items: [{ itemId: "canister_full", count: 3 }] };
+    this.caches.push(chest);
+    if (chest.items.length) this.renderer.addEntityMesh(chest.id, this.cacheMeshPos(chest), this.cacheColor(chest), 0.7);
+  }
+
+  private cacheColor(c: DeathCache): number { return c.kind === "chest" ? 0x8a6d3b : 0x6b5a44; }
+  private cacheMeshPos(c: DeathCache): [number, number, number] {
+    return [c.x, c.y + (c.kind === "chest" ? 0.36 : 0.5), c.z];
   }
 
   private restore(run: RunSave) {
@@ -133,18 +138,18 @@ export class Game {
     let idx = 0;
     const fresh: typeof this.entities = [];
     this.world.gen.canisters.forEach((c) => {
-      if (!collected.has(idx)) {
+      if (c.buried && !collected.has(idx)) {
         const gy = Math.round(heightAt(this.seed, c.x, c.z));
-        fresh.push({ id: this.entitySeq++, x: c.x + 0.5, y: gy + (c.buried ? 0 : GRAVITY_DROP_Y), z: c.z + 0.5, itemId: "canister_full", count: 1, buried: c.buried, buriedAt: c.buried ? [c.x, gy, c.z] : undefined, srcIndex: idx });
+        fresh.push({ id: this.entitySeq++, x: c.x + 0.5, y: gy, z: c.z + 0.5, itemId: "canister_full", count: 1, buried: c.buried, buriedAt: c.buried ? [c.x, gy, c.z] : undefined, srcIndex: idx });
       }
       idx++;
     });
     for (const e of run.entities) fresh.push({ id: this.entitySeq++, ...e });
     this.entities = fresh;
     for (const c of run.caches) {
-      const cache: DeathCache = { id: this.entitySeq++, x: c.x, y: c.y, z: c.z, items: c.items.map((i) => ({ ...i })) };
+      const cache: DeathCache = { id: this.entitySeq++, x: c.x, y: c.y, z: c.z, kind: c.kind ?? "death", items: c.items.map((i) => ({ ...i })) };
       this.caches.push(cache);
-      if (cache.items.length) this.renderer.addEntityMesh(cache.id, [cache.x, cache.y + 0.5, cache.z], 0x6b5a44, 0.7);
+      if (cache.items.length) this.renderer.addEntityMesh(cache.id, this.cacheMeshPos(cache), this.cacheColor(cache), 0.7);
     }
     this.campCharges = new Map(Object.entries(run.campfires ?? {}).map(([k, v]) => [k, v]));
     this.pods = (run.pods ?? []).map((p) => ({ ...p }));
@@ -175,7 +180,7 @@ export class Game {
       entities: this.entities.filter((e) => !e.buried).map((e) => ({ x: e.x, y: e.y, z: e.z, itemId: e.itemId, count: e.count })),
       pods: this.pods,
       won: this.won || undefined,
-      caches: this.caches.map((c) => ({ x: c.x, y: c.y, z: c.z, items: c.items.map((i) => ({ ...i })) })),
+      caches: this.caches.map((c) => ({ x: c.x, y: c.y, z: c.z, kind: c.kind, items: c.items.map((i) => ({ ...i })) })),
       campfires: Object.fromEntries(this.campCharges),
       deltas: this.world.serializeDeltas(),
     };
@@ -185,7 +190,19 @@ export class Game {
     return [...this.collected];
   }
 
+  get isGuest() { return this.meta.id.startsWith("guest"); }
+
+  setClock(frac: number) {
+    // cheat: jump to `frac` of the current in-game day (0 = midnight)
+    const day = Math.floor(this.timeSec / DAY_SECONDS);
+    this.timeSec = (day + frac) * DAY_SECONDS;
+  }
+
   saveNow(manual = false): boolean {
+    if (this.isGuest) {
+      if (manual) hud.toast("Guest worlds are never saved.");
+      return false;
+    }
     const ok = saveRun(this.meta, this.snapshot());
     if (manual) hud.toast(ok ? "Game saved." : "Storage full — use Export World.");
     return ok;
@@ -325,8 +342,13 @@ export class Game {
       if (ke.code === "KeyQ") this.drink();
       if (ke.code === "KeyI") this.toggleInv();
       if (ke.code === "KeyR" && this.ui === "inv") {
-        const s = this.inv.selectedSlot();
-        if (s && !this.inv.rotate(s)) { hud.toast("No room to rotate."); this.audio.error(); }
+        if (this.temp) {
+          this.temp.rot = !this.temp.rot; // temp is off-grid: always free to rotate
+          this.audio.place();
+        } else {
+          const s = this.inv.selectedSlot();
+          if (s && !this.inv.rotate(s)) { hud.toast("No room to rotate."); this.audio.error(); }
+        }
         this.renderInv();
       }
       if (ke.code === "Escape") this.escape();
@@ -406,7 +428,8 @@ export class Game {
     // Browsers swallow the Escape keydown while pointer-locked (it exits the lock),
     // so losing the lock without UI open *is* the first Escape press: pause.
     on("pointerlockchange", () => {
-      if (!document.pointerLockElement && this.running && !this.paused && !this.ui && !this.f1Paused) {
+      if (!document.pointerLockElement && this.running && !this.paused && !this.ui && !this.f1Paused
+        && performance.now() - this.escAt > 400) {
         this.paused = true;
         document.getElementById("screen-pause")!.classList.remove("hidden");
       }
@@ -422,6 +445,9 @@ export class Game {
   }
 
   private escape() {
+    // Escape's browser default can release a pointer lock we re-acquire while
+    // closing a menu; that spurious lock-loss must not open the pause screen.
+    this.escAt = performance.now();
     if (this.ui) { this.closeUI(); return; }
     const hidden = (id: string) => document.getElementById(id)!.classList.contains("hidden");
     // Settings / death / win own their own dismissal buttons; Esc must not pause behind them.
@@ -508,7 +534,7 @@ export class Game {
     }
     for (const c of this.caches) {
       const mesh = this.renderer.entityMesh(c.id);
-      if (!mesh && c.items.length) this.renderer.addEntityMesh(c.id, [c.x, c.y + 0.5, c.z], 0x6b5a44, 0.7);
+      if (!mesh && c.items.length) this.renderer.addEntityMesh(c.id, this.cacheMeshPos(c), this.cacheColor(c), 0.7);
     }
 
     hud.updateHud(this.survival, this.inv, this.timeSec, this.dayNumber(), this.settings.units, now);
@@ -551,7 +577,7 @@ export class Game {
   private promptFor(t: Raycast | null): string | null {
     if (!t) return null;
     const near = this.nearestCache();
-    if (near) return "E: Open death cache";
+    if (near) return near.kind === "chest" ? "E: Open supply chest" : "E: Open death cache";
     if (t.hit) {
       const id = this.world.get(t.hit.x, t.hit.y, t.hit.z);
       if (id === DOOR_CLOSED || id === DOOR_UPPER) return "E: Open door";
@@ -658,7 +684,7 @@ export class Game {
     const map: Record<number, string> = {
       1: "sand", 2: "sandstone", 3: "rock", 4: "gravel", 5: "dirt", 6: "salt", 7: "deadwood",
       8: "glass", 9: "insglass", 10: "hull", 11: "door", 13: "lamp", 14: "metal", 16: "bench",
-      17: "campfire", 19: "adobe", 21: "engine_core",
+      17: "campfire", 19: "adobe", 21: "engine_core", 22: "regulator",
     };
     return map[id] ?? null;
   }
@@ -736,6 +762,13 @@ export class Game {
       const id = this.world.get(x, y, z);
       if (isDoorHalf(id) || id === DOOR_OPEN) {
         if (id === DOOR_OPEN) {
+          // a door must never close on the player standing in the doorway
+          const p = this.player.pos;
+          if (p.x > x - 0.2 && p.x < x + 1.2 && p.z > z - 0.2 && p.z < z + 1.2) {
+            hud.toast("Step out of the doorway first.");
+            this.audio.error();
+            return;
+          }
           // rebuild the pair with correct halves: the open block below marks us as the top
           if (this.world.get(x, y - 1, z) === DOOR_OPEN) {
             this.world.set(x, y, z, DOOR_UPPER);
@@ -748,6 +781,13 @@ export class Game {
             this.world.set(x, y, z, isDoorHalf(this.world.get(x, y + 1, z)) ? DOOR_UPPER : DOOR_CLOSED);
           }
         } else {
+          // push-door: the leaf swings away from whoever opens it
+          const wallAlongX = isSolid(this.world.get(x - 1, y, z)) || isSolid(this.world.get(x + 1, y, z));
+          const p = this.player.pos;
+          const off = wallAlongX ? p.z - (z + 0.5) : p.x - (x + 0.5);
+          const k = x + "," + z;
+          if (Math.abs(off) > 0.35) this.world.doorSwing.set(k, (off > 0 ? -1 : 1) as 1 | -1);
+          else this.world.doorSwing.delete(k);
           this.world.set(x, y, z, DOOR_OPEN);
           for (const dy of [-1, 1]) if (isDoorHalf(this.world.get(x, y + dy, z))) this.world.set(x, y + dy, z, DOOR_OPEN);
         }
@@ -757,8 +797,8 @@ export class Game {
       if (id === BEACON) {
         if (!this.beaconMarks.some((b) => b.x === x && b.y === y && b.z === z)) this.beaconMarks.push({ x, y, z });
         this.audio.savePing();
-        this.saveNow(true);
-        hud.toast("Saved. Death will respawn you at this beacon.");
+        if (this.saveNow()) hud.toast("Saved. Death will respawn you at this beacon.");
+        else hud.toast("This world is not saved — the beacon only marks it.");
         return;
       }
       if (id === BENCH) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("bench"); return; }
@@ -829,6 +869,7 @@ export class Game {
     this.caches.push({
       id: this.entitySeq++,
       x: Math.floor(this.player.pos.x), y: Math.floor(this.player.pos.y), z: Math.floor(this.player.pos.z),
+      kind: "death",
       items: this.inv.slots.map((s) => ({ itemId: s.itemId, count: s.count })),
     });
     this.inv.slots = []; this.inv.selected = 0;
@@ -941,22 +982,28 @@ export class Game {
     }
     dropTemp.classList.toggle("hidden", !this.temp);
 
+    // rebuild the side panel from scratch every render (accumulating text/buttons bug)
     const side = document.getElementById("inv-side")!;
+    const sel = this.inv.selectedSlot();
+    const shown = this.temp ?? sel;
     const kg = this.inv.weight() + (this.temp ? ITEMS[this.temp.itemId].mass * this.temp.count : 0);
     const lim = this.inv.weightLimit();
-    side.textContent += `   Weight ${kg.toFixed(1)} / ${lim} kg`;
-    const sel = this.inv.selectedSlot();
+    const dims = shown ? slotDims(shown) : null;
+    side.textContent = shown
+      ? `${ITEMS[shown.itemId].name} — ${ITEMS[shown.itemId].desc}`
+      : "Click an item to inspect it; drag to move it.";
+    side.textContent += ` Weight ${kg.toFixed(1)} / ${lim} kg`;
+    if (shown && dims && dims.w !== dims.h) {
+      const rotBtn = document.createElement("button");
+      rotBtn.textContent = "Rotate";
+      rotBtn.onclick = () => {
+        if (this.temp) this.temp.rot = !this.temp.rot;
+        else if (!this.inv.rotate(sel!)) { hud.toast("No room to rotate."); this.audio.error(); }
+        this.renderInv();
+      };
+      side.appendChild(rotBtn);
+    }
     if (sel) {
-      const dims = slotDims(sel);
-      if (dims.w !== dims.h) {
-        const rotBtn = document.createElement("button");
-        rotBtn.textContent = "Rotate";
-        rotBtn.onclick = () => {
-          if (!this.inv.rotate(sel)) { hud.toast("No room to rotate."); this.audio.error(); }
-          this.renderInv();
-        };
-        side.appendChild(rotBtn);
-      }
       const useBtn = document.createElement("button");
       if (sel.itemId === "backpack1") {
         useBtn.textContent = "Wear backpack";
@@ -1134,6 +1181,8 @@ export class Game {
 
   renderCache() {
     const cache = this.caches.find((c) => c.id === this.openCacheId);
+    document.getElementById("cache-title")!.textContent =
+      cache?.kind === "chest" ? "Supply Chest — take what you need" : "Death Cache — take your belongings";
     const list = document.getElementById("cache-list")!;
     list.innerHTML = "";
     if (!cache || !cache.items.length) { this.closeUI(); return; }

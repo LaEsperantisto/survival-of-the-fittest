@@ -202,6 +202,8 @@ export class Renderer {
   sun: THREE.DirectionalLight;
   hemi: THREE.HemisphereLight;
   private stars: THREE.Points;
+  private sunDisc: THREE.Mesh;
+  private moonDisc: THREE.Mesh;
   private highlight: THREE.LineSegments;
   renderDistance = 7;
 
@@ -238,6 +240,12 @@ export class Renderer {
     starGeo.setAttribute("position", new THREE.Float32BufferAttribute(sp, 3));
     this.stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, transparent: true, opacity: 0, fog: false }));
     this.scene.add(this.stars);
+    // sun and moon discs: unlit billboards riding the sky dome
+    this.sunDisc = new THREE.Mesh(new THREE.CircleGeometry(24, 24),
+      new THREE.MeshBasicMaterial({ color: 0xffe9b0, fog: false, side: THREE.DoubleSide, toneMapped: false }));
+    this.moonDisc = new THREE.Mesh(new THREE.CircleGeometry(15, 24),
+      new THREE.MeshBasicMaterial({ color: 0xd8e2f5, fog: false, side: THREE.DoubleSide, toneMapped: false }));
+    this.scene.add(this.sunDisc, this.moonDisc);
 
     const hl = new THREE.BoxGeometry(1.002, 1.002, 1.002);
     this.highlight = new THREE.LineSegments(new THREE.EdgesGeometry(hl), new THREE.LineBasicMaterial({ color: 0x000000 }));
@@ -317,6 +325,15 @@ export class Renderer {
     this.hemi.intensity = 0.22 + kf.sunI * 0.35;
     (this.stars.material as THREE.PointsMaterial).opacity = Math.max(0, 1 - kf.sunI * 3);
     this.stars.position.set(playerPos.x, playerPos.y, playerPos.z);
+    // discs follow the same arc as the sun light; the moon rides opposite it
+    const a = (frac - 0.25) * Math.PI * 2;
+    const R = 430;
+    this.sunDisc.position.set(playerPos.x + Math.cos(a) * R, playerPos.y + Math.sin(a) * R, playerPos.z + R * 0.4);
+    this.moonDisc.position.set(playerPos.x - Math.cos(a) * R, playerPos.y - Math.sin(a) * R, playerPos.z - R * 0.4);
+    this.sunDisc.lookAt(this.camera.position);
+    this.moonDisc.lookAt(this.camera.position);
+    this.sunDisc.visible = Math.sin(a) > -0.12;
+    this.moonDisc.visible = Math.sin(a) < 0.12;
     this.torch.intensity = 0.12 + (1 - Math.min(1, kf.sunI)) * 0.85;
     for (const d of this.dynLights)
       if (d.flame) d.light.intensity = 0.9 + noise1(worldTime * 5.3 + d.x * 3.1 + d.z, 7) * 0.45;
@@ -426,6 +443,9 @@ export class Renderer {
     else if (!parity && airNeg) { edge = 0; swing = -1; }
     else if (airPos) { edge = 1; swing = 1; }
     else { edge = 0; swing = -1; }
+    // whoever pushed the door open recorded which room the leaf swings into
+    const pushed = world.doorSwing.get(wx + "," + wz);
+    if (pushed) swing = pushed;
     // slab corners in (s, y, t): s spans the wall, t is the thickness
     const s0 = 0.04, s1 = 0.96;
     const t0 = edge ? 0.84 : 0.02, t1 = edge ? 0.98 : 0.16;

@@ -43,7 +43,7 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "beacon", name: "Save Beacon", desc: "Place to permanently save. Death respawns at the newest intact beacon; beacons can never be picked back up.", w: 1, h: 2, mass: 4.0, block: BEACON, color: "#66e5f0" }),
   I({ id: "bench", name: "Crafting Bench", desc: "Unlocks the full crafting list.", w: 1, h: 2, mass: 6.0, block: BENCH, color: "#806647" }),
   I({ id: "campfire", name: "Campfire", desc: "Burns wood. Smelts sand into glass.", w: 1, h: 2, mass: 3.0, block: CAMPFIRE, color: "#e67333" }),
-  I({ id: "regulator", name: "Heat Regulator", desc: "Holds a sealed room of up to 50 cells at comfortable body temperature. Sealed means sealed — an open door disables it.", w: 1, h: 1, mass: 2.5, block: REGULATOR, color: "#59bfcc" }),
+  I({ id: "regulator", name: "Heat Regulator", desc: "Holds a sealed room at comfortable body temperature — 100 open cells per Regulator, capacity stacks. Sealed means sealed — an open door disables it.", w: 1, h: 1, mass: 2.5, block: REGULATOR, color: "#59bfcc" }),
   I({ id: "adobe", name: "Adobe Brick", desc: "Baked town mud. Warm, solid.", w: 1, h: 1, mass: 0.9, block: ADOBE, color: "#b3956b" }),
   I({ id: "canister_full", name: "Water Canister (full)", desc: "Drink to restore 25% Water. Refill at oases or the ship's water station.", w: 1, h: 2, mass: 1.0, color: "#3f8fe0" }),
   I({ id: "canister_empty", name: "Water Canister (empty)", desc: "Lighter until you find water.", w: 1, h: 1, mass: 0.3, color: "#7fa8cc" }),
@@ -136,19 +136,25 @@ export class Inventory {
   /** Add items; every instance claims its own footprint. Returns count that did NOT fit. */
   addItem(itemId: string, count = 1): number {
     const def = ITEMS[itemId];
+    // try every rotation, not just the item's native one
+    const variants: [number, number, boolean][] =
+      def.w === def.h ? [[def.w, def.h, false]] : [[def.w, def.h, false], [def.h, def.w, true]];
     for (let i = 0; i < count; i++) {
       let placed = false;
-      for (let y = 0; y <= this.h - def.h && !placed; y++) {
-        for (let x = 0; x <= this.w - def.w && !placed; x++) {
-          let free = true;
-          for (let dy = 0; dy < def.h && free; dy++)
-            for (let dx = 0; dx < def.w && free; dx++)
-              if (this.occupied(x + dx, y + dy)) free = false;
-          if (free) {
-            this.slots.push({ itemId, count: 1, x, y });
-            placed = true;
+      for (const [w, h, rot] of variants) {
+        for (let y = 0; y <= this.h - h && !placed; y++) {
+          for (let x = 0; x <= this.w - w && !placed; x++) {
+            let free = true;
+            for (let dy = 0; dy < h && free; dy++)
+              for (let dx = 0; dx < w && free; dx++)
+                if (this.occupied(x + dx, y + dy)) free = false;
+            if (free) {
+              this.slots.push(rot ? { itemId, count: 1, x, y, rot: true } : { itemId, count: 1, x, y });
+              placed = true;
+            }
           }
         }
+        if (placed) break;
       }
       if (!placed) return count - i;
     }

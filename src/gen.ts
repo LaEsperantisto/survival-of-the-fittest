@@ -136,7 +136,9 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
     for (let z = -5; z <= 5; z++)
       for (let y = Y0; y <= Y1; y++) {
         if (!outline(x, z) || clipped(x, y, z)) continue;
-        const interior = x >= -5 && x <= 3 && z >= -4 && z <= 4 && y >= 31 && y <= 33;
+        // the cockpit tapers narrower than the rest of the hull
+        const narrow = x >= 2 && Math.abs(z) > 2;
+        const interior = x >= -5 && x <= 3 && z >= -4 && z <= 4 && y >= 31 && y <= 33 && !narrow;
         set(x, y, z, interior ? AIR : y === Y0 ? METAL : HULL);
       }
   // rounded spine along the roof
@@ -157,9 +159,8 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
   door(-2, 31, -3);        // hall -> regulator room
   door(-6, 31, 0);         // stern: the only door to the outside
 
-  // cockpit windscreen + side windows: insulating glass, rare but heat-safe
+  // cockpit windscreen: insulating glass, rare but heat-safe
   for (let z = -2; z <= 2; z++) for (let y = 32; y <= 33; y++) set(4, y, z, INSGLASS);
-  for (const x of [2, 3]) { set(x, 32, 5, INSGLASS); set(x, 32, -5, INSGLASS); }
 
   // water compartment: the ship's tank is a pool sunk into the ground —
   // look at the water in the hole and press E to refill canisters
@@ -173,8 +174,8 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
   set(0, 31, -3, BENCH);
   // ceiling lamps, one per room
   for (const [lx, lz] of [[3, 0], [0, 0], [-4, 3], [-4, -3], [-5, 0]] as const) set(lx, Y1, lz, LAMP);
-  // scattered metal salvage
-  for (const [sx, sz] of [[-1, 3], [-1, 4], [1, 4], [3, -3], [2, 4]] as const) set(sx, 31, sz, METAL);
+  // scattered metal salvage — kept clear of every doorway approach
+  for (const [sx, sz] of [[0, 3], [0, 4], [-1, 4], [2, 2]] as const) set(sx, 31, sz, METAL);
 }
 
 function paintSecondShip(set: (x: number, y: number, z: number, id: number) => void, t: { x: number; z: number }, seed: number) {

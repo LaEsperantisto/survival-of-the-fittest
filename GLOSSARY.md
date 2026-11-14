@@ -34,8 +34,11 @@ A rare, hard-to-craft transparent Insulating Block. The wreck's cockpit already 
 An opening in the Hull that insulates exactly like Hull Plating while closed.
 
 **Heat Regulator**:
-A craftable device that holds one small sealed Space at body-neutral temperature. It works by enclosure, not by region tag: if the space stops being sealed, or is too large, the Regulator does nothing.
+A craftable device that holds a sealed Space at body-neutral temperature — 100 open cells of capacity each, and multiple Regulators covering one Space stack their capacity. It works by enclosure, not by region tag: if the space stops being sealed, the Regulators do nothing. Without enough Regulator capacity, a sealed Space is as hot or as cold as the outside.
 _Avoid_: heater, AC, thermostat
+
+**Sealed Space**:
+A connected body of open cells enclosed on every side by solid blocks or closed Doors — an open Door, a gap, or enough size that the region's bounds cannot be checked means it is not sealed.
 
 **Compartment**:
 A sub-space of the Ship or a Base separated by Insulating Blocks and a Door, sealable on its own.
@@ -53,7 +56,7 @@ The wreck's Compartment containing the starting Save Beacon, reachable only thro
 The wreck's water compartment: its tank is a pool sunk into the ground, an effectively bottomless refill point for Water Canisters, unlike finite Oases.
 
 **Ship Interior**:
-Whatever space the player has enclosed with Insulating Blocks — safe only because it is insulated, never because a region says so.
+Whatever space the player has enclosed with Insulating Blocks. Enclosing alone only keeps out sun and wind; a Sealed Space's air still matches the outside until Heat Regulators hold it neutral.
 
 ### World
 
@@ -79,6 +82,9 @@ _Avoid_: checkpoint, bed
 **Death Cache**:
 the container holding a dead player's items at the death spot. It accepts no new items and vanishes only when emptied.
 _Avoid_: grave, drop bag
+
+**Supply Chest**:
+A fixed container in the wreck's cockpit holding the first drinkable Water. Behaves like a Death Cache to open and empty, but holds its own goods, not the player's.
 
 **World Export / Import**:
 A file format for a world, so the same world can be played on different devices.
@@ -109,7 +115,7 @@ Not in scope for M1 or M2; a definite later addition.
 Two parts: days survived and Main Quest progress. Completing the game scores higher with fewer days. Best score persists across deaths.
 
 **Water Canister**:
-A drinkable item (1×2 in the Inventory Grid). Found visible or buried; finite per world. Oases provide finite water; a late-game method synthesizes water.
+A drinkable item (1×2 in the Inventory Grid). Buried in the world, or waiting in the Supply Chest; finite per world. Oases provide finite water; a late-game method synthesizes water.
 
 **Farming**:
 Growing Oasis plants where Heat is not too high and Water is not too low.

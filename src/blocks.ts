@@ -54,7 +54,8 @@ export const BLOCKS: BlockDef[] = [
   def({ id: DOOR_UPPER, name: "Door (closed top)", solid: true, opaque: true, transparent: false, emissive: false, R: 3, breakTime: 2, tool: "disassembler", minTier: 0, placeable: true, color: [0.60, 0.62, 0.66] }),
   // Quest-exclusive artifact block: the heart of the second wreck.
   def({ id: ENGINECORE, name: "Engine Core", solid: true, opaque: true, transparent: false, emissive: true, R: 0.5, breakTime: 4, tool: null, minTier: 0, placeable: true, color: [0.78, 0.42, 0.9] }),
-  // Heat Regulator: works only in a sealed room of at most 50 open cells; see world.roomInfo.
+  // Heat Regulator: holds a sealed room at body-neutral temperature; 100 open cells
+  // of capacity each, capacity stacks; see world.roomInfo.
   def({ id: REGULATOR, name: "Heat Regulator", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.35, 0.75, 0.8] }),
 ];
 

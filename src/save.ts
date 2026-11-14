@@ -60,7 +60,7 @@ export interface RunSave {
   entities: { x: number; y: number; z: number; itemId: string; count: number }[];
   pods?: { x: number; z: number; t: number; itemId: string; n: number }[];
   won?: boolean;
-  caches: { x: number; y: number; z: number; items: { itemId: string; count: number }[] }[];
+  caches: { x: number; y: number; z: number; kind?: "death" | "chest"; items: { itemId: string; count: number }[] }[];
   campfires: Record<string, number>;
   deltas: Record<string, number[]>;
 }
