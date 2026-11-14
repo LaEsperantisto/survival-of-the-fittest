@@ -66,15 +66,15 @@
 </div>
 
 <div id="screen-instructions" class="screen hidden">
+  <button class="close-btn close-x" aria-label="Close">✕</button>
   <h2>How to survive</h2>
   <div id="instr-body"></div>
-  <button class="close-btn">Back</button>
 </div>
 
 <div id="screen-settings" class="screen hidden">
+  <button class="close-btn close-x" aria-label="Close">✕</button>
   <h2>Settings</h2>
   <div id="settings-body"></div>
-  <button class="close-btn">Back</button>
 </div>
 
 <div id="screen-death" class="screen hidden">
@@ -93,6 +93,7 @@
 </div>
 
 <div id="screen-pause" class="screen hidden">
+  <button class="close-btn close-x" aria-label="Close">✕</button>
   <h2>Paused</h2>
   <button id="btn-resume">Resume</button>
   <button id="btn-pause-settings">Settings</button>
@@ -110,6 +111,7 @@
 
 <!-- Inventory / crafting -->
 <div id="ui-inventory" class="panel hidden">
+  <button class="close-btn close-x" aria-label="Close">✕</button>
   <h3>Inventory <span id="inv-weight"></span></h3>
   <div id="inv-main">
     <div id="inv-grid"></div>
@@ -120,22 +122,21 @@
     </div>
   </div>
   <div id="inv-side"></div>
-  <button class="close-btn">Close</button>
 </div>
 
 <div id="ui-craft" class="panel hidden">
+  <button class="close-btn close-x" aria-label="Close">✕</button>
   <h3 id="craft-title">Crafting Bench</h3>
   <div id="craft-list"></div>
   <div id="smelt-ui" class="hidden">
     <div>Fuel: <span id="smelt-fuel"></span> <button id="btn-addfuel">Add wood</button></div>
   </div>
-  <button class="close-btn">Close</button>
 </div>
 
 <div id="ui-cache" class="panel hidden">
+  <button class="close-btn close-x" aria-label="Close">✕</button>
   <h3 id="cache-title">Death Cache — take your belongings</h3>
   <div id="cache-list"></div>
-  <button class="close-btn">Close</button>
 </div>
 
 <script type="module" src="/src/main.ts"></script>
