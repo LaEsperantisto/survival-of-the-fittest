@@ -13,7 +13,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  sens: 1, invertY: false, fov: 75, renderDist: 7, quality: "med", volume: 0.7, units: "C",
+  sens: 1, invertY: false, fov: 70, renderDist: 6, quality: "med", volume: 0.67, units: "C",
   fullscreen: false,
 };
 

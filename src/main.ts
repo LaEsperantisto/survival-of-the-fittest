@@ -102,58 +102,48 @@ function renderSettings() {
   openOverlay("screen-settings");
   const body = $("settings-body");
   body.innerHTML = "";
-  const row = (label: string, input: HTMLElement) => {
-    const r = document.createElement("label");
-    r.textContent = label + " ";
-    r.appendChild(input);
-    body.appendChild(r);
+  // One row per setting: label + a group of choice buttons, the active one lit.
+  const seg = <T extends string | number | boolean>(label: string, opts: [string, T][], cur: T, on: (v: T) => void) => {
+    const r = document.createElement("div"); r.className = "setting";
+    const lb = document.createElement("span"); lb.textContent = label;
+    const grp = document.createElement("div"); grp.className = "seg";
+    const btns: HTMLButtonElement[] = [];
+    for (const [text, val] of opts) {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = text;
+      if (String(val) === String(cur)) b.classList.add("on");
+      b.onclick = () => { for (const x of btns) x.classList.remove("on"); b.classList.add("on"); on(val); };
+      btns.push(b); grp.appendChild(b);
+    }
+    r.append(lb, grp); body.appendChild(r);
   };
-  const slider = (label: string, min: number, max: number, step: number, val: number, on: (v: number) => void) => {
-    const inp = document.createElement("input");
-    inp.type = "range"; inp.min = String(min); inp.max = String(max); inp.step = String(step); inp.value = String(val);
-    inp.oninput = () => on(Number(inp.value));
-    row(label, inp);
-  };
-  slider("Look sensitivity", 0.3, 3, 0.05, settings.sens, (v) => { settings.sens = v; commit(); });
-  const inv = document.createElement("input"); inv.type = "checkbox"; inv.checked = settings.invertY;
-  inv.onchange = () => { settings.invertY = inv.checked; commit(); };
-  row("Invert Y", inv);
-  slider("Volume", 0, 1, 0.05, settings.volume, (v) => { settings.volume = v; commit(); });
-  slider("FOV", 60, 100, 1, settings.fov, (v) => { settings.fov = v; commit(); });
-  slider("Render distance (chunks)", 3, 12, 1, settings.renderDist, (v) => { settings.renderDist = v; commit(); });
-  const qual = document.createElement("select");
-  for (const q of ["low", "med", "high"]) {
-    const o = document.createElement("option");
-    o.value = q; o.textContent = q; o.selected = settings.quality === q;
-    qual.appendChild(o);
-  }
-  qual.onchange = () => { settings.quality = qual.value as Settings["quality"]; commit(); };
-  row("Quality", qual);
-  const units = document.createElement("select");
-  for (const u of ["C", "F"]) {
-    const o = document.createElement("option");
-    o.value = u; o.textContent = u === "C" ? "Celsius" : "Fahrenheit"; o.selected = settings.units === u;
-    units.appendChild(o);
-  }
-  units.onchange = () => { settings.units = units.value as Settings["units"]; commit(); };
-  row("Temperature units", units);
-  const fsChk = document.createElement("input");
-  fsChk.type = "checkbox";
+  seg("Look sensitivity", [["Slow", 0.6], ["Normal", 1], ["Fast", 1.6], ["Turbo", 2.5]], settings.sens,
+    (v) => { settings.sens = v; commit(); });
+  seg("Invert Y", [["Off", false], ["On", true]], settings.invertY,
+    (v) => { settings.invertY = v; commit(); });
+  seg("Volume", [["Mute", 0], ["Low", 0.34], ["Medium", 0.67], ["High", 1]], settings.volume,
+    (v) => { settings.volume = v; commit(); });
+  seg("Field of view", [["60", 60], ["70", 70], ["80", 80], ["90", 90], ["100", 100]], settings.fov,
+    (v) => { settings.fov = v; commit(); });
+  seg("Render distance", [["Low", 4], ["Medium", 6], ["High", 8], ["Far", 10], ["Ultra", 12]], settings.renderDist,
+    (v) => { settings.renderDist = v; commit(); });
+  seg("Quality", [["Low", "low"], ["Medium", "med"], ["High", "high"]] as [string, Settings["quality"]][], settings.quality,
+    (v) => { settings.quality = v; commit(); });
+  seg("Temperature units", [["Celsius", "C"], ["Fahrenheit", "F"]] as [string, Settings["units"]][], settings.units,
+    (v) => { settings.units = v; commit(); });
   if (document.fullscreenEnabled) {
-    fsChk.checked = settings.fullscreen;
-    fsChk.onchange = () => {
-      settings.fullscreen = fsChk.checked;
-      commit();
-      if (fsChk.checked) {
-        void document.documentElement.requestFullscreen().catch(() => {
-          fsChk.checked = false; settings.fullscreen = false; commit();
-        });
-      } else if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
-    };
+    seg("Fullscreen", [["Off", false], ["On", true]], settings.fullscreen, (on) => {
+      settings.fullscreen = on; commit();
+      if (on) void document.documentElement.requestFullscreen().catch(() => {
+        settings.fullscreen = false; commit(); renderSettings(); // browser refused: unlight the button
+      });
+      else if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    });
   } else {
-    fsChk.disabled = true;
+    const r = document.createElement("div"); r.className = "setting";
+    r.append(document.createTextNode("Fullscreen"), Object.assign(document.createElement("span"), { className: "needs", textContent: "not available in this browser" }));
+    body.appendChild(r);
   }
-  row("Fullscreen", fsChk);
 }
 
 function commit() {
@@ -239,7 +229,12 @@ $("btn-cheats").onclick = () => show("cheats", $("cheats").classList.contains("h
 for (const b of Array.from($("cheats").querySelectorAll("button"))) {
   (b as HTMLButtonElement).onclick = () => {
     if (!game) return;
-    const frac = Number((b as HTMLButtonElement).dataset.frac);
+    if (b.dataset.speed !== undefined) {
+      game.speedMul = Number(b.dataset.speed);
+      hud.toast(`Player speed ×${b.dataset.speed}.`);
+      return;
+    }
+    const frac = Number(b.dataset.frac);
     game.setClock(frac);
     hud.toast(`Clock set to ${b.textContent}.`);
   };

@@ -52,6 +52,7 @@ export class Game {
   private keys = new Set<string>();
   private stick = { x: 0, y: 0 };
   private mobile = matchMedia("(pointer: coarse)").matches;
+  speedMul = 1; // cheat-menu movement multiplier, session-only
   private mobileJump = false;
   private entitySeq = 1;
   private audioTickAcc = 0;
@@ -526,7 +527,7 @@ export class Game {
       if (this.keys.has("KeyD")) mx += 1;
       const jump = this.keys.has("Space") || this.mobileJump;
       this.player.sprinting = this.keys.has("ShiftLeft") || this.keys.has("ShiftRight");
-      this.player.update(dt, mx, mz, jump, 1, overencumbered);
+      this.player.update(dt, mx, mz, jump, this.speedMul, overencumbered);
       this.survival.update(dt, this.world, this.player.pos, {
         sprinting: this.player.sprinting && (mx !== 0 || mz !== 0),
         overencumbered, biome, tSec: this.timeSec, sunElev: kf.sunElev, inWater: this.player.inWater,

@@ -79,7 +79,12 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 #instr-body, #settings-body { max-width: 680px; font-size: 16px; }
 #instr-body p, #settings-body .setting { margin: 7px 0; }
 #settings-body .setting { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
-#settings-body input[type=range] { width: 200px; }
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg button { min-width: 0; padding: 5px 12px; font-size: 13px; }
+.seg button.on { background: #d8b74f; border-color: #d8b74f; color: #14161c; }
+#cheats { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+#cheats button { flex: 1 1 auto; padding: 6px 10px; font-size: 13px; min-width: 0; }
+.cheat-lab { width: 100%; margin-top: 6px; color: #9aa0aa; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
 #death-stats, #death-cause { margin: 8px 0; }
 
 .panel { position: fixed; z-index: 25; left: 50%; top: 50%; transform: translate(-50%,-50%);
