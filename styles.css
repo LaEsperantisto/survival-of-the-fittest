@@ -113,7 +113,10 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 .cache-item { padding: 4px 2px; }
 
 /* mobile */
-#mobile { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
+#mobile { position: fixed; inset: 0; z-index: 20; pointer-events: none;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+#m-pause { position: absolute; top: 10px; left: 10px; width: 44px; height: 44px; padding: 0;
+  font-size: 14px; font-weight: 700; pointer-events: auto; touch-action: none; }
 #stick { position: absolute; left: 22px; bottom: 90px; width: 110px; height: 110px; border-radius: 50%;
   background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.25); pointer-events: auto; }
 #knob { position: absolute; left: 38px; top: 38px; width: 34px; height: 34px; border-radius: 50%;

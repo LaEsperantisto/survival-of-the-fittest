@@ -378,20 +378,30 @@ export class Game {
       on("wheel", (e) => { this.inv.cycle((e as WheelEvent).deltaY > 0 ? 1 : -1); this.renderHeld(); });
       on("contextmenu", (e) => e.preventDefault());
     } else {
-      let lookX = 0, lookY = 0;
+      // One designated finger drives the camera; any additional touch (including
+      // a stray near the stick) is ignored — two fingers never fight over yaw.
+      let camId = -1, lookX = 0, lookY = 0;
       canvas.addEventListener("touchstart", (e) => {
-        const t = e.changedTouches[0];
-        lookX = t.clientX; lookY = t.clientY;
+        if (camId < 0) {
+          const t = e.changedTouches[0];
+          camId = t.identifier; lookX = t.clientX; lookY = t.clientY;
+        }
         e.preventDefault();
       });
       canvas.addEventListener("touchmove", (e) => {
-        const t = e.changedTouches[0];
-        this.player.yaw -= (t.clientX - lookX) * 0.005 * this.settings.sens;
-        this.player.pitch -= (this.settings.invertY ? -1 : 1) * (t.clientY - lookY) * 0.005 * this.settings.sens;
-        this.player.pitch = THREE.MathUtils.clamp(this.player.pitch, -1.55, 1.55);
-        lookX = t.clientX; lookY = t.clientY;
+        for (const t of e.changedTouches) {
+          if (t.identifier !== camId) continue;
+          this.player.yaw -= (t.clientX - lookX) * 0.005 * this.settings.sens;
+          this.player.pitch -= (this.settings.invertY ? -1 : 1) * (t.clientY - lookY) * 0.005 * this.settings.sens;
+          this.player.pitch = THREE.MathUtils.clamp(this.player.pitch, -1.55, 1.55);
+          lookX = t.clientX; lookY = t.clientY;
+        }
         e.preventDefault();
       });
+      const camEnd = (e: TouchEvent) => { for (const t of e.changedTouches) if (t.identifier === camId) camId = -1; };
+      canvas.addEventListener("touchend", camEnd);
+      canvas.addEventListener("touchcancel", camEnd);
+      document.addEventListener("contextmenu", (e) => e.preventDefault()); // long-press must not cancel holds
       // virtual stick
       const stick = document.getElementById("stick")!;
       const knob = document.getElementById("knob")!;
@@ -411,10 +421,13 @@ export class Game {
       const stickEnd = () => { this.stick.x = 0; this.stick.y = 0; stickId = -1; knob.style.left = "38px"; knob.style.top = "38px"; };
       stick.addEventListener("touchend", stickEnd);
       stick.addEventListener("touchcancel", stickEnd);
+      // Press fires; release only ends holds (jump, break). Momentary buttons
+      // never fire twice.
       const mb = (id: string, down: () => void, up?: () => void) => {
         const el = document.getElementById(id)!;
         el.addEventListener("touchstart", (e) => { e.preventDefault(); down(); });
-        el.addEventListener("touchend", (e) => { e.preventDefault(); (up ?? down)(); });
+        el.addEventListener("touchend", (e) => { e.preventDefault(); if (up) up(); });
+        el.addEventListener("touchcancel", () => { if (up) up(); });
       };
       mb("m-jump", () => this.mobileJump = true, () => this.mobileJump = false);
       mb("m-break", () => this.mouseDown = true, () => { this.mouseDown = false; this.breaking = null; });
@@ -423,6 +436,7 @@ export class Game {
       mb("m-drink", () => this.drink());
       mb("m-next", () => { this.inv.cycle(1); this.renderHeld(); });
       mb("m-inv", () => this.toggleInv());
+      mb("m-pause", () => this.escape());
     }
     on("beforeunload", () => this.saveNow());
     // Browsers swallow the Escape keydown while pointer-locked (it exits the lock),

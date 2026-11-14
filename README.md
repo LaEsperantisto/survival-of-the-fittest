@@ -40,7 +40,8 @@ The build is fully static — `dist/` can be dropped on GitHub Pages or any stat
 
 Inventory: drag items between cells; click a cell to select it (Rotate / Drop buttons appear beside the grid). A drag released anywhere off the grid parks the item in **Temporary Storage** next to it — the inventory can't be closed while it's occupied; drag the item back from there or use its Drop button. Dropped items pile up in front of you (never inside walls) and need a short beat before they can be picked back up.
 
-Touch: on-screen stick + jump / interact / place buttons.
+Touch: on-screen stick + jump / break / place / act / drink / item / bag buttons and a pause button (top-left).
+One finger steers the camera — extra fingers are ignored. Buttons fire when pressed; Jump and Break act while held.
 
 ## Tech
 

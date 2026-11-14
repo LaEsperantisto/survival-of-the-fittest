@@ -16,6 +16,9 @@ export class Survival {
   lastAmbient = 0; lastAmbientEff = 0; lastShelterR = 0; lastTarget = 36.6; lastOpenSky = false;
   lastRoom: { size: number; sealed: boolean; regulators: number } = { size: 0, sealed: false, regulators: 0 };
 
+  private embedKey = "";
+  private embedAir: { R: number; openSky: boolean; shelter: number; ambEff: number; room: { size: number; sealed: boolean; regulators: number } } | null = null;
+
   constructor(private weatherSeed: number) {}
 
   worldTimeToDayFrac(t: number) { return (t % DAY_SECONDS) / DAY_SECONDS; }
@@ -37,20 +40,48 @@ export class Survival {
     if (this.health <= 0) return;
     const frac = this.worldTimeToDayFrac(opts.tSec);
     const amb = this.ambient(opts.biome, frac, opts.tSec);
-    const { R, openSky } = world.skyResistance(Math.floor(pos.x), Math.floor(pos.y), Math.floor(pos.z));
-    this.lastOpenSky = openSky;
-    let shelter = 1 - Math.exp(-R);          // 0 exposed .. ~0.997 sealed
-    let ambEff = amb;
-    if (openSky && opts.sunElev > 0) ambEff += 8 + 10 * opts.sunElev; // direct sun beats down, even when the air is mild
+    const fx = Math.floor(pos.x), fy = Math.floor(pos.y), fz = Math.floor(pos.z);
+
+    // One cell's air: column shelter + sun + sealed-room regulators.
     // A sealed space's air drifts to the outside temperature — walls alone don't
-    // save you. Only Heat Regulators, whose capacity (50 cells each) stacks,
+    // save you. Only Heat Regulators, whose capacity (100 cells each) stacks,
     // hold a sealed room at body-neutral temperature.
-    const room = world.roomInfo(Math.floor(pos.x), Math.floor(pos.y), Math.floor(pos.z));
-    this.lastRoom = room;
-    if (room.sealed) {
-      if (room.regulators * REGULATOR_ROOM_MAX >= room.size) { ambEff = 36.6; shelter = 1; }
-      else { ambEff = amb; shelter = 0; }
+    const cellAir = (x: number, y: number, z: number) => {
+      const { R, openSky } = world.skyResistance(x, y, z);
+      let shelter = 1 - Math.exp(-R);        // 0 exposed .. ~0.997 sealed
+      let ambEff = amb;
+      if (openSky && opts.sunElev > 0) ambEff += 8 + 10 * opts.sunElev; // direct sun beats down
+      const room = world.roomInfo(x, y, z);
+      if (room.sealed) {
+        if (room.regulators * REGULATOR_ROOM_MAX >= room.size) { ambEff = 36.6; shelter = 1; }
+        else { ambEff = amb; shelter = 0; }
+      }
+      return { R, openSky, shelter, ambEff, room };
+    };
+
+    let here = cellAir(fx, fy, fz);
+    // Standing inside a block (an open door's cell, a wall you're clipped into):
+    // the cell itself holds no air, so ask every surrounding cell and breathe
+    // whichever is nearest body temperature — a doorway borrows the closest side.
+    if (here.room.size === 0) {
+      const key = `${fx},${fy},${fz}|${Math.floor(opts.tSec * 2)}`; // resampled twice a second
+      if (this.embedKey !== key) {
+        let best = here;
+        for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+          if (!dx && !dy && !dz) continue;
+          const cand = cellAir(fx + dx, fy + dy, fz + dz);
+          if (cand.room.size === 0) continue;
+          if (Math.abs(cand.ambEff - 37) < Math.abs(best.ambEff - 37)) best = cand;
+        }
+        this.embedKey = key; this.embedAir = best;
+      }
+      if (this.embedAir) here = this.embedAir;
     }
+    this.lastOpenSky = here.openSky;
+    let shelter = here.shelter;
+    let ambEff = here.ambEff;
+    const room = here.room;
+    this.lastRoom = room;
     if (opts.inWater) {
       // desert water is cold: it pulls hard against midday heat, and is a little
       // kinder than freezing night air — the average of air and water temperature
@@ -59,7 +90,7 @@ export class Survival {
     }
     // body always regulates toward 36.6; exposure pulls it toward the effective air temp
     const target = 36.6 + (ambEff - 36.6) * (1 - shelter);
-    this.lastAmbient = amb; this.lastAmbientEff = ambEff; this.lastShelterR = R; this.lastTarget = target;
+    this.lastAmbient = amb; this.lastAmbientEff = ambEff; this.lastShelterR = here.R; this.lastTarget = target;
 
     // sealed air moves the body fast — a hot room cooks you in minutes, and so does a cold one
     const k = room.sealed ? 0.0096 : 0.0032; // tau ~100 s inside, ~5 min out in the open

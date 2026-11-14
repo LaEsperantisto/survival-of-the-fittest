@@ -45,11 +45,13 @@ export class Player {
     this.vel.z += (wish.z * speed - this.vel.z) * Math.min(1, accel * dt);
 
     if (swim) {
-      // water: weak sink + buoyancy, Space swims up; no jump impulse needed to leave
-      this.vel.y -= 6 * dt;
-      if (this.headUnder) this.vel.y += 9 * dt;
-      if (jump) this.vel.y += 22 * dt;
-      this.vel.y = THREE.MathUtils.clamp(this.vel.y, -2.2, 3.4);
+      // water pulls you down — you sink unless you hold jump to swim up
+      this.vel.y -= 7 * dt;
+      if (jump) {
+        if (this.onGround) { this.vel.y = 6.0; this.onGround = false; } // hop out of pools onto banks
+        else this.vel.y += 22 * dt;
+      }
+      this.vel.y = THREE.MathUtils.clamp(this.vel.y, -3.2, 3.4);
       this.vel.y *= 1 - Math.min(0.9, 2.2 * dt);
     } else {
       this.vel.y -= 24 * dt;
