@@ -1,5 +1,5 @@
 import type { Game } from "./game";
-import { DOOR_CLOSED, DOOR_OPEN, DOOR_UPPER } from "./blocks";
+import { DIRT, DOOR_CLOSED, DOOR_OPEN, DOOR_UPPER, SAND, SANDSTONE } from "./blocks";
 
 // The guided tour for fresh worlds: a cinematic flyover of the wreck, then steps
 // the player performs in the real game world. Coordinates are the main wreck's
@@ -65,9 +65,23 @@ const STEPS: TutStep[] = [
     cap: "Select the shovel on the bottom hotbar — click it, scroll, or press its number — then hold <b>Left-click</b> on sand until it breaks. Rock outcrops need a pickaxe; you will craft one soon enough.",
     goal: "mine", hold: 45 },
   { t: "Farming",
-    cap: "A shovel has a second use: press <b>Q</b> while aiming at sand to till it into <b>Farm Land</b>, then plant seeds in it. Crops ripen only while water sits within 4 blocks and the air stays in their band — melons love the heat, wheat does not. The desert used to be farmed; the towns still hold seeds.",
+    cap: "A shovel has a second use: press <b>Q</b> while aiming at <b>dirt or grass</b> to till it into <b>Farm Land</b> — sand refuses the blade. Plant seeds in the tilled soil. Crops ripen only while water sits within 4 blocks and the air stays in their band — melons love the heat, wheat does not. Dirt is precious out here; oasis rims and town fields still hold it.",
     goal: "plant", hold: 40,
-    enter: (g) => { g.giveOrDrop("seed_wheat", 2); g.selectHeld("shovel"); } },
+    enter: (g) => {
+      g.giveOrDrop("seed_wheat", 2);
+      g.selectHeld("shovel");
+      // the dunes here are pure sand: lay a patch of soil right under the player's feet
+      const p = g.player.pos;
+      const x = Math.floor(p.x), z = Math.floor(p.z);
+      for (let y = Math.floor(p.y) - 1; y > 20; y--) {
+        const id = g.world.get(x, y, z);
+        if (id === SAND || id === SANDSTONE) {
+          g.world.set(x, y, z, DIRT);
+          g.tutGuide = { name: "Dirt", x, y, z };
+          break;
+        }
+      }
+    } },
   { t: "Save Points",
     cap: "Last lesson: a Save Beacon waits in the aft cabin. Press <b>E</b> at it. Beacons are the only save points and the only respawns — craft more and set one before every long trip. After this, the desert is yours.",
     guide: { name: "Save Beacon", x: -4, y: 31, z: -1 }, goal: "save", hold: 30 },
