@@ -669,10 +669,24 @@ export class Game {
     }, document);
   }
 
+  // Pause-menu submenus (Settings, Catalog): closing them returns to the pause
+  // menu with the mouse still free — the pointer is only re-grabbed on the way
+  // out of the pause menu itself.
+  pauseSubmenu: "settings" | "catalog" | null = null;
+
+  closePauseSubmenu() {
+    if (!this.pauseSubmenu) return;
+    document.getElementById(this.pauseSubmenu === "settings" ? "screen-settings" : "screen-catalog")!
+      .classList.add("hidden");
+    this.pauseSubmenu = null;
+    if (this.paused) document.getElementById("screen-pause")!.classList.remove("hidden");
+  }
+
   private escape(fromP = false) {
     // Escape's browser default can release a pointer lock we re-acquire while
     // closing a menu; that spurious lock-loss must not open the pause screen.
     this.escAt = performance.now();
+    if (this.pauseSubmenu) { this.closePauseSubmenu(); return; }
     if (this.ui) { this.closeUI(); return; }
     const hidden = (id: string) => document.getElementById(id)!.classList.contains("hidden");
     // Settings / death / win own their own dismissal buttons; Esc must not pause behind them.
@@ -1442,6 +1456,9 @@ export class Game {
   private startInvDrag(e: MouseEvent, s: Slot, src: Inventory) {
     if (e.button !== 0) return;
     e.preventDefault();
+    // Shift-click: quick-move — into the open chest if one is up, otherwise lift
+    // the item into temporary storage with no drag.
+    if (e.shiftKey) { this.shiftMove(s, src); return; }
     // Lift the item into temporary storage; it lands where the mouse is released,
     // or stays in temporary storage if dropped anywhere else.
     const si = src.slots.indexOf(s);
@@ -1498,6 +1515,40 @@ export class Game {
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
     move(e);
+  }
+
+  /** Shift-click quick-move: pack ⇄ open chest; with no chest open, lift the
+   *  item into temporary storage (a lifted item swaps into the vacated cell). */
+  private shiftMove(s: Slot, src: Inventory) {
+    const target = this.chestInv
+      ? (src === this.inv ? this.chestInv : src === this.chestInv ? this.inv : null)
+      : null;
+    if (target) {
+      const i = src.slots.indexOf(s);
+      src.slots.splice(i, 1);
+      if (!Game.placeSlotFree(target, s)) {
+        src.slots.splice(i, 0, s); // it would not fit — contents stay put
+        hud.toast(src === this.inv ? "No room in the chest." : "No room in your pack.");
+        this.audio.error();
+        this.renderInv();
+        return;
+      }
+      this.audio.place();
+      this.renderInv();
+      this.renderHeld();
+      return;
+    }
+    const si = src.slots.indexOf(s);
+    src.selected = si;
+    src.slots.splice(si, 1);
+    const prev = this.temp;
+    this.temp = s;
+    if (prev) {
+      src.slots.push(prev);
+      if (!src.move(prev, s.x, s.y)) this.giveOrDrop(prev.itemId, prev.count);
+    }
+    this.renderInv();
+    this.renderHeld();
   }
 
   private gridsEls(): [HTMLElement, Inventory][] {

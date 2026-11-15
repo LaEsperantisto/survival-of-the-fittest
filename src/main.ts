@@ -89,6 +89,7 @@ function openOverlay(id: string) {
   show(id);
 }
 function closeOverlays() {
+  if (game) game.pauseSubmenu = null;
   show("screen-settings", false);
   show("screen-instructions", false);
   show("screen-catalog", false);
@@ -107,6 +108,7 @@ function closeOverlays() {
 // ---------- settings ----------
 
 function renderSettings() {
+  if (game) game.pauseSubmenu = game.paused ? "settings" : null;
   openOverlay("screen-settings");
   const body = $("settings-body");
   body.innerHTML = "";
@@ -166,6 +168,7 @@ function commit() {
 let catalogTab: "items" | "recipes" = "items";
 
 function renderCatalog() {
+  if (game) game.pauseSubmenu = game.paused ? "catalog" : null;
   openOverlay("screen-catalog");
   for (const t of Array.from($("catalog-tabs").querySelectorAll<HTMLButtonElement>(".tab")))
     t.classList.toggle("active", t.dataset.tab === catalogTab);
@@ -280,6 +283,9 @@ $("btn-catalog-title").onclick = renderCatalog;
 
 for (const btn of document.querySelectorAll<HTMLButtonElement>(".close-btn"))
   btn.onclick = () => {
+    // Settings / Catalog opened from the pause menu: ✕ goes back to the pause
+    // menu; the mouse stays free until the pause menu itself closes.
+    if (game && game.pauseSubmenu) { game.closePauseSubmenu(); return; }
     if (game) game.closeUI();
     // closeUI refuses to close the inventory while temporary storage is occupied;
     // don't let closeOverlays sneak past that guard
