@@ -20,6 +20,7 @@ export const RECIPES: Recipe[] = [
   { out: "metal_shovel", count: 1, needs: { metal: 2, deadwood: 1 }, bench: true },
   { out: "metal_axe", count: 1, needs: { metal: 2, deadwood: 1 }, bench: true },
   { out: "metal_disassembler", count: 1, needs: { metal: 4, rock: 2 }, bench: true },
+  { out: "sword", count: 1, needs: { metal: 2, deadwood: 1 }, bench: true },
   { out: "door", count: 1, needs: { metal: 2, deadwood: 2 }, bench: true },
   { out: "hull", count: 2, needs: { metal: 2, sand: 2 }, bench: true },
   { out: "lamp", count: 1, needs: { metal: 1, glass: 1, salt: 2 }, bench: true },

@@ -22,7 +22,7 @@ export interface DroppedItem {
   buried?: boolean; buriedAt?: [number, number, number]; srcIndex?: number; fall?: number;
   repickAt?: number; // game time before which auto-pickup is suppressed (manual drops)
 }
-export interface DeathCache { id: number; x: number; y: number; z: number; kind: "death" | "chest" | "reward"; items: { itemId: string; count: number }[]; markerEid?: number }
+export interface DeathCache { id: number; x: number; y: number; z: number; kind: "death" | "reward"; items: { itemId: string; count: number }[]; markerEid?: number }
 export interface Mob {
   kind: MobKind; hp: number; x: number; y: number; z: number;
   yaw: number; biteCd: number; wanderT: number; wanderYaw: number; wanderOn: boolean;
@@ -87,6 +87,7 @@ export class Game {
   private visorBeams = new Map<string, number>(); // cache/cluster key -> beam mesh id
   private lockAt = 0;
   private guideAcc = 1;
+  private lastTouchTs = 0;
   won = false;
 
   constructor(public meta: WorldMeta, run: RunSave | null, parent: HTMLElement, private settings: Settings, private audio: Audio) {
@@ -98,6 +99,8 @@ export class Game {
     this.player = new Player(this.world);
     this.timeSec = run?.time ?? DAY_SECONDS * 0.7; // new worlds start mid-afternoon, near the day's hottest
     this.playSec = run?.playSec ?? 0;
+    // last input modality: touch synthesises mouse events, so a recent touch means "this tap is touch"
+    document.addEventListener("touchstart", () => { this.lastTouchTs = Date.now(); }, { passive: true, capture: true });
 
     if (run) this.restore(run);
     else this.spawnStarterEntities();
@@ -219,9 +222,31 @@ export class Game {
     if (cells.length > 1) hud.toast(`Chests linked — one ${ci.w}×${ci.h} inventory.`);
   }
 
-  private cacheColor(c: DeathCache): number { return c.kind === "chest" ? 0x8a6d3b : c.kind === "reward" ? 0xb08a3e : 0x6b5a44; }
+  /** A pre-grid Supply Chest cache becomes a chest-block grid — one representation, never double-lootable. */
+  private adoptLegacyChest(c: { x: number; y: number; z: number; items: { itemId: string; count: number }[] }) {
+    if (this.world.get(c.x, c.y, c.z) !== CHEST) {
+      if (isSolid(this.world.get(c.x, c.y, c.z))) {
+        // something was built in its place: the goods spill onto the sand
+        for (const it of c.items) this.dropEntity(it.itemId, it.count, 2);
+        return;
+      }
+      this.world.set(c.x, c.y, c.z, CHEST);
+    }
+    const cells = this.chestCluster(c.x, c.y, c.z);
+    const k = Game.chestKey(cells);
+    if (!this.chests.has(k)) this.chests.set(k, []);
+    const ci = this.emptyChestGrid(cells.length);
+    ci.slots = this.chests.get(k)!;
+    for (const it of c.items)
+      for (let i = 0; i < it.count; i++) {
+        const s: Slot = { itemId: it.itemId, count: 1, x: 0, y: 0 };
+        if (!Game.placeSlotFree(ci, s)) this.dropEntity(it.itemId, 1, 2);
+      }
+  }
+
+  private cacheColor(c: DeathCache): number { return c.kind === "reward" ? 0xb08a3e : 0x6b5a44; }
   private cacheMeshPos(c: DeathCache): [number, number, number] {
-    return [c.x, c.y + (c.kind === "chest" ? 0.36 : 0.5), c.z];
+    return [c.x, c.y + 0.5, c.z];
   }
 
   private restore(run: RunSave) {
@@ -262,13 +287,18 @@ export class Game {
     });
     for (const e of run.entities) fresh.push({ id: this.entitySeq++, ...e });
     this.entities = fresh;
+    const legacyChests: { x: number; y: number; z: number; items: { itemId: string; count: number }[] }[] = [];
     for (const c of run.caches) {
-      const cache: DeathCache = { id: this.entitySeq++, x: c.x, y: c.y, z: c.z, kind: c.kind ?? "death", items: c.items.map((i) => ({ ...i })) };
+      const kind = c.kind ?? "death";
+      // old saves model Supply Chests as caches; they now live on as chest-block grids
+      if (kind === "chest") { legacyChests.push(c); continue; }
+      const cache: DeathCache = { id: this.entitySeq++, x: c.x, y: c.y, z: c.z, kind, items: c.items.map((i) => ({ ...i })) };
       this.caches.push(cache);
       if (cache.items.length) this.renderer.addEntityMesh(cache.id, this.cacheMeshPos(cache), this.cacheColor(cache), 0.7);
     }
     this.campCharges = new Map(Object.entries(run.campfires ?? {}).map(([k, v]) => [k, v]));
     this.chests = new Map((run.chests ?? []).map((c) => [c.cells, c.slots.map((s) => ({ ...s }))]));
+    for (const c of legacyChests) this.adoptLegacyChest(c);
     this.pods = (run.pods ?? []).map((p) => ({
       ...p,
       ringEid: this.renderer.addGroundRing(p.x + 0.5, Math.round(heightAt(this.seed, p.x, p.z)), p.z + 0.5, 0xcc3322, 1.1),
@@ -447,7 +477,7 @@ export class Game {
     if (this.equip.head?.itemId === "visor") {
       for (const c of this.caches)
         if (c.items.length)
-          want.set(`c${c.id}`, [c.x + 0.5, c.y, c.z + 0.5, c.kind === "chest" ? 0xe6c96a : c.kind === "reward" ? 0xd8a24a : 0xcc4433]);
+          want.set(`c${c.id}`, [c.x + 0.5, c.y, c.z + 0.5, c.kind === "reward" ? 0xd8a24a : 0xcc4433]);
       for (const key of this.chests.keys()) {
         const [x, y, z] = key.split(";")[0].split(",").map(Number);
         want.set(`x${key}`, [x + 0.5, y, z + 0.5, 0xe6c96a]);
@@ -517,7 +547,6 @@ export class Game {
       [...this.beaconMarks, { x: -4, y: 31, z: -1 }].some((b) =>
         this.world.get(b.x, b.y, b.z) === BEACON &&
         (b.x + 0.5 - p.x) ** 2 + (b.y + 1 - p.y) ** 2 + (b.z + 0.5 - p.z) ** 2 < 25)) this.questBump("water_home");
-    else if (q.kind === "day" && this.dayNumber() >= 4) this.questBump("day");
     else if (q.kind === "wreck") {
       const s = this.world.gen.secondShip;
       if ((s.x + 0.5 - p.x) ** 2 + (s.z + 0.5 - p.z) ** 2 < 169) this.questBump("wreck");
@@ -810,7 +839,7 @@ export class Game {
         this.renderer.addEntityMesh(c.id, this.cacheMeshPos(c), this.cacheColor(c), 0.7);
         // every Cache is findable from far: a ground ring in its kind colour
         c.markerEid = this.renderer.addGroundRing(c.x + 0.5, c.y, c.z + 0.5,
-          c.kind === "chest" ? 0xe6c96a : c.kind === "reward" ? 0xd8a24a : 0xcc3322, 1.4);
+          c.kind === "reward" ? 0xd8a24a : 0xcc3322, 1.4);
       } else if (mesh && !c.items.length) {
         this.renderer.removeEntityMesh(c.id);
         if (c.markerEid !== undefined) { this.renderer.removeEntityMesh(c.markerEid); c.markerEid = undefined; }
@@ -867,7 +896,7 @@ export class Game {
     if (!t) return null;
     if (t.hit && this.world.get(t.hit.x, t.hit.y, t.hit.z) === CHEST) return "E: Open Supply Chest";
     const near = this.nearestCache();
-    if (near) return near.kind === "chest" ? "E: Open supply chest" : near.kind === "reward" ? "E: Claim Reward Cache" : "E: Open death cache";
+    if (near) return near.kind === "reward" ? "E: Claim Reward Cache" : "E: Open death cache";
     if (t.hit) {
       const id = this.world.get(t.hit.x, t.hit.y, t.hit.z);
       if (id === DOOR_CLOSED || id === DOOR_UPPER) return "E: Open door";
@@ -915,11 +944,14 @@ export class Game {
       if (this.attackCd <= 0) {
         this.attackCd = 0.5;
         const sel = this.inv.selectedSlot();
-        mb.hp -= 3 + (sel ? ITEMS[sel.itemId].tool?.tier ?? 0 : 0);
+        const it = sel ? ITEMS[sel.itemId] : null;
+        const weapon = it?.weapon;
+        mb.hp -= weapon ? weapon.dmg : 3 + (it?.tool?.tier ?? 0);
         this.audio.thud();
         const kx = mb.x - this.player.pos.x, kz = mb.z - this.player.pos.z;
         const kl = Math.max(0.2, Math.hypot(kx, kz));
-        if (this.mobCanStand(mb, mb.x + (kx / kl) * 0.6, mb.z + (kz / kl) * 0.6)) { mb.x += (kx / kl) * 0.6; mb.z += (kz / kl) * 0.6; mb.y = this.mobSurface(mb.x, mb.z); }
+        const kb = weapon ? 1.1 : 0.6;
+        if (this.mobCanStand(mb, mb.x + (kx / kl) * kb, mb.z + (kz / kl) * kb)) { mb.x += (kx / kl) * kb; mb.z += (kz / kl) * kb; mb.y = this.mobSurface(mb.x, mb.z); }
         if (mb.hp <= 0) this.killMob(mb);
       }
       return;
@@ -1086,11 +1118,13 @@ export class Game {
     }
   }
 
-  /** The mob nearest the crosshair within reach, if no block is closer. */
+  /** The mob nearest the crosshair within reach, if no block is closer. A held weapon extends reach. */
   private meleeMob(): Mob | null {
     const o = this.player.eye();
     const dir = new THREE.Vector3();
     this.renderer.camera.getWorldDirection(dir);
+    const sel = this.inv.selectedSlot();
+    const reach = sel ? (ITEMS[sel.itemId].weapon?.reach ?? 3.2) : 3.2;
     const blk = this.raycastTarget();
     const blockDist = blk?.hit
       ? Math.hypot(blk.hit.x + 0.5 - o.x, blk.hit.y + 0.5 - o.y, blk.hit.z + 0.5 - o.z)
@@ -1100,7 +1134,7 @@ export class Game {
       const def = MOB_DEFS[m.kind];
       const cx = m.x - o.x, cy = m.y + def.height / 2 - o.y, cz = m.z - o.z;
       const t = cx * dir.x + cy * dir.y + cz * dir.z;
-      if (t < 0.2 || t > 3.2 || t > blockDist) continue;
+      if (t < 0.2 || t > reach || t > blockDist) continue;
       const px = o.x + dir.x * t - m.x, py = o.y + dir.y * t - (m.y + def.height / 2), pz = o.z + dir.z * t - m.z;
       if (px * px + py * py + pz * pz > (def.hitR + 0.3) * (def.hitR + 0.3)) continue;
       if (t < bestT) { bestT = t; best = m; }
@@ -1595,7 +1629,12 @@ export class Game {
         el.style.background = "#23262e";
         el.style.backgroundImage = "";
         el.title = "";
-        el.onclick = null;
+        // tap/click an empty slot to wear the selected gear (no hunt for the side-panel button)
+        el.onclick = () => {
+          const sel = this.inv.selectedSlot();
+          if (sel && ITEMS[sel.itemId].equip === slot) this.equipItem();
+          else if (sel) { hud.toast(`The ${ITEMS[sel.itemId].name} does not fit the ${slot} slot.`); this.audio.error(); }
+        };
       }
     }
 
@@ -1703,10 +1742,57 @@ export class Game {
         const si = inv.slots.indexOf(s);
         if (si === inv.selected) cell.classList.add("active");
         cell.onmouseenter = () => { document.getElementById("inv-side")!.textContent = `${d.name} — ${d.desc}`; };
-        cell.onmousedown = (e) => this.startInvDrag(e, s, inv);
+        cell.onmousedown = (e) => {
+          // touch taps synthesise mousedown: recent touch means this tap selects/moves, not drags
+          if (Date.now() - this.lastTouchTs < 700) this.tapCell(inv, x, y);
+          else this.startInvDrag(e, s, inv);
+        };
+      } else {
+        cell.onmousedown = () => {
+          if (Date.now() - this.lastTouchTs < 700) this.tapCell(inv, x, y);
+        };
       }
       grid.appendChild(cell);
     }
+  }
+
+  /** Touch semantics: tap selects; tapping another cell moves the selected item there — swapping when occupied. */
+  private tapCell(inv: Inventory, x: number, y: number) {
+    const hit = inv.slots.find((s) => {
+      const d = slotDims(s);
+      return x >= s.x && x < s.x + d.w && y >= s.y && y < s.y + d.h;
+    });
+    const sel = inv.selectedSlot();
+    if (sel && sel !== hit) {
+      const da = slotDims(sel);
+      const ax = Math.min(x, inv.w - da.w), ay = Math.min(y, inv.h - da.h);
+      if (ax >= 0 && ay >= 0 && this.tapMove(inv, sel, hit, ax, ay)) {
+        this.audio.place();
+        inv.selected = inv.slots.indexOf(sel);
+        this.renderInv();
+        return;
+      }
+    }
+    if (hit) {
+      inv.selected = inv.slots.indexOf(hit);
+      this.renderInv();
+    }
+  }
+
+  /** Move `a` to (ax,ay); if blocked by `hit`, swap footprints when they both fit. */
+  private tapMove(inv: Inventory, a: Slot, hit: Slot | undefined, ax: number, ay: number): boolean {
+    const da = slotDims(a);
+    if (inv.fits(ax, ay, da.w, da.h, a)) return inv.move(a, ax, ay);
+    if (!hit) return false;
+    const db = slotDims(hit);
+    const ai = inv.slots.indexOf(a);
+    inv.slots.splice(ai, 1); // open hole: both swap legs check against the real board
+    // each item must fit its new home, and the two new footprints must be disjoint
+    const ok = inv.fits(a.x, a.y, db.w, db.h, hit) && inv.fits(ax, ay, da.w, da.h, hit)
+      && !(ax < a.x + db.w && a.x < ax + da.w && ay < a.y + db.h && a.y < ay + da.h)
+      && inv.move(hit, a.x, a.y) && inv.move(a, ax, ay);
+    inv.slots.splice(ai, 0, a);
+    return ok;
   }
 
   private startInvDrag(e: MouseEvent, s: Slot, src: Inventory) {
@@ -1927,8 +2013,7 @@ export class Game {
   renderCache() {
     const cache = this.caches.find((c) => c.id === this.openCacheId);
     document.getElementById("cache-title")!.textContent =
-      cache?.kind === "chest" ? "Supply Chest — take what you need"
-        : cache?.kind === "reward" ? "Reward Cache — claim your quest reward"
+      cache?.kind === "reward" ? "Reward Cache — claim your quest reward"
         : "Death Cache — take your belongings";
     const list = document.getElementById("cache-list")!;
     list.innerHTML = "";

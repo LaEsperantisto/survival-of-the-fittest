@@ -3,7 +3,7 @@
 
 export interface QuestDef {
   id: string;
-  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "day" | "wreck" | "core" | "finish";
+  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "wreck" | "core" | "finish";
   title: string;
   desc: string;
   goal: number;
@@ -36,14 +36,9 @@ export const QUESTS: QuestDef[] = [
     reward: { item: "metal", n: 4 },
   },
   {
-    id: "day4", kind: "day", title: "Day Walker",
-    desc: "Survive until the dawn of day 4.", goal: 1,
-    reward: { item: "catalyst", n: 1 },
-  },
-  {
     id: "wreck", kind: "wreck", title: "The Second Wreck",
     desc: "Your visor flagged another impact site far out in the dunes. Reach it.", goal: 1,
-    reward: { item: "canister_full", n: 2 },
+    reward: { item: "catalyst", n: 1 },
   },
   {
     id: "core", kind: "core", title: "Heart of the Wreck",

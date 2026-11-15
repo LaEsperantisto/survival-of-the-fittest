@@ -11,6 +11,7 @@ export interface ItemDef {
   mass: number;              // kg
   block?: number;            // block it places
   tool?: { type: "pickaxe" | "shovel" | "axe" | "disassembler"; tier: number };
+  weapon?: { reach: number; dmg: number };   // swings reach farther and hit harder than fists/tools
   eat?: { water?: number; health?: number };  // eating applies these to the player
   equip?: "backpack" | "head" | "body";       // goes in that Armour Slot
   color: string;             // icon color
@@ -58,6 +59,11 @@ const ITEM_LIST: ItemDef[] = [
   toolItem("shovel", 1, "wood", "#a8834f"), toolItem("shovel", 2, "stone", "#8d8680"), toolItem("shovel", 3, "metal", "#9aa0aa"),
   toolItem("axe", 1, "wood", "#a8834f"), toolItem("axe", 2, "stone", "#8d8680"), toolItem("axe", 3, "metal", "#9aa0aa"),
   toolItem("disassembler", 1, "metal", "#c0c8d8"),
+  I({
+    id: "sword", name: "Metal Sword",
+    desc: "A forged blade. Hits Desert Snakes and rats far harder than any tool, and reaches farther.",
+    w: 1, h: 2, mass: 2.2, weapon: { reach: 4.6, dmg: 7 }, color: "#c9d2dc",
+  }),
   I({ id: "backpack1", name: "Backpack I", desc: "Equipped in the Backpack slot: inventory grid grows to 4×5, weight limit +20 kg.", w: 2, h: 2, mass: 2.0, equip: "backpack", color: "#7a5a3a" }),
   I({ id: "cactus", name: "Cactus", desc: "Tall desert column. Break it for a Prickly Pear and a block you can replant.", w: 1, h: 2, mass: 1.5, block: CACTUS, color: "#3d8042" }),
   I({ id: "prickly_pear", name: "Prickly Pear", desc: "Cactus fruit. Eat it: +8 Water, +1 Health.", w: 1, h: 1, mass: 0.2, eat: { water: 8, health: 1 }, color: "#d64a82" }),

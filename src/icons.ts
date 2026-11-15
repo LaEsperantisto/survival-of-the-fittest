@@ -63,6 +63,13 @@ function drawArt(id: string, w: number, h: number, color: string): HTMLCanvasEle
       else { rect(g, 4, 14, 8, 4, "#c8d2da"); rect(g, 6, 15, 4, 2, "#3a4750"); }
       return cv;
     }
+    case "sword": // forged blade: steel edge, crossguard, wrapped grip
+      rect(g, 8, 0, 1, 1, "#eef3f8"); rect(g, 7, 1, 3, 17, "#c9d2dc");
+      rect(g, 8, 1, 1, 17, "#eef3f8");
+      rect(g, 4, 18, 8, 2, "#4a4a52");
+      rect(g, 7, 20, 3, 9, "#6b5238"); rect(g, 7, 22, 3, 1, "#4a3926"); rect(g, 7, 25, 3, 1, "#4a3926");
+      rect(g, 6, 29, 5, 2, "#4a4a52");
+      return cv;
     case "ironrod":
       rect(g, 6, 1, 3, 14, "#8a4f2e");
       rect(g, 7, 2, 1, 12, "#d08a52");

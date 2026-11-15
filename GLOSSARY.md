@@ -116,6 +116,10 @@ _Avoid_: jerboa
 **Reptile Armour**:
 Armour stitched from Desert Snake skins; worn in the Body slot it shrugs off a fixed share of every damage taken.
 
+**Metal Sword**:
+The only Weapon: a forged blade that, while held, hits far harder than fists or Salvage Tools and extends melee reach.
+_Avoid_: weapon (as the item's name), blade, sword (bare — material always qualifies it)
+
 ### Systems
 
 **Main Quest**:
