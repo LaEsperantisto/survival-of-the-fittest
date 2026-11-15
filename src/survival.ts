@@ -114,11 +114,11 @@ export class Survival {
     if (opts.overencumbered) drain += 0.05;
     this.water = Math.max(0, this.water - drain * dt);
 
-    // Damage
-    if (this.body > HOT_LIMIT) this.hurt((this.body - HOT_LIMIT) * 0.6, "heat stroke");
-    if (this.body < COLD_LIMIT) this.hurt((COLD_LIMIT - this.body) * 0.7, "hypothermia");
-    if (this.water <= 0) this.hurt(1.2, "dehydration");
-    else if (this.water < WATER_LIMIT) this.hurt((WATER_LIMIT - this.water) * 0.15, "dehydration");
+    // Damage — penalties are gentle: dying takes sustained, deep exposure
+    if (this.body > HOT_LIMIT) this.hurt((this.body - HOT_LIMIT) * 0.15, "heat stroke");
+    if (this.body < COLD_LIMIT) this.hurt((COLD_LIMIT - this.body) * 0.175, "hypothermia");
+    if (this.water <= 0) this.hurt(0.3, "dehydration");
+    else if (this.water < WATER_LIMIT) this.hurt((WATER_LIMIT - this.water) * 0.0375, "dehydration");
 
     // Regen: only when Water AND Heat are in their zones
     if (this.water > 25 && this.body >= SAFE_LO && this.body <= SAFE_HI && this.health > 0)

@@ -90,6 +90,7 @@ export class Game {
   private entitySeq = 1;
   private audioTickAcc = 0;
   private autosaveAcc = 0;
+  private waterAcc = 0;
   private raf = 0;
   private last = 0;
   private bound = new Map<string, (e: Event) => void>();
@@ -554,10 +555,17 @@ export class Game {
   // lights where it will land (landmark caches are already marked), and the crate
   // drops out of the sky (GLOSSARY: "All block-shaped quest rewards arrive as
   // Crash Pods" — the crate itself is a Cache).
+  // topmost loaded block in a column — pods must land on roofs and dune tops,
+  // not at raw terrain height under a structure
+  private columnTop(x: number, z: number): number {
+    for (let y = CH - 1; y >= 0; y--) if (this.world.get(x, y, z)) return y;
+    return Math.round(heightAt(this.seed, x, z));
+  }
+
   private crashPod(itemId: string, n: number) {
     const p = this.player.pos;
     const x = Math.round(p.x) + 2, z = Math.round(p.z) + 1;
-    const gy = Math.round(heightAt(this.seed, x, z));
+    const gy = this.columnTop(x, z);
     const ringEid = this.renderer.addGroundRing(x + 0.5, gy, z + 0.5, 0xcc3322, 1.1);
     const beamEid = this.renderer.addBeam(x + 0.5, gy, z + 0.5, 0xcc3322);
     this.pods.push({ x, z, t: 3, itemId, n, ringEid, beamEid });
@@ -572,7 +580,7 @@ export class Game {
       if (pd.t > 0) continue;
       this.renderer.removeEntityMesh(pd.ringEid);
       this.renderer.removeEntityMesh(pd.beamEid);
-      const gy = Math.round(heightAt(this.seed, pd.x, pd.z));
+      const gy = this.columnTop(pd.x, pd.z);
       this.caches.push({ id: this.entitySeq++, x: pd.x, y: gy, z: pd.z, kind: "reward", items: [{ itemId: pd.itemId, count: pd.n }] });
       this.renderer.addEntityMesh(this.caches[this.caches.length - 1].id, [pd.x, gy + 0.5, pd.z], this.cacheColor(this.caches[this.caches.length - 1]), 0.7);
       this.pods.splice(i, 1);
@@ -808,7 +816,7 @@ export class Game {
         this.player.pitch -= (this.settings.invertY ? -1 : 1) * me.movementY * 0.0022 * this.settings.sens;
         this.player.pitch = THREE.MathUtils.clamp(this.player.pitch, -1.55, 1.55);
       });
-      on("wheel", (e) => this.cycleItem((e as WheelEvent).deltaY > 0 ? 1 : -1));
+      on("wheel", (e) => { if (!this.ui) this.cycleItem((e as WheelEvent).deltaY > 0 ? 1 : -1); });
       on("contextmenu", (e) => e.preventDefault());
     } else {
       // One designated finger drives the camera; any additional touch (including
@@ -1051,7 +1059,8 @@ export class Game {
     this.guideFrame(dt);
     this.tut?.tick(dt);
     this.mobFrame(dt);
-    this.world.processWater();
+    this.waterAcc += dt;
+    if (this.waterAcc > 0.4) { this.waterAcc = 0; this.world.processWater(); }
     this.audio.setDay(kf.sunElev > 0);
 
     this.autosaveAcc += dt;
@@ -1714,7 +1723,7 @@ export class Game {
       }
     }
     if (t.water) {
-      if (this.inv.has("bucket")) { this.bucketScoop(); return; }
+      if (this.inv.selectedSlot()?.itemId === "bucket") { hud.toast("E won't fill it — press Q or right-click with the Bucket to scoop."); this.audio.error(); return; }
       if (this.inv.has("canister_empty")) {
         this.inv.removeItem("canister_empty", 1);
         this.giveOrDrop("canister_full", 1);
@@ -1899,6 +1908,7 @@ export class Game {
     if (!sel) { hud.toast("Select an item first."); this.audio.error(); return; }
     const d = ITEMS[sel.itemId];
     if (sel.itemId === "canister_full") { this.drink(); return; }
+    if (sel.itemId === "bucket") { this.bucketScoop(); return; }
     if (d.eat) { this.eat(sel, d); return; }
     if (d.tool?.type === "shovel") {
       // a shovel also tills: only real soil takes a furrow — sand never does

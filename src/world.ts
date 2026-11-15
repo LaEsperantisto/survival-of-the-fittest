@@ -128,13 +128,15 @@ export class World {
   /**
    * Run queued Minecraft-style flow: Sources (WATER) spread 7 cells sideways and
    * fall straight down; flow keeps the feed alive downstream and drains away when
-   * its feed vanishes. Bounded work per call — the queue persists across frames.
+   * its feed vanishes. One propagation step per call — water placed during this
+   * call is queued for the next, so a spill crawls outward a cell at a time.
    */
   processWater(budget = 4000): number {
     let ops = 0;
-    while (this.waterQ.size && ops < budget) {
-      const k = this.waterQ.values().next().value as string;
-      this.waterQ.delete(k);
+    const wave = [...this.waterQ];
+    this.waterQ.clear();
+    for (const k of wave) {
+      if (ops >= budget) break;
       const [x, y, z] = k.split(",").map(Number);
       ops += this.drainFlow(x, y, z, budget - ops);
       ops += this.floodFrom(x, y, z, budget - ops);
@@ -170,27 +172,24 @@ export class World {
 
   private floodFrom(sx: number, sy: number, sz: number, budget: number): number {
     let ops = 0;
-    const q: [number, number, number][] = [[sx, sy, sz],
-      [sx + 1, sy, sz], [sx - 1, sy, sz], [sx, sy, sz + 1], [sx, sy, sz - 1]];
+    // the queued cell only — each call advances the front exactly one cell;
+    // placements re-queue themselves for the next generation (see set())
+    const q: [number, number, number][] = [[sx, sy, sz]];
     while (q.length && ops++ < budget) {
       const [x, y, z] = q.shift()!;
       const s = waterStrength(this.get(x, y, z));
       if (!s) continue;
       if (y > 0) { // fall straight down: a Source sends level 7, flow keeps its level
         const below = this.get(x, y - 1, z);
-        if ((below === AIR || isWater(below)) && waterStrength(below) < s) {
+        if ((below === AIR || isWater(below)) && waterStrength(below) < s)
           this.set(x, y - 1, z, flowId(s === 8 ? 7 : s));
-          q.push([x, y - 1, z]);
-        }
       }
       const out = s === 8 ? 7 : s - 1; // Sources spread 7; flow decays by 1 per cell
       if (out < 1) continue;
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
         const side = this.get(x + dx, y, z + dz);
-        if ((side === AIR || isWater(side)) && waterStrength(side) < out) {
+        if ((side === AIR || isWater(side)) && waterStrength(side) < out)
           this.set(x + dx, y, z + dz, flowId(out));
-          q.push([x + dx, y, z + dz]);
-        }
       }
     }
     return ops;

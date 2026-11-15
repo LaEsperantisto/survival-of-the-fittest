@@ -229,10 +229,9 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
   // look at the water in the hole and press E to refill canisters
   set(-4, 30, 4, WATER); set(-4, 29, 4, WATER);
   set(-3, 30, 4, WATER);
-  // heat regulators, pre-installed: the small regulator room and the main hall
-  // (54 cells) — the wreck's heart stays body-neutral while you fly out
+  // one heat regulator, pre-installed in the small regulator room — the
+  // wreck's heart stays body-neutral while you fly out
   set(-4, 31, -4, REGULATOR);
-  set(-1, 33, 0, REGULATOR);
   // save room beacon
   set(-4, 31, -1, BEACON);
   // crafting bench in the hall — the bench is a two-block structure
