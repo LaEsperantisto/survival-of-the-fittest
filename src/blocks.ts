@@ -7,7 +7,7 @@ export const AIR = 0, SAND = 1, SANDSTONE = 2, ROCK = 3, GRAVEL = 4, DIRT = 5, S
   WATER7 = 26, WATER6 = 27, WATER5 = 28, WATER4 = 29, WATER3 = 30, WATER2 = 31, WATER1 = 32,
   FARMLAND = 33, MELON_1 = 34, MELON_2 = 35, WHEAT_1 = 36, WHEAT_2 = 37, CACTUS_FRUIT = 38,
   CHEST_CONNECTOR = 39, METAL_PLATING = 40, DOOR_INNER = 41, DOOR_INNER_UPPER = 42,
-  DOOR_INNER_OPEN = 43, BED = 44, BED_EXT = 45;
+  DOOR_INNER_OPEN = 43, BED = 44, BED_EXT = 45, GRASS = 46, WOOD = 47, LEAVES = 48, SAPLING = 49;
 
 export type ToolType = "pickaxe" | "shovel" | "axe" | "disassembler";
 
@@ -67,9 +67,10 @@ export const BLOCKS: BlockDef[] = [
   // The Crafting Bench stands two blocks wide: BENCH is the working top, this the
   // drawer-and-legs frame. Placed and broken as a pair with BENCH.
   def({ id: BENCH_EXT, name: "Crafting Bench (frame)", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.0, tool: null, minTier: 0, placeable: false, color: [0.45, 0.36, 0.27] }),
-  // Cactus: desert flora. Bare blocks drop their wood; only the fruit-topped
+  // Cactus: desert flora. Solid — you can't walk through it, and pressing into
+  // one pricks you (game.ts). Bare blocks drop their wood; only the fruit-topped
   // variant (CACTUS_FRUIT, grown or world-generated) drops a Prickly Pear.
-  def({ id: CACTUS, name: "Cactus", solid: false, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 0.9, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.24, 0.5, 0.26] }),
+  def({ id: CACTUS, name: "Cactus", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 0.9, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.24, 0.5, 0.26] }),
   // Flowing water (see world water sim): WATER is a Source; WATER7..WATER1 are flow
   // levels 7..1 — id = 33 − level. Flow needs a feed: a Source or higher level beside
   // it, or same-or-higher level above. No feed → it drains.
@@ -92,22 +93,32 @@ export const BLOCKS: BlockDef[] = [
   def({ id: WHEAT_2, name: "Desert Wheat", solid: false, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 0.3, tool: null, minTier: 0, placeable: false, color: [0.84, 0.74, 0.32] }),
   // Fruit-topped cactus column block: harvest it for a Prickly Pear, the column
   // stays and regrows the fruit on its own.
-  def({ id: CACTUS_FRUIT, name: "Fruiting Cactus", solid: false, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 0.9, tool: null, fastTool: "axe", minTier: 0, placeable: false, color: [0.3, 0.5, 0.34] }),
+  def({ id: CACTUS_FRUIT, name: "Fruiting Cactus", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 0.9, tool: null, fastTool: "axe", minTier: 0, placeable: false, color: [0.3, 0.5, 0.34] }),
   // Chest Connector: a steel rail that links two Supply Chest clusters so they
   // share one Inventory Grid. It stores nothing itself.
   def({ id: CHEST_CONNECTOR, name: "Chest Connector", solid: true, opaque: true, transparent: false, emissive: false, R: 0.9, breakTime: 1.2, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.48, 0.4, 0.26] }),
   // Metal Plating: the ship's inner floor-and-skin plating — same properties as a
   // Metal Block; the wreck is plated, not roped.
   def({ id: METAL_PLATING, name: "Metal Plating", solid: true, opaque: true, transparent: false, emissive: false, R: 0.3, breakTime: 4, tool: "disassembler", minTier: 0, placeable: true, color: [0.58, 0.6, 0.66] }),
-  // Inside Doors: interior bulkhead doors — insulating like ship Doors, but a
-  // door left OPEN between spaces keeps both on one temperature (see roomInfo).
-  def({ id: DOOR_INNER, name: "Inside Door (closed)", solid: true, opaque: true, transparent: false, emissive: false, R: 3, breakTime: 1.5, tool: "disassembler", minTier: 0, placeable: true, color: [0.5, 0.52, 0.56] }),
-  def({ id: DOOR_INNER_UPPER, name: "Inside Door (closed top)", solid: true, opaque: true, transparent: false, emissive: false, R: 3, breakTime: 1.5, tool: "disassembler", minTier: 0, placeable: true, color: [0.5, 0.52, 0.56] }),
+  // Inside Doors: interior bulkhead doors — in temperature terms exactly AIR,
+  // open or closed (R 0; roomInfo passes air straight through them). They divide
+  // rooms visually and for movement only; the Ship's outside doors insulate.
+  def({ id: DOOR_INNER, name: "Inside Door (closed)", solid: true, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 1.5, tool: "disassembler", minTier: 0, placeable: true, color: [0.5, 0.52, 0.56] }),
+  def({ id: DOOR_INNER_UPPER, name: "Inside Door (closed top)", solid: true, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 1.5, tool: "disassembler", minTier: 0, placeable: true, color: [0.5, 0.52, 0.56] }),
   def({ id: DOOR_INNER_OPEN, name: "Inside Door (open)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: "disassembler", minTier: 0, placeable: false, color: [0.3, 0.32, 0.36] }),
   // Bed: a soft 2x1 placeable; sleeping in it skips to morning (one long sleep
   // every eight game hours). Bed + Bed (frame) are placed and broken as a pair.
   def({ id: BED, name: "Bed", solid: true, opaque: true, transparent: false, emissive: false, R: 0.8, breakTime: 0.8, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.72, 0.3, 0.28] }),
-  def({ id: BED_EXT, name: "Bed (pillow)", solid: true, opaque: true, transparent: false, emissive: false, R: 0.8, breakTime: 0.8, tool: null, minTier: 0, placeable: false, color: [0.6, 0.25, 0.24] }),
+  def({ id: BED_EXT, name: "Bed (pillow)", solid: true, opaque: true, transparent: false, emissive: false, R: 0.8, breakTime: 0.8, tool: null, fastTool: "axe", minTier: 0, placeable: false, color: [0.6, 0.25, 0.24] }),
+  // Grass: dirt's green living cover, found at Oases and Towns; it breaks to Dirt.
+  def({ id: GRASS, name: "Grass", solid: true, opaque: true, transparent: false, emissive: false, R: 0.8, breakTime: 0.5, tool: "shovel", minTier: 0, placeable: false, color: [0.34, 0.55, 0.28] }),
+  // Living Tree trunk — the renewable counterpart of Dead Wood.
+  def({ id: WOOD, name: "Wood Log", solid: true, opaque: true, transparent: false, emissive: false, R: 0.6, breakTime: 1.1, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.44, 0.35, 0.24] }),
+  // Leaves: walk-blocking, partly shade the sky (R 0.7 — never seals a Space),
+  // and crumble into Kindling.
+  def({ id: LEAVES, name: "Leaves", solid: true, opaque: true, transparent: false, emissive: false, R: 0.7, breakTime: 0.25, tool: null, minTier: 0, placeable: false, color: [0.2, 0.45, 0.2] }),
+  // A planted Tree Seed — a growing tree's first stage; see game.updateTrees.
+  def({ id: SAPLING, name: "Sapling", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: false, color: [0.3, 0.55, 0.3] }),
 ];
 
 export const CH = 96;           // world height (Y)

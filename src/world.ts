@@ -1,9 +1,13 @@
-import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, REGULATOR, CS, CH, isOpaque, isWater, waterStrength, flowId } from "./blocks";
+import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, LEAVES, REGULATOR, CS, CH, isOpaque, isWater, waterStrength, flowId } from "./blocks";
 import { genChunk, Structures } from "./gen";
 
 export const ckey = (cx: number, cz: number) => cx + "," + cz;
 const bidx = (x: number, z: number, y: number) => (x * CS + z) * CH + y;
 const ROOM_DIRS: [number, number, number][] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+/** Cells a Space's air flows straight through for roomInfo: real air, open doors,
+ *  Inside Doors (open or closed — exactly air thermally, they never seal or split
+ *  a Space), and Leaves (walk-blocking, but never part of a room's sealing). */
+const ROOM_OPEN = new Set<number>([AIR, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, LEAVES]);
 /**
  * Infinite voxel world: base terrain is regenerated deterministically from the
  * seed; only player modifications (deltas) are persisted.
@@ -42,27 +46,36 @@ export class World {
     return c[bidx(x - cx * CS, z - cz * CS, y)];
   }
 
-  /** sum of thermal resistance in the column straight up; open sky iff nothing blocks the column */
+  /** sum of thermal resistance in the column straight up.
+   *  openSky: the path to sky stays open. Inside Doors and open doors are exactly
+   *  air here (R 0 — zero contribution); Leaves are special: their partial R (0.7
+   *  per block) sums into the shade budget but a canopy never blocks the sky. */
   skyResistance(x: number, y: number, z: number, maxUp = 40): { R: number; openSky: boolean } {
-    let R = 0;
+    let R = 0, seal = 0;
     for (let i = 1; i <= maxUp; i++) {
       const id = this.get(x, y + i, z);
       if (id === AIR) continue;
-      R += BLOCKRES[id];
-      if (R >= 6) return { R, openSky: false };
+      const r = BLOCKRES[id];
+      if (!r) continue; // air-equivalent thermally: open door, Inside Door, water…
+      R += r;
+      if (id === LEAVES) continue; // leaves only partly shade: they never seal off the sky
+      seal += r;
+      if (seal >= 6) return { R, openSky: false };
     }
-    return { R, openSky: R === 0 };
+    return { R, openSky: seal === 0 };
   }
 
   /**
    * Flood the open region containing (x,y,z), bounded at `cap` cells.
-   * Open doors leak (they are passable); water and solid blocks bound it.
+   * Open doors leak (they are passable); Inside Doors are exactly air — closed,
+   * they neither bound a room nor split two rooms; Leaves never seal or boundary
+   * a room. Water and other solid blocks bound it.
    * Reaching the cap, or the top of the world, means the region is not sealed.
    * Regulator capacity stacks: each Heat Regulator bordering the region covers
    * REGULATOR_ROOM_MAX open cells.
    */
   roomInfo(x: number, y: number, z: number, cap = 400): { size: number; sealed: boolean; regulators: number; regCells: string[] } {
-    if (this.get(x, y, z) !== AIR) return { size: 0, sealed: false, regulators: 0, regCells: [] };
+    if (!ROOM_OPEN.has(this.get(x, y, z))) return { size: 0, sealed: false, regulators: 0, regCells: [] };
     const seen = new Set<string>([`${x},${y},${z}`]);
     const stack: [number, number, number][] = [[x, y, z]];
     const regs = new Set<string>();
@@ -74,7 +87,7 @@ export class World {
         const nx = cx + dx, ny = cy + dy, nz = cz + dz;
         if (ny >= CH) { sealed = false; continue; }
         const id = this.get(nx, ny, nz);
-        if (id === AIR || id === DOOR_OPEN || id === DOOR_INNER_OPEN) {
+        if (ROOM_OPEN.has(id)) {
           const k = nx + "," + ny + "," + nz;
           if (!seen.has(k)) { seen.add(k); stack.push([nx, ny, nz]); }
         } else if (id === REGULATOR) regs.add(nx + "," + ny + "," + nz);
@@ -91,7 +104,7 @@ export class World {
     if (c[i] === id) return;
     const prev = c[i];
     c[i] = id;
-    if (isWater(id) || isWater(prev)) { // water appeared or vanished: re-check this cell and its neighbours
+    if (isWater(id) || isWater(prev) || id === AIR) { // water appeared, vanished, or a cell opened beside water — re-check this cell and its neighbours
       this.queueWater(x, y, z);
       for (const [dx, dy, dz] of ROOM_DIRS) this.queueWater(x + dx, y + dy, z + dz);
     }

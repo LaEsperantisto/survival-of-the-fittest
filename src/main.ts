@@ -141,6 +141,8 @@ function renderSettings() {
     (v) => { settings.renderDist = v; commit(); });
   seg("Quality", [["Low", "low"], ["Medium", "med"], ["High", "high"]] as [string, Settings["quality"]][], settings.quality,
     (v) => { settings.quality = v; commit(); });
+  seg("Lighting", [["Baked sky light", "sky"], ["Real-time shadows", "shadow"]] as [string, Settings["lighting"]][], settings.lighting,
+    (v) => { settings.lighting = v; commit(); });
   seg("Temperature units", [["Celsius", "C"], ["Fahrenheit", "F"]] as [string, Settings["units"]][], settings.units,
     (v) => { settings.units = v; commit(); });
   seg("UI size", [["Small", 0.8], ["Normal", 1], ["Large", 1.25], ["Huge", 1.6]], settings.uiScale,

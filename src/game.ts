@@ -5,10 +5,10 @@ import { Survival, REGULATOR_ROOM_MAX } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, slotDims, type ItemDef, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, CS, CH, DAY_SECONDS, isSolid, isWater } from "./blocks";
+import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, CS, CH, DAY_SECONDS, isSolid, isWater } from "./blocks";
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
-import { heightAt, biomeAt, TOWN_L } from "./gen";
+import { heightAt, biomeAt, TOWN_L, treePlan, TreePart } from "./gen";
 import { RECIPES, SMELT, canCraft, doCraft } from "./crafting";
 import { currentQuest, loadQuestState, questEvent, type QuestDef, type QuestState } from "./quests";
 import { Tutorial, INTRO_CINE, type CineSeg } from "./tutorial";
@@ -68,6 +68,13 @@ export class Game {
   // planted crops: "x,y,z" -> accumulated good-conditions seconds
   crops = new Map<string, number>();
   private cropAcc = 0;
+  private treeAcc = 0;
+  /** Living Trees planted by the player: "x,y,z" of the planted cell → growth seconds. */
+  private trees = new Map<string, number>();
+  private treePlanCache = new Map<string, TreePart[]>();
+  private sprintOn = false;
+  private lastPrick = -9;
+  private tempOrigin: Inventory | null = null;
   lastSleep = -1e9; // timeSec of the last bed sleep; one long sleep per game day
   private mouseDown = false;
   private breakMsg = false;
@@ -239,6 +246,7 @@ export class Game {
     if (r(19) < 0.45) items.push({ itemId: "chest_connector", count: 1 + Math.floor(r(20) * 2) });
     if (r(21) < 0.3) items.push({ itemId: "door_inner", count: 1 });
     if (r(22) < 0.25) items.push({ itemId: "bed", count: 1 });
+    if (r(23) < 0.5) items.push({ itemId: "seed_tree", count: 1 + (r(24) < 0.4 ? 1 : 0) + (r(25) < 0.2 ? 1 : 0) });
     return items;
   }
 
@@ -330,6 +338,7 @@ export class Game {
       if (id) this.equip[slot] = { itemId: id, count: 1, x: 0, y: 0 };
     }
     this.beaconMarks = run.beaconMarks ?? [];
+    this.trees = new Map(run.trees ?? []);
     this.collected = new Set(run.collected ?? []);
     const collected = this.collected;
     let idx = 0;
@@ -394,6 +403,7 @@ export class Game {
       chests: [...this.chests].map(([cells, slots]) => ({ cells, slots: slots.map((s) => ({ ...s })) })),
       campfires: Object.fromEntries(this.campCharges),
       crops: [...this.crops],
+      trees: [...this.trees],
       lastSleep: this.lastSleep > 0 ? this.lastSleep : undefined,
       deltas: this.world.serializeDeltas(),
     };
@@ -515,6 +525,10 @@ export class Game {
     this.renderer.setQuality(s.quality);
     this.audio.setVolume(s.volume);
     this.audio.setMusic(s.music);
+    if (this.renderer.lightingMode !== s.lighting) {
+      this.renderer.setLightingMode(s.lighting);
+      this.renderer.rebuildLights(this.world);
+    }
     this.renderer.resetChunkMeshes();
     const pcx = Math.floor(this.player.pos.x / 16), pcz = Math.floor(this.player.pos.z / 16);
     this.renderer.ensureChunks(this.world, pcx, pcz);
@@ -849,6 +863,10 @@ export class Game {
         el.addEventListener("touchcancel", () => { if (up) up(); });
       };
       mb("m-jump", () => this.mobileJump = true, () => this.mobileJump = false);
+    mb("m-sprint", () => {
+      this.sprintOn = !this.sprintOn;
+      document.getElementById("m-sprint")!.classList.toggle("on", this.sprintOn);
+    });
       mb("m-break", () => this.mouseDown = true, () => { this.mouseDown = false; this.breaking = null; });
       mb("m-place", () => this.place());
       mb("m-act", () => this.act());
@@ -961,7 +979,7 @@ export class Game {
       if (this.keys.has("KeyA")) mx -= 1;
       if (this.keys.has("KeyD")) mx += 1;
       const jump = this.keys.has("Space") || this.mobileJump;
-      this.player.sprinting = this.keys.has("ShiftLeft") || this.keys.has("ShiftRight");
+      this.player.sprinting = this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || this.sprintOn;
       this.player.update(dt, mx, mz, jump, this.speedMul, overencumbered);
       this.survival.update(dt, this.world, this.player.pos, {
         sprinting: this.player.sprinting && (mx !== 0 || mz !== 0),
@@ -1016,6 +1034,8 @@ export class Game {
     }
     this.regulatorGlow();
     this.updateCrops(dt);
+    this.updateTrees(dt);
+    if (!this.ui && !this.paused && !this.cine) this.cactusPrick();
     const surgeCool = this.survival.surgeCooldown > 0;
     for (const id of ["surge-btn", "m-surge"]) {
       const b = document.getElementById(id) as HTMLButtonElement | null;
@@ -1208,6 +1228,20 @@ export class Game {
       this.world.set(x, y, z, AIR);
       this.giveOrDrop("prickly_pear", 2);
       this.giveOrDrop("cactus", 1);
+      this.audio.blockBreak();
+      return;
+    }
+    if (id === SAPLING) {
+      this.world.set(x, y, z, AIR);
+      this.trees.delete(`${x},${y},${z}`);
+      this.giveOrDrop("seed_tree", 1); // the seed comes back
+      this.audio.blockBreak();
+      return;
+    }
+    if (id === LEAVES) {
+      this.world.set(x, y, z, AIR);
+      this.giveOrDrop("kindling", 1);
+      if (hash2(x + 7 * z, y, this.seed + 91) < 0.2) this.giveOrDrop("seed_tree", 1); // canopy sheds seeds: farms renew
       this.audio.blockBreak();
       return;
     }
@@ -1511,6 +1545,8 @@ export class Game {
     if (this.ui || this.paused) return;
     const slot = this.inv.selectedSlot();
     if (!slot) return;
+    if (slot.itemId === "bucket") { this.bucketScoop(); return; }
+    if (slot.itemId === "bucket_full") { this.bucketPour(); return; }
     const def = ITEMS[slot.itemId];
     if (def.block === undefined) { hud.toast("Not a placeable block"); this.audio.error(); return; }
     const t = this.raycastTarget();
@@ -1548,11 +1584,17 @@ export class Game {
       }
       if (!benchPeer) { hud.toast("The Crafting Bench needs an open block beside it."); this.audio.error(); return; }
     }
-    if (def.block === MELON_1 || def.block === WHEAT_1 || def.block === CACTUS) {
-      // seeds only take in tilled ground; a cactus pad also accepts loose sand
+    if (def.block === MELON_1 || def.block === WHEAT_1 || def.block === CACTUS || def.block === SAPLING) {
+      // seeds only take in tilled ground; a cactus pad also accepts loose sand;
+      // a Tree Seed wants real soil — Dirt or Farm Land
       const under = this.world.get(bx, by - 1, bz);
-      const ok = under === FARMLAND || (def.block === CACTUS && (under === SAND || under === SANDSTONE || under === DIRT));
-      if (!ok) { hud.toast("Plant on Farm Land (till with a shovel); a Cactus also accepts sand."); this.audio.error(); return; }
+      const ok = def.block === SAPLING
+        ? (under === DIRT || under === FARMLAND || under === GRASS)
+        : under === FARMLAND || (def.block === CACTUS && (under === SAND || under === SANDSTONE || under === DIRT));
+      if (!ok) {
+        hud.toast(def.block === SAPLING ? "Tree Seeds go in Dirt — real soil, never sand." : "Plant on Farm Land (till with a shovel); a Cactus also accepts sand.");
+        this.audio.error(); return;
+      }
     }
     this.world.set(bx, by, bz, def.block);
     if (benchPeer) this.world.set(benchPeer[0], benchPeer[1], benchPeer[2], BENCH_EXT);
@@ -1560,6 +1602,7 @@ export class Game {
     if (def.block === DOOR_INNER && this.world.get(bx, by + 1, bz) === AIR) this.world.set(bx, by + 1, bz, DOOR_INNER_UPPER);
     if (def.block === BED && this.world.get(bx + 1, by, bz) === AIR) this.world.set(bx + 1, by, bz, BED_EXT); // a bed spans 2 blocks
     if (def.block === MELON_1 || def.block === WHEAT_1) { this.crops.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); }
+    if (def.block === SAPLING) { this.trees.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); hud.toast("Seed in the soil. Keep water within 6 blocks and it climbs, stage by stage."); }
     if (def.block === ENGINECORE) {
       const q = currentQuest(this.quests);
       if (q && q.kind === "finish") {
@@ -1659,6 +1702,7 @@ export class Game {
       }
     }
     if (t.water) {
+      if (this.inv.has("bucket")) { this.bucketScoop(); return; }
       if (this.inv.has("canister_empty")) {
         this.inv.removeItem("canister_empty", 1);
         this.giveOrDrop("canister_full", 1);
@@ -1754,6 +1798,88 @@ export class Game {
     }
   }
 
+  /** Bucket at the crosshair's water: only a Source is scoopable — flowing water isn't. */
+  private bucketScoop() {
+    const t = this.raycastTarget();
+    if (!t?.water) { hud.toast("Aim at water."); this.audio.error(); return; }
+    const { x, y, z } = t.water;
+    if (this.world.get(x, y, z) !== WATER) { hud.toast("Only a still Source fills the bucket — flowing water slips through."); this.audio.error(); return; }
+    if (!this.inv.has("bucket", 1)) { hud.toast("You need an empty Bucket."); this.audio.error(); return; }
+    this.inv.removeItem("bucket", 1);
+    this.giveOrDrop("bucket_full", 1);
+    this.world.set(x, y, z, AIR);
+    this.audio.drink();
+    hud.toast("Bucket scooped from the Source — that water is gone from here.");
+    this.renderHeld();
+  }
+
+  /** Bucket (full) at an open cell: pours a new Source there. */
+  private bucketPour() {
+    const t = this.raycastTarget();
+    if (!t?.hit) return;
+    const x = t.hit.x + t.face.x, y = t.hit.y + t.face.y, z = t.hit.z + t.face.z;
+    if (this.world.get(x, y, z) !== AIR) { hud.toast("Pour into open space."); this.audio.error(); return; }
+    this.world.set(x, y, z, WATER);
+    this.inv.removeItem("bucket_full", 1);
+    this.giveOrDrop("bucket", 1);
+    this.audio.drink();
+    hud.toast("Water pours out and finds its level.");
+    this.renderHeld();
+  }
+
+  /** Living Trees: deterministic staged growth from the planted cell, water within 6 to keep climbing. */
+  private updateTrees(dt: number) {
+    if (!this.trees.size) return;
+    this.treeAcc += dt;
+    if (this.treeAcc < 2) return;
+    const dtc = this.treeAcc;
+    this.treeAcc = 0;
+    for (const [key, p] of this.trees) {
+      const [x, y, z] = key.split(",").map(Number);
+      const id = this.world.get(x, y, z);
+      if (id !== SAPLING && id !== WOOD) { this.trees.delete(key); continue; } // chopped or buried: done
+      let wet = false;
+      trees: for (let dx = -6; dx <= 6; dx++) for (let dz = -6; dz <= 6; dz++) for (let dy = -3; dy <= 3; dy++) {
+        if (isWater(this.world.get(x + dx, y + dy, z + dz))) { wet = true; break trees; }
+      }
+      if (!wet) continue;
+      const np = Math.min(480, p + dtc); // ~8 real minutes root to canopy
+      this.trees.set(key, np);
+      const upto = np >= 480 ? 3 : np >= 270 ? 2 : np >= 120 ? 1 : 0;
+      if (upto === 0) continue;
+      let plan = this.treePlanCache.get(key);
+      if (!plan) {
+        let s = Math.floor(hash2(x + 7 * z, y, this.seed + 55) * 1e9) + 1;
+        const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+        plan = treePlan(x, y, z, rnd);
+        this.treePlanCache.set(key, plan);
+      }
+      for (const part of plan) {
+        if (part.stage > upto) continue;
+        const cur = this.world.get(part.x, part.y, part.z);
+        if (cur === AIR || cur === SAPLING) this.world.set(part.x, part.y, part.z, part.b); // the seed cell itself turns to trunk
+      }
+    }
+  }
+
+  /** Solid cacti prick: pressing against or standing brushed by one draws blood. */
+  private cactusPrick() {
+    const p = this.player.pos;
+    const fx = Math.floor(p.x), fy = Math.floor(p.y), fz = Math.floor(p.z);
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) for (let dy = 0; dy <= 2; dy++) {
+      const id = this.world.get(fx + dx, fy + dy, fz + dz);
+      if (id !== CACTUS && id !== CACTUS_FRUIT) continue;
+      if (Math.abs(p.x - (fx + dx + 0.5)) > 1.15 || Math.abs(p.z - (fz + dz + 0.5)) > 1.15) continue;
+      if (this.timeSec - this.lastPrick >= 1.5) {
+        this.lastPrick = this.timeSec;
+        this.survival.hurt(1, "cactus spines");
+        this.audio.hurt();
+        hud.toast("Cactus spines prick you!");
+      }
+      return;
+    }
+  }
+
   /** Q: consume whatever is currently held in the hands. */
   private useItem() {
     if (this.ui || this.paused) return;
@@ -1763,15 +1889,20 @@ export class Game {
     if (sel.itemId === "canister_full") { this.drink(); return; }
     if (d.eat) { this.eat(sel, d); return; }
     if (d.tool?.type === "shovel") {
-      // a shovel also tills: aimed at the top face of loose ground, it makes Farmland
+      // a shovel also tills: only real soil takes a furrow — sand never does
       const t = this.raycastTarget();
       if (t?.hit) {
         const { x, y, z } = t.hit;
         const id = this.world.get(x, y, z);
-        if (t.face.y === 1 && (id === SAND || id === SANDSTONE || id === DIRT || id === SALT)) {
+        if (t.face.y === 1 && (id === DIRT || id === GRASS)) {
           this.world.set(x, y, z, FARMLAND);
           this.audio.place();
           hud.toast("Tilled into Farm Land — plant seeds here, keep water within 4 blocks.");
+          return;
+        }
+        if (t.face.y === 1 && (id === SAND || id === SANDSTONE || id === SALT)) {
+          hud.toast("Sand won't hold a furrow — Farm Land is made from Dirt.");
+          this.audio.error();
           return;
         }
       }
@@ -1893,9 +2024,17 @@ export class Game {
       id: this.entitySeq++,
       x: Math.floor(this.player.pos.x), y: Math.floor(this.player.pos.y), z: Math.floor(this.player.pos.z),
       kind: "death",
-      items: this.inv.slots.map((s) => ({ itemId: s.itemId, count: s.count })),
+      // everything you carried AND everything you wore waits in the cache
+      items: [
+        ...this.inv.slots.map((s) => ({ itemId: s.itemId, count: s.count })),
+        ...(["backpack", "head", "body"] as const)
+          .map((sl) => this.equip[sl])
+          .filter((s): s is Slot => !!s)
+          .map((s) => ({ itemId: s.itemId, count: 1 })),
+      ],
     });
     this.inv.slots = []; this.inv.selected = 0;
+    this.equip = { backpack: null, head: null, body: null };
     submitBest(this.scoreDays());
     this.survival.health = 0; // stay dead until respawn button
     this.running = true;
@@ -2002,7 +2141,10 @@ export class Game {
       tempEl.style.background = d.color;
       tempEl.style.backgroundImage = `url(${itemTiles(this.temp.itemId)[0] ?? ""})`;
       tempEl.textContent = this.temp.count > 1 ? `${this.temp.count}` : "";
-      tempEl.onmousedown = (e) => this.startTempDrag(e);
+      tempEl.onmousedown = (e) => {
+      if (Date.now() - this.lastTouchTs < 700) { this.tapTemp(); return; }
+      this.startTempDrag(e);
+    };
       dropTemp.textContent = `Drop ${this.temp.count > 1 ? this.temp.count + "× " : ""}${d.name}`;
       dropTemp.onclick = () => {
         if (!this.temp) return;
@@ -2149,12 +2291,34 @@ export class Game {
     }
   }
 
-  /** Touch semantics: tap selects; tapping another cell moves the selected item there — swapping when occupied. */
+  /** Touch semantics: tap selects; tapping another cell moves the selected item there — swapping when occupied. There is ONE selection across pack and chest grids: tapping the far grid pulls the selected item across. */
   private tapCell(inv: Inventory, x: number, y: number) {
     const hit = inv.slots.find((s) => {
       const d = slotDims(s);
       return x >= s.x && x < s.x + d.w && y >= s.y && y < s.y + d.h;
     });
+    const other = inv === this.inv ? this.chestInv : this.inv;
+    if (other) {
+      const oSel = other.selectedSlot();
+      if (oSel && oSel !== hit) {
+        const da = slotDims(oSel);
+        const ax = Math.min(x, inv.w - da.w), ay = Math.min(y, inv.h - da.h);
+        if (ax >= 0 && ay >= 0 && inv.fits(ax, ay, da.w, da.h, oSel)) {
+          other.slots.splice(other.slots.indexOf(oSel), 1);
+          other.selected = -1;
+          oSel.x = ax; oSel.y = ay;
+          inv.slots.push(oSel);
+          inv.selected = inv.slots.indexOf(oSel);
+          this.audio.place();
+          this.renderInv();
+          this.renderHeld();
+          return;
+        }
+        hud.toast("No room there.");
+        this.audio.error();
+        return;
+      }
+    }
     const sel = inv.selectedSlot();
     if (sel && sel !== hit) {
       const da = slotDims(sel);
@@ -2167,7 +2331,7 @@ export class Game {
       }
     }
     if (hit) {
-      inv.selected = inv.slots.indexOf(hit);
+      this.setSel(inv, inv.slots.indexOf(hit));
       this.renderInv();
     } else if (inv.selected !== -1) {
       inv.selected = -1; // tapping empty pack space releases the selection
@@ -2191,6 +2355,13 @@ export class Game {
     return ok;
   }
 
+  /** One selection across the open grids: selecting in one clears the other. */
+  private setSel(inv: Inventory, i: number) {
+    const other = inv === this.inv ? this.chestInv : this.inv;
+    if (other) other.selected = -1;
+    inv.selected = i;
+  }
+
   private startInvDrag(e: MouseEvent, s: Slot, src: Inventory) {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -2200,10 +2371,11 @@ export class Game {
     // Lift the item into temporary storage; it lands where the mouse is released,
     // or stays in temporary storage if dropped anywhere else.
     const si = src.slots.indexOf(s);
-    src.selected = si;
+    this.setSel(src, si);
     src.slots.splice(si, 1);
     const prev = this.temp;
     this.temp = s;
+    this.tempOrigin = src;
     if (prev) {
       // dragging another item back swaps it into the vacated cell
       src.slots.push(prev);
@@ -2243,7 +2415,7 @@ export class Game {
           this.temp = null;
           this.audio.place();
           // selection follows the moved instance, not its old index
-          target.selected = target.slots.indexOf(s);
+          this.setSel(target, target.slots.indexOf(s));
         } else target.slots.splice(target.slots.indexOf(s), 1);
       }
       // else: the item rests in temporary storage until placed or dropped
@@ -2278,10 +2450,11 @@ export class Game {
       return;
     }
     const si = src.slots.indexOf(s);
-    src.selected = si;
+    this.setSel(src, si);
     src.slots.splice(si, 1);
     const prev = this.temp;
     this.temp = s;
+    this.tempOrigin = src;
     if (prev) {
       src.slots.push(prev);
       if (!src.move(prev, s.x, s.y)) this.giveOrDrop(prev.itemId, prev.count);
@@ -2332,8 +2505,7 @@ export class Game {
         if (target.move(s, ax, ay)) {
           this.temp = null;
           this.audio.place();
-          target.selected = target.slots.indexOf(s);
-          if (target === this.inv) this.inv.selected = target.selected;
+          this.setSel(target, target.slots.indexOf(s));
         } else {
           target.slots.splice(target.slots.indexOf(s), 1);
           this.audio.error();
@@ -2345,6 +2517,34 @@ export class Game {
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
     move(e);
+  }
+
+  /** Mobile tap on the Temporary Storage shelf: send the held item back to the grid it came from, or lift the selected item onto the shelf. */
+  private tapTemp() {
+    const fInv = this.gridFocus === "chest" && this.chestInv ? this.chestInv : this.inv;
+    if (this.temp) {
+      const back = this.tempOrigin ?? fInv;
+      const s: Slot = { ...this.temp, x: 0, y: 0 };
+      if (Game.placeSlotFree(back, s)) {
+        this.temp = null;
+        this.tempOrigin = null;
+        this.setSel(back, back.slots.indexOf(s));
+        this.audio.place();
+      } else {
+        hud.toast("No room to put it back.");
+        this.audio.error();
+      }
+    } else {
+      const sel = fInv.selectedSlot();
+      if (!sel) { hud.toast("Select an item first."); this.audio.error(); return; }
+      fInv.slots.splice(fInv.slots.indexOf(sel), 1);
+      this.temp = { ...sel };
+      this.tempOrigin = fInv;
+      fInv.selected = -1;
+      this.audio.place();
+    }
+    this.renderInv();
+    this.renderHeld();
   }
 
   renderCraft(mode: "bench" | "smelt") {

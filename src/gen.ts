@@ -1,7 +1,7 @@
 import {
-  AIR, SAND, SANDSTONE, ROCK, GRAVEL, SALT, DEADWOOD, HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL_PLATING, BEACON,
+  AIR, SAND, SANDSTONE, ROCK, GRAVEL, SALT, DEADWOOD, DIRT, HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL_PLATING, BEACON,
   WATER, ADOBE, INSGLASS, BENCH, BENCH_EXT, ENGINECORE, CS, CH, REGULATOR, CACTUS, CACTUS_FRUIT,
-  DOOR_INNER, DOOR_INNER_UPPER, CHEST, BED, BED_EXT, MELON_2, WHEAT_2, FARMLAND,
+  DOOR_INNER, DOOR_INNER_UPPER, CHEST, BED, BED_EXT, MELON_2, WHEAT_2, FARMLAND, GRASS, WOOD, LEAVES,
 } from "./blocks";
 import { fbm2, ridge2, value2, hash2, Rng } from "./noise";
 
@@ -12,6 +12,9 @@ export const BIOME_NAMES = ["Dunes", "Rocky Desert", "Salt Flats", "Badlands", "
 const SP = 1e6; // structure id salt
 
 export interface Oasis { x: number; z: number; r: number; }
+/** One block of a staged Living Tree: b is the block id, stage 1 trunk base,
+ *  2 full trunk + branches, 3 leaf canopy. Stamped in stage order. */
+export interface TreePart { x: number; y: number; z: number; b: number; stage: number }
 export interface Town { x: number; z: number; }
 export interface CanisterSpawn { x: number; z: number; buried: boolean; }
 
@@ -251,36 +254,100 @@ function paintSecondShip(set: (x: number, y: number, z: number, id: number) => v
   set(t.x, Math.round(heightAt(seed, t.x, t.z)) + 1, t.z, ENGINECORE);
 }
 
+/** The full mature Living Tree rooted at (x, y, z) — (x, y, z) is the FIRST
+ *  trunk block above the ground — as staged entries in stamping order:
+ *  stage 1 trunk base, stage 2 rest of trunk + branch stubs, stage 3 leaf
+ *  canopy. Trunk 5-7 tall (WOOD), blobby LEAVES crown. Pure and deterministic:
+ *  same base + same `rnd` stream ⇒ identical tree. gen.ts stamps every stage;
+ *  game.ts replays the same plan to grow a sapling stage by stage. */
+export function treePlan(x: number, y: number, z: number, rnd: () => number): TreePart[] {
+  const H = 5 + Math.floor(rnd() * 3); // trunk 5..7 blocks
+  const parts: TreePart[] = [];
+  const at = (px: number, py: number, pz: number, b: number, stage: number) =>
+    parts.push({ x: px, y: py, z: pz, b, stage });
+  // stage 1: the trunk's first two blocks
+  at(x, y, z, WOOD, 1);
+  at(x, y + 1, z, WOOD, 1);
+  // stage 2: the rest of the trunk, plus 2-3 branch stubs reaching into the crown
+  for (let dy = 2; dy < H; dy++) at(x, y + dy, z, WOOD, 2);
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
+  const nBranch = 2 + (rnd() < 0.5 ? 1 : 0);
+  for (let i = 0; i < nBranch; i++) {
+    const d = dirs[Math.floor(rnd() * 4)];
+    at(x + d[0], y + H - 2 + (i % 2), z + d[1], WOOD, 2);
+  }
+  // stage 3: blobby canopy — a squashed ellipsoid around the trunk top with a
+  // deterministically ragged rim; branches and trunk keep their own blocks
+  const filled = new Set(parts.map((p) => p.x + "," + p.y + "," + p.z));
+  const top = y + H - 1;
+  for (let dy = -1; dy <= 2; dy++) {
+    const prof = dy === -1 || dy === 2 ? 1.7 : 2.4; // leafy radius per layer
+    for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) {
+      const rr = dx * dx + dz * dz + dy * dy * 2.2;
+      if (rr > prof * prof) continue;
+      if (rr > (prof - 0.9) * (prof - 0.9) && rnd() < 0.3) continue; // ragged edge
+      if (dx === 0 && dz === 0) continue;                            // the trunk breathes there
+      const px = x + dx, py = top + dy, pz = z + dz;
+      if (filled.has(px + "," + py + "," + pz)) continue;
+      at(px, py, pz, LEAVES, 3);
+    }
+  }
+  return parts;
+}
+
+/** Stamp a whole mature tree into the world at a spot, seeded by its base. */
+function stampTree(set: (x: number, y: number, z: number, id: number) => void, x: number, groundTop: number, z: number, seed: number, salt: number) {
+  const rnd = new Rng(((hash2(x, z, seed + salt) * 4294967296) >>> 0) || 1);
+  for (const p of treePlan(x, groundTop + 1, z, () => rnd.next())) set(p.x, p.y, p.z, p.b);
+}
+
 function paintOasis(set: (x: number, y: number, z: number, id: number) => void, o: Oasis, seed: number) {
   const hb = Math.round(heightAt(seed, o.x, o.z));
+  // a ROUND pool: disc with a bowl-rounded bottom — 3 deep at the middle,
+  // sloping through 2 to 1 at the rim — water surface flush with the rim
   for (let dx = -o.r - 1; dx <= o.r + 1; dx++) {
     for (let dz = -o.r - 1; dz <= o.r + 1; dz++) {
       const x = o.x + dx, z = o.z + dz;
       const d = Math.sqrt(dx * dx + dz * dz);
       const h = Math.round(heightAt(seed, x, z));
       if (d <= o.r) {
-        for (let y = h; y > hb - 2; y--) set(x, y, z, AIR);
-        set(x, hb - 2, z, SAND);
-        for (let y = hb - 1; y <= hb; y++) set(x, y, z, WATER);
+        const dep = Math.max(1, Math.round(2.7 - 1.7 * (d / o.r))); // bowl: 3 .. 1
+        for (let y = h; y > hb - dep; y--) set(x, y, z, AIR);
+        set(x, hb - dep, z, SAND);
+        for (let y = hb - dep + 1; y <= hb; y++) set(x, y, z, WATER);
       } else if (d <= o.r + 1) {
         for (let y = h; y < hb + 1; y++) set(x, y, z, SAND);
       }
     }
   }
-  for (let i = 0; i < 3; i++) {
-    const tx = o.x + Math.round(Math.cos(i * 2.1) * (o.r + 2));
-    const tz = o.z + Math.round(Math.sin(i * 2.1) * (o.r + 2));
-    const h = Math.round(heightAt(seed, tx, tz));
-    for (let y = h + 1; y <= h + 4; y++) set(tx, y, tz, DEADWOOD);
+  // a living ring: GRASS over DIRT, 3-4 wide, hugging the pool rim
+  const gring = 3 + (hash2(o.x, o.z, seed + 73) < 0.5 ? 1 : 0);
+  for (let dx = -o.r - gring; dx <= o.r + gring; dx++) {
+    for (let dz = -o.r - gring; dz <= o.r + gring; dz++) {
+      const d = Math.sqrt(dx * dx + dz * dz);
+      if (d <= o.r || d > o.r + gring) continue;
+      const x = o.x + dx, z = o.z + dz;
+      const top = Math.max(Math.round(heightAt(seed, x, z)), hb);
+      for (let y = top - 2; y <= top; y++) set(x, y, z, y === top ? GRASS : DIRT);
+    }
+  }
+  // 4-7 mature Living Trees scattered on and just past the green ring
+  const nTree = 4 + Math.floor(hash2(o.x, o.z, seed + 75) * 4); // 4..7
+  for (let i = 0; i < nTree; i++) {
+    const a = i * (Math.PI * 2 / nTree) + hash2(o.x + i, o.z - i, seed + 77) * 1.1;
+    const rr = o.r + 1.5 + hash2(o.x - i, o.z + i, seed + 79) * (gring + 2);
+    const tx = o.x + Math.round(Math.cos(a) * rr), tz = o.z + Math.round(Math.sin(a) * rr);
+    const top = Math.max(Math.round(heightAt(seed, tx, tz)), hb);
+    stampTree(set, tx, top, tz, seed, 81);
   }
   // ripe Dune Melons ripen on the sand at the water's edge — the desert's free drink
   for (let i = 0; i < 5; i++) {
     if (hash2(o.x, o.z, seed + 61 + i) < 0.35) continue;
     const a = i * 1.27 + hash2(o.z, o.x, seed + 67 + i) * 0.8;
-    const rr = o.r - 0.4;
+    const rr = o.r + 0.5;
     const tx = o.x + Math.round(Math.cos(a) * rr), tz = o.z + Math.round(Math.sin(a) * rr);
     if (Math.hypot(tx - o.x, tz - o.z) < o.r) continue; // never in the pool
-    set(tx, hb + 1, tz, MELON_2);
+    set(tx, Math.max(Math.round(heightAt(seed, tx, tz)), hb) + 1, tz, MELON_2);
   }
 }
 
@@ -299,6 +366,24 @@ function paintTown(set: (x: number, y: number, z: number, id: number) => void, t
     set(t.x + bx + 1, h + 2, t.z + bz + 1, CHEST);
     set(t.x + bx + 1, h + 2, t.z + bz + 2, BED);
     set(t.x + bx + 2, h + 2, t.z + bz + 2, BED_EXT);
+  }
+  // a pocket of greenery the town once watered: a GRASS/DIRT patch 5-9 wide
+  // with 3-6 mature Living Trees rooted in and around it
+  const gx = t.x + 3 + Math.round((hash2(t.x, t.z, seed + 83) - 0.5) * 8);
+  const gz = t.z - 3 + Math.round((hash2(t.z, t.x, seed + 85) - 0.5) * 8);
+  const pr = 2.5 + hash2(t.x, t.z, seed + 87) * 2; // radius 2.5-4.5 → 5-9 wide
+  for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) {
+    if (Math.sqrt(dx * dx + dz * dz) > pr) continue;
+    const x = gx + dx, z = gz + dz;
+    const h = Math.round(heightAt(seed, x, z));
+    for (let y = h - 2; y <= h; y++) set(x, y, z, y === h ? GRASS : DIRT);
+  }
+  const nTree = 3 + Math.floor(hash2(t.x, t.z, seed + 89) * 4); // 3..6
+  for (let i = 0; i < nTree; i++) {
+    const a = i * (Math.PI * 2 / nTree) + hash2(t.x + i, t.z - i, seed + 91) * 1.3;
+    const rr = 1 + hash2(t.x - i, t.z + i, seed + 93) * pr;
+    const tx = gx + Math.round(Math.cos(a) * rr), tz = gz + Math.round(Math.sin(a) * rr);
+    stampTree(set, tx, Math.round(heightAt(seed, tx, tz)), tz, seed, 95);
   }
   // someone's farm, gone to seed: a plot of Farmland with a few survivors standing
   const fh = Math.round(heightAt(seed, t.x, t.z + 9));
@@ -353,7 +438,7 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number): 
 
   if (cx >= -1 && cx <= 0 && cz >= -1 && cz <= 0) paintShip(setW);
   for (const o of st.oases)
-    if (Math.abs(cx * CS + 8 - o.x) < o.r + 8 && Math.abs(cz * CS + 8 - o.z) < o.r + 8) paintOasis(setW, o, seed);
+    if (Math.abs(cx * CS + 8 - o.x) < o.r + 24 && Math.abs(cz * CS + 8 - o.z) < o.r + 24) paintOasis(setW, o, seed);
   // Towns on an unbounded lattice: check which lattice cells touch this chunk.
   // Centers jitter up to ±55 from their lattice point (the home Town can sit a
   // whole half-cell away), so the scan window adds a cell of slack.
@@ -363,7 +448,7 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number): 
     if (!st.townAt(tx, tz)) continue;
     const t = st.townCenter(tx, tz);
     // paint into any chunk whose cells overlap the town footprint (huts span ±8, the plot reaches further)
-    if (cx * CS <= t.x + 12 && cx * CS + CS - 1 >= t.x - 12 && cz * CS <= t.z + 12 && cz * CS + CS - 1 >= t.z - 10) paintTown(setW, t, seed);
+    if (cx * CS <= t.x + 16 && cx * CS + CS - 1 >= t.x - 12 && cz * CS <= t.z + 12 && cz * CS + CS - 1 >= t.z - 16) paintTown(setW, t, seed);
   }
   if (Math.abs(cx * CS + 8 - st.secondShip.x) < 12 && Math.abs(cz * CS + 8 - st.secondShip.z) < 12)
     paintSecondShip(setW, st.secondShip, seed);

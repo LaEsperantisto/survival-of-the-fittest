@@ -140,6 +140,24 @@ function drawArt(id: string, w: number, h: number, color: string): HTMLCanvasEle
       g.strokeStyle = "#74501f"; g.lineWidth = 1; g.beginPath(); g.ellipse(8, 10, 6.5, 4.5, 0, 0, Math.PI * 2); g.stroke();
       g.fillStyle = "#d8a860"; g.fillRect(5, 8, 6, 1); g.fillRect(6, 7, 4, 1);
       return cv;
+    case "bucket": case "bucket_full": {
+      const full = id === "bucket_full";
+      rect(g, 4, 6, 8, 9, full ? "#2f7fd6" : color);
+      outline(g, 4, 6, 8, 9, "#dfe6ee");
+      rect(g, 3, 5, 10, 2, "#c8d2da");           // rim
+      rect(g, 5, 2, 1, 3, "#8a98a8"); rect(g, 10, 2, 1, 3, "#8a98a8"); // bail ears
+      line(g, 5, 3, 11, 3, "#8a98a8", 1);        // handle
+      if (full) rect(g, 5, 7, 6, 1, "#5fa3ea");
+      return cv;
+    }
+    case "kindling": // leafy twigs bundled
+      line(g, 3, 21, 12, 4, "#6b5238", 2); line(g, 6, 22, 14, 8, "#5a4630", 2);
+      rect(g, 11, 3, 3, 3, "#9a8a5a"); rect(g, 4, 8, 3, 3, "#9a8a5a"); rect(g, 13, 9, 3, 2, "#8a9a4a");
+      return cv;
+    case "seed_tree": // acorn seed with a green sprout
+      rect(g, 7, 14, 6, 6, "#8a6a3a"); rect(g, 7, 13, 6, 2, "#5a4630");
+      rect(g, 9, 9, 2, 4, "#5a8a3a"); rect(g, 6, 7, 3, 2, "#7fae54"); rect(g, 11, 8, 3, 2, "#7fae54");
+      return cv;
     case "bench":
       blit(g, 0, 0, BENCH);
       blit(g, 0, T, BENCH_EXT);

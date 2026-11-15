@@ -4,12 +4,13 @@ import {
   INSGLASS, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, ENGINECORE, REGULATOR, CHEST, BENCH_EXT, CACTUS,
   WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
-  DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT,
+  DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING,
   isSolid,
 } from "./blocks";
 import { World, ckey, faceVisible } from "./world";
 import { DAY_SECONDS } from "./blocks";
 import { noise1, Rng } from "./noise";
+import { SkyLighting, MAX_LIGHT, lidx } from "./light";
 
 /** every block id that renders as a swingable door leaf */
 const DOOR_BLOCKS = new Set([DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN]);
@@ -33,7 +34,7 @@ export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, G
   HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, DOOR_OPEN, ENGINECORE, REGULATOR, CHEST, BENCH_EXT, CACTUS,
   WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
-  DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT];
+  DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING];
 
 let atlasCv: HTMLCanvasElement | null = null;
 
@@ -307,6 +308,36 @@ export function getAtlasCanvas(): HTMLCanvasElement {
         g.strokeStyle = "rgba(160,152,134,1)"; g.strokeRect(tx + 3.5, ty + 4.5, 9, 7);
         for (let x = 0; x < 16; x++) { px(x, 11, "rgba(90,40,36,1)"); px(x, 12, "rgba(150,80,70,1)"); }
         break;
+      case GRASS:
+        // earth under a hardy green crust
+        fill(col(-0.18, 1, -0.06, -0.12, -0.02)); speckle(40, 0.18);
+        for (let x = 0; x < 16; x++) {
+          const h = 3 + Math.round(rng.next() * 3);
+          for (let y = 0; y < h; y++) px(x, y, col(nz(0.1) + (y === 0 ? 0.08 : 0)));
+        }
+        break;
+      case WOOD:
+        // bark: vertical grain with a knot
+        fill(col(0));
+        for (let x = 0; x < 16; x++) {
+          const d = -0.1 + (x % 4 === 0 ? -0.1 : 0) + Math.sin(x * 1.7) * 0.05;
+          for (let y = 0; y < 16; y++) px(x, y, col(d + nz(0.06)));
+        }
+        px(9, 6, col(-0.25)); px(10, 6, col(-0.2)); px(9, 7, col(-0.18)); px(10, 7, col(-0.28));
+        break;
+      case LEAVES:
+        // dense mottle with pinholes of shade
+        fill(col(0)); speckle(90, 0.3);
+        for (let i = 0; i < 8; i++) { const x = rng.int(1, 14), y = rng.int(1, 14); px(x, y, col(-0.28)); px(x + 1, y + 1, col(0.18)); }
+        break;
+      case SAPLING:
+        // a small green shoot on a bare stalk
+        for (let y = 6; y < 16; y++) px(8, y, col(-0.25));
+        px(7, 5, col(0.1)); px(8, 5, col(0.15)); px(9, 5, col(0.1));
+        px(6, 4, col(0.05)); px(7, 4, col(0.12)); px(8, 4, col(0.18)); px(9, 4, col(0.12)); px(10, 4, col(0.05));
+        px(7, 3, col(0.08)); px(8, 3, col(0.14)); px(9, 3, col(0.08));
+        px(8, 2, col(0.1));
+        break;
     }
   };
   for (const id of TILE_LIST) draw(id);
@@ -332,6 +363,81 @@ export const TILE_SRC = (id: number): [number, number] => {
   return [(t % ATLAS_COLS) * TILE_PX, ((t / ATLAS_COLS) | 0) * TILE_PX];
 };
 
+// ---------------- sky-mode shader ----------------
+// Baked-light chunk material: vertex `light` (0..1) is the flood-filled
+// skylight at the face's air cell; a global day factor tints it warm by day
+// and blue-moonlit at night, and the dynamic point lights are evaluated in
+// the fragment so lamps still work with no scene lights on the world.
+
+const MAX_SKY_LIGHTS = 16;
+
+const SKY_VS = `
+attribute vec3 color;
+attribute float light;
+varying vec2 vUv;
+varying vec3 vSh;        // x = face shading, y = baked skylight 0..1
+varying vec3 vPos;
+varying vec3 vNrm;
+varying float vFogDepth;
+void main() {
+  vUv = uv;
+  vSh = vec3(color.r, light, 0.0);
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vPos = wp.xyz;
+  vNrm = normalize(mat3(modelMatrix) * normal);
+  vec4 mv = viewMatrix * wp;
+  vFogDepth = -mv.z;
+  gl_Position = projectionMatrix * mv;
+}
+`;
+
+const SKY_FS = `
+uniform sampler2D map;
+uniform vec3 uAmbient;      // day/moon ambient, lerped by the caller
+uniform float uFloor;       // ambient floor for baked-light 0 (interiors)
+uniform vec3 uFogColor;
+uniform float uFogNear;
+uniform float uFogFar;
+uniform float uNumLights;
+uniform vec3 uLightPos[${MAX_SKY_LIGHTS}];
+uniform vec3 uLightCol[${MAX_SKY_LIGHTS}];
+uniform float uLightRange[${MAX_SKY_LIGHTS}];
+varying vec2 vUv;
+varying vec3 vSh;
+varying vec3 vPos;
+varying vec3 vNrm;
+varying float vFogDepth;
+void main() {
+  vec4 tex = texture2D(map, vUv);
+  #ifdef OPAQUE_PASS
+  if (tex.a < 0.02) discard;
+  #endif
+  vec3 n = normalize(vNrm);
+  if (!gl_FrontFacing) n = -n;
+  float baked = vSh.y;
+  vec3 col = tex.rgb * vSh.x * uAmbient * (uFloor + (1.0 - uFloor) * baked);
+  for (int i = 0; i < ${MAX_SKY_LIGHTS}; i++) {
+    if (float(i) >= uNumLights) break;
+    float range = uLightRange[i];
+    vec3 d = uLightPos[i] - vPos;
+    float dist = length(d);
+    float att = 1.0 - dist / range;
+    if (att <= 0.0) continue;
+    att *= att;
+    col += tex.rgb * vSh.x * uLightCol[i] * att *
+      (0.35 + 0.65 * max(dot(n, d / max(dist, 0.001)), 0.0));
+  }
+  col = mix(col, uFogColor, smoothstep(uFogNear, uFogFar, vFogDepth));
+  gl_FragColor = vec4(col, tex.a);
+  #include <colorspace_fragment>
+}
+`;
+
+const _dir = new THREE.Vector3();
+const _p3 = new THREE.Vector3();
+const _dayAmb = new THREE.Color(1.0, 0.97, 0.9);     // linear: bright warm-neutral noon
+const _nightAmb = new THREE.Color(0.2, 0.27, 0.45);  // linear: dim blue moonlight
+
 export class Renderer {
   scene = new THREE.Scene();
   camera: THREE.PerspectiveCamera;
@@ -352,6 +458,33 @@ export class Renderer {
   matEmissive = new THREE.MeshBasicMaterial({ map: this.atlas, vertexColors: true, side: THREE.DoubleSide });
   matTrans = new THREE.MeshLambertMaterial({ map: this.atlas, vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide });
 
+  /** active lighting: baked skylight (default) or real-time directional shadows */
+  lightingMode: "sky" | "shadow" = "sky";
+  private skyLight = new SkyLighting();
+  /** baked-light consistency queue: chunks whose light map lags a neighbor */
+  private lightRecheck = new Set<string>();
+
+  private skyU = {
+    map: { value: this.atlas },
+    uAmbient: { value: new THREE.Color(1, 1, 1) },
+    uFloor: { value: 0.16 },
+    uFogColor: { value: new THREE.Color(0, 0, 0) },
+    uFogNear: { value: 40 },
+    uFogFar: { value: 340 },
+    uNumLights: { value: 0 },
+    uLightPos: { value: Array.from({ length: MAX_SKY_LIGHTS }, () => new THREE.Vector3()) },
+    uLightCol: { value: Array.from({ length: MAX_SKY_LIGHTS }, () => new THREE.Vector3()) },
+    uLightRange: { value: new Float32Array(MAX_SKY_LIGHTS) },
+  };
+  matSky = new THREE.ShaderMaterial({
+    uniforms: this.skyU, vertexShader: SKY_VS, fragmentShader: SKY_FS,
+    side: THREE.DoubleSide, defines: { OPAQUE_PASS: "1" },
+  });
+  matSkyT = new THREE.ShaderMaterial({
+    uniforms: this.skyU, vertexShader: SKY_VS, fragmentShader: SKY_FS,
+    side: THREE.DoubleSide, transparent: true, depthWrite: false,
+  });
+
   torch: THREE.PointLight;
   private dynLights: { x: number; y: number; z: number; light: THREE.PointLight; flame: boolean }[] = [];
 
@@ -369,6 +502,15 @@ export class Renderer {
     this.sun = new THREE.DirectionalLight(0xffffff, 1.0);
     this.hemi = new THREE.HemisphereLight(0xbfd4e6, 0x8a7455, 0.55);
     this.scene.add(this.sun, this.hemi);
+    // real-time shadows (shadow mode): a 2048 map over an ~80-wide box that
+    // follows the player; armed by setLightingMode("shadow")
+    const sc = this.sun.shadow.camera;
+    this.sun.shadow.mapSize.set(2048, 2048);
+    sc.left = -40; sc.right = 40; sc.top = 40; sc.bottom = -40; sc.near = 1; sc.far = 320;
+    sc.updateProjectionMatrix();
+    this.sun.shadow.bias = -0.0004;
+    this.sun.shadow.normalBias = 0.05;
+    this.scene.add(this.sun.target);
     this.scene.fog = new THREE.Fog(0xd8c9a0, 40, this.renderDistance * CS);
 
     const starGeo = new THREE.BufferGeometry();
@@ -437,7 +579,7 @@ export class Renderer {
     this.three.domElement.remove();
   }
 
-  keyframe(frac: number): { sky: THREE.Color; sunColor: THREE.Color; sunElev: number; sunI: number } {
+  keyframe(frac: number): { sky: THREE.Color; sunColor: THREE.Color; sunElev: number; sunI: number; dayT: number } {
     // frac 0..1 day; sunrise .25, sunset .75
     const sunAngle = (frac - 0.25) * Math.PI * 2;
     const elev = Math.sin(sunAngle);
@@ -447,7 +589,7 @@ export class Renderer {
     const sky = night.clone().lerp(day, dayT);
     if (dawnT > 0) sky.lerp(dawn, dawnT * 0.7);
     const sunColor = new THREE.Color(0xffd9a0).lerp(new THREE.Color(0xff7b3f), dawnT);
-    return { sky, sunColor, sunElev: elev, sunI: Math.max(0.06, elev * 1.15) };
+    return { sky, sunColor, sunElev: elev, sunI: Math.max(0.06, elev * 1.15), dayT };
   }
 
   updateSky(worldTime: number, playerPos: THREE.Vector3) {
@@ -456,20 +598,25 @@ export class Renderer {
     this.scene.background = kf.sky;
     (this.scene.fog as THREE.Fog).color.copy(kf.sky);
     (this.scene.fog as THREE.Fog).far = this.renderDistance * CS * 0.98;
-    this.sun.color.copy(kf.sunColor);
-    this.sun.intensity = kf.sunI;
+    const a = (frac - 0.25) * Math.PI * 2;
+    // light direction: the sun's arc by day, the mirrored moon arc at night
+    _dir.set(Math.cos(a), kf.sunElev, 0.4).normalize();
     if (kf.sunElev < 0) {
-      // night: a cool moonlight takes over from the sun
+      // night: a cool moonlight takes over from the sun, from the moon's side
       this.sun.color.setHex(0x9db4e8);
       this.sun.intensity = 0.28;
+      _dir.negate();
+    } else {
+      this.sun.color.copy(kf.sunColor);
+      this.sun.intensity = kf.sunI;
     }
-    this.sun.position.set(playerPos.x + Math.cos((frac - 0.25) * Math.PI * 2) * 100,
-      playerPos.y + kf.sunElev * 100, playerPos.z + 40);
+    this.sun.position.set(playerPos.x + _dir.x * 120, playerPos.y + _dir.y * 120, playerPos.z + _dir.z * 120);
+    this.sun.target.position.copy(playerPos);
+    this.sun.target.updateMatrixWorld();
     this.hemi.intensity = 0.22 + kf.sunI * 0.35;
     (this.stars.material as THREE.PointsMaterial).opacity = Math.max(0, 1 - kf.sunI * 3);
     this.stars.position.set(playerPos.x, playerPos.y, playerPos.z);
     // discs follow the same arc as the sun light; the moon rides opposite it
-    const a = (frac - 0.25) * Math.PI * 2;
     const R = 430;
     this.sunDisc.position.set(playerPos.x + Math.cos(a) * R, playerPos.y + Math.sin(a) * R, playerPos.z + R * 0.4);
     this.moonDisc.position.set(playerPos.x - Math.cos(a) * R, playerPos.y - Math.sin(a) * R, playerPos.z - R * 0.4);
@@ -480,7 +627,55 @@ export class Renderer {
     this.torch.intensity = 0.12 + (1 - Math.min(1, kf.sunI)) * 0.85;
     for (const d of this.dynLights)
       if (d.flame) d.light.intensity = 0.9 + noise1(worldTime * 5.3 + d.x * 3.1 + d.z, 7) * 0.45;
+    // baked-light shader: day→moon ambient, current fog, dynamic point lights
+    const u = this.skyU;
+    u.uAmbient.value.copy(_nightAmb).lerp(_dayAmb, kf.dayT);
+    const fog = this.scene.fog as THREE.Fog;
+    u.uFogColor.value.copy(fog.color);
+    u.uFogNear.value = fog.near;
+    u.uFogFar.value = fog.far;
+    this.syncSkyLights();
     return kf;
+  }
+
+  /** mirror torch + dynamic point lights into the sky-mode shader uniforms */
+  private syncSkyLights() {
+    const u = this.skyU;
+    let n = 0;
+    this.torch.getWorldPosition(_p3);
+    u.uLightPos.value[n].copy(_p3);
+    const tc = this.torch.color;
+    u.uLightCol.value[n].set(tc.r, tc.g, tc.b).multiplyScalar(this.torch.intensity);
+    u.uLightRange.value[n] = this.torch.distance;
+    n++;
+    for (const d of this.dynLights) {
+      if (n >= MAX_SKY_LIGHTS) break;
+      u.uLightPos.value[n].copy(d.light.position);
+      const lc = d.light.color;
+      u.uLightCol.value[n].set(lc.r, lc.g, lc.b).multiplyScalar(d.light.intensity);
+      u.uLightRange.value[n] = d.light.distance;
+      n++;
+    }
+    u.uNumLights.value = n;
+  }
+
+  /**
+   * Switch lighting at runtime (default "sky"). Flips the mode and shadow
+   * arming only — call rebuildLights(world) right after so every chunk mesh
+   * rebuilds with the mode's material (and baked light in "sky" mode).
+   */
+  setLightingMode(mode: "sky" | "shadow") {
+    if (mode === this.lightingMode) return;
+    this.lightingMode = mode;
+    this.three.shadowMap.enabled = mode === "shadow";
+    this.sun.castShadow = mode === "shadow";
+  }
+
+  /** Full re-bake: drop every light map and re-mark all loaded chunks dirty. */
+  rebuildLights(world: World) {
+    this.skyLight.maps.clear();
+    this.lightRecheck.clear();
+    for (const k of this.chunkMeshes.keys()) world.dirty.add(k);
   }
 
   setHighlight(target: { x: number; y: number; z: number } | null) {
@@ -497,6 +692,14 @@ export class Renderer {
       world.dirty.delete(k);
       budget--;
     }
+    // baked-light consistency: a chunk whose light map lagged a rebaked
+    // neighbor gets its mesh rebuilt (and its map re-baked) on the same budget
+    for (const k of this.lightRecheck) {
+      if (budget <= 0) break;
+      this.lightRecheck.delete(k);
+      if (!world.dirty.has(k)) world.dirty.add(k);
+      budget--;
+    }
   }
 
   ensureChunks(world: World, pcx: number, pcz: number) {
@@ -510,15 +713,33 @@ export class Renderer {
   buildChunk(world: World, k: string) {
     const [cx, cz] = k.split(",").map(Number);
     const c = world.chunk(cx, cz);
-    const pos: number[] = [], col: number[] = [], idx: number[] = [], uvs: number[] = [];
+    const pos: number[] = [], col: number[] = [], idx: number[] = [], uvs: number[] = [], lite: number[] = [];
     const epos: number[] = [], ecol: number[] = [], eidx: number[] = [], euvs: number[] = [];
-    const tpos: number[] = [], tcol: number[] = [], tidx: number[] = [], tuv: number[] = [];
+    const tpos: number[] = [], tcol: number[] = [], tidx: number[] = [], tuv: number[] = [], tlite: number[] = [];
+
+    // sky mode bakes the skylight into the mesh: one chunk flood per call
+    // (the caller budgets chunks per frame); neighbors that would lag get
+    // queued for a cheap re-verify later
+    const Lb = this.lightingMode === "sky"
+      ? this.skyLight.bake(world, cx, cz, (ncx, ncz) => {
+          const nk = ckey(ncx, ncz);
+          if (!world.dirty.has(nk) && !this.lightRecheck.has(nk)) this.lightRecheck.add(nk);
+        })
+      : null;
+    // face light: the baked value at the face's air cell (0 below the world)
+    const faceLight = (nx: number, ny: number, nz: number): number =>
+      Lb && ny >= 0 && ny < CH ? Lb[lidx(nx, nz, ny)] / MAX_LIGHT : 0;
 
     for (let x = 0; x < CS; x++) for (let z = 0; z < CS; z++) for (let y = 0; y < CH; y++) {
       const id = c[(x * CS + z) * CH + y];
       if (id === AIR) continue;
       if (DOOR_BLOCKS.has(id)) {
-        this.emitDoor(pos, col, idx, uvs, world, x, y, z, cx * CS, cz * CS, id);
+        // the thin slab borrows the brightest light of its four sides — the
+        // room it belongs to
+        let dl = 0;
+        if (Lb) for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const)
+          dl = Math.max(dl, Lb[lidx(x + dx, z + dz, y)]);
+        this.emitDoor(pos, col, idx, uvs, lite, dl / MAX_LIGHT, world, x, y, z, cx * CS, cz * CS, id);
         continue;
       }
       const def = BLOCKS[id];
@@ -527,15 +748,18 @@ export class Renderer {
       const C = useT ? tcol : useE ? ecol : col;
       const I = useT ? tidx : useE ? eidx : idx;
       const U = useT ? tuv : useE ? euvs : uvs;
+      const LM = useT ? tlite : useE ? null : lite;
       const [tx0, ty0] = TILE_SRC(id);
       for (const f of FACES) {
         const nx = x + f.dir[0], ny = y + f.dir[1], nz = z + f.dir[2];
         if (!faceVisible(world, cx * CS + nx, ny, cz * CS + nz, id)) continue;
         const base = P.length / 3;
         const sh = useE ? 1 : f.shade;
+        const lv = LM ? faceLight(nx, ny, nz) : 0;
         for (const cn of f.corners) {
           P.push(x + cn[0], y + cn[1], z + cn[2]);
           C.push(sh, sh, sh); // shading only; texture carries the color
+          if (LM) LM.push(lv);
           U.push((tx0 + 0.5 + cn[f.uv[0]] * (TILE_PX - 1)) / ATLAS_PX, (ty0 + 0.5 + cn[f.uv[1]] * (TILE_PX - 1)) / ATLAS_PX);
         }
         I.push(base, base + 1, base + 2, base, base + 2, base + 3);
@@ -545,29 +769,35 @@ export class Renderer {
     const old = this.chunkMeshes.get(k);
     if (old) for (const m of old) { this.group.remove(m); m.geometry.dispose(); }
     const meshes: THREE.Mesh[] = [];
-    const mk = (p: number[], cc: number[], i: number[], u: number[], mat: THREE.Material) => {
+    const skyMode = this.lightingMode === "sky";
+    const mk = (p: number[], cc: number[], i: number[], u: number[], lm: number[] | null, mat: THREE.Material) => {
       if (p.length === 0) return;
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.Float32BufferAttribute(p, 3));
       geo.setAttribute("color", new THREE.Float32BufferAttribute(cc, 3));
       geo.setAttribute("uv", new THREE.Float32BufferAttribute(u, 2));
+      if (lm && lm.length * 3 === p.length) geo.setAttribute("light", new THREE.Float32BufferAttribute(lm, 1));
       geo.setIndex(i);
       geo.computeVertexNormals();
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(cx * CS, 0, cz * CS);
+      if (!skyMode && mat !== this.matEmissive) {
+        mesh.castShadow = mat !== this.matTrans;
+        mesh.receiveShadow = true;
+      }
       this.group.add(mesh);
       meshes.push(mesh);
     };
-    mk(pos, col, idx, uvs, this.matOpaque);
-    mk(epos, ecol, eidx, euvs, this.matEmissive);
-    mk(tpos, tcol, tidx, tuv, this.matTrans);
+    mk(pos, col, idx, uvs, Lb ? lite : null, skyMode ? this.matSky : this.matOpaque);
+    mk(epos, ecol, eidx, euvs, null, this.matEmissive);
+    mk(tpos, tcol, tidx, tuv, Lb ? tlite : null, skyMode ? this.matSkyT : this.matTrans);
     this.chunkMeshes.set(k, meshes);
   }
 
   /** Door leaf: a thin slab filling the doorway cell, hinged on one vertical edge.
    *  Open doors are that same slab rotated 90 deg about the hinge into an
    *  adjoining air cell. Hinge edge picks the wall side deterministically. */
-  private emitDoor(P: number[], C: number[], I: number[], U: number[], world: World,
+  private emitDoor(P: number[], C: number[], I: number[], U: number[], Lm: number[], dl: number, world: World,
     lx: number, ly: number, lz: number, ox: number, oz: number, id: number) {
     const wx = ox + lx, wz = oz + lz;
     const inner = id === DOOR_INNER || id === DOOR_INNER_UPPER || id === DOOR_INNER_OPEN;
@@ -606,6 +836,7 @@ export class Renderer {
         }
         P.push(spanZ ? lx + t : lx + s, ly + yy, spanZ ? lz + s : lz + t);
         C.push(sh, sh, sh);
+        Lm.push(dl);
         U.push((tile[0] + 0.5 + uv[i][0] * (TILE_PX - 1)) / ATLAS_PX, (tile[1] + 0.5 + uv[i][1] * (TILE_PX - 1)) / ATLAS_PX);
       }
       I.push(base, base + 1, base + 2, base, base + 2, base + 3);

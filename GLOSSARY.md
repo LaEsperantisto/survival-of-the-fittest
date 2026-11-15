@@ -79,6 +79,32 @@ A settlement out in the world: huts, Supply Chests with rare loot, Beds, and the
 **Dead Tree**:
 A leafless tree scattered through the desert.
 
+**Living Tree**:
+A green tree with trunk, branches and a Leaf canopy, found at Oases and in Towns. It blocks sunlight from above and no one can walk through its parts. Chopping its trunk yields Wood Log.
+_Avoid_: plant, bush
+
+**Wood Farm**:
+A player's own grove of Living Trees, grown from Tree Seeds in Dirt and kept growing by keeping moisture close.
+
+**Tree Seed**:
+Found in Town Supply Chests; planted in Dirt it grows a Living Tree stage by stage while moisture stays near.
+
+**Leaf**:
+The canopy part of a Living Tree: walk-blocking but not insulating, partly shading the sky above. Broken Leaf crumbles into Kindling.
+
+**Kindling**:
+Leaf scraps — campfire fuel that burns fast and small.
+
+**Wood Log**:
+The Living Tree's trunk — the renewable counterpart of Dead Wood for fuel and crafting.
+
+**Dirt**:
+The Oasis's dark soil and the only thing a shovel can turn into Farm Land; Towns have it too.
+_Avoid_: soil (as the block's name)
+
+**Grass**:
+Dirt's green living cover, found wherever there is living water — Oases and Towns. Breaking it yields Dirt.
+
 **Cactus**:
 A spined desert plant standing in the open sand. Cacti actually grow: a replanted piece climbs over time, and a mature column develops Fruit-Bearing blocks.
 _Avoid_: prickly pear plant
@@ -166,12 +192,16 @@ Two parts: days survived and Main Quest progress. Completing the game scores hig
 **Water Canister**:
 A drinkable item (1×2 in the Inventory Grid). Buried in the world, or waiting in the Supply Chest; finite per world. Oases provide finite water; a late-game method synthesizes water.
 
+**Water Bucket**:
+A carrying vessel for Water itself: it scoops from a Source and pours back as a Source, moving water rather than drinking it.
+_Avoid_: pail, canteen
+
 **Farming**:
 Growing crops on Farmland where Air Temperature suits the species and Water is within reach. Growth follows Air Temperature, not sun or shade: the reason outdoor farming is dangerous is that the danger that costs you health is the same danger that costs you time.
 _Avoid_: greenhouse (crops are not tied to glass), gardening
 
 **Farmland**:
-A crafted block that carries crops. Cacti tolerate bare Sand too; melons and wheat need Farmland. A crop grows only while a Water block is within 4 tiles.
+Farm Land is Dirt tilled by a shovel — never sand. A crop grows on it only while a Water block is within 4 tiles; trees want moisture within 6. Cacti tolerate bare Sand too.
 
 **Crop**:
 A planted plant that advances through growth stages over time while its species' Air Temperature band and its moisture hold. Out of band a Crop pauses, never dies.
@@ -208,6 +238,10 @@ Head-slot gear powering the player's HUD. Upgradeable to show more: heat fluctua
 
 **Waypoint**:
 The HUD's guide to the active quest: a compass heading, a distance, and a marker at the target. A Surveyor's Visor equipped in the Head slot — a craftable Visor upgrade — additionally marks every Cache and Supply Chest through walls.
+
+**Air Temperature**:
+The temperature of the air in a given cell — what Crops and Living Trees grow by, and what the body drifts toward. Inside a Sealed Space the Air Temperature still tracks the outside until Heat Regulators hold it neutral.
+_Avoid_: ambient bar, ground temperature
 
 **Water**:
 Exists as Source blocks (Oasis pools, Water Station tanks). A Source feeds Flow — water that spreads over terrain and falls — until it meets a new Source or runs out; when a Source breaks, its Flow drains away, so an Oasis can be emptied for good.

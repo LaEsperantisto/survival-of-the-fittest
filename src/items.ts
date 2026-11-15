@@ -2,7 +2,7 @@ import {
   SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, GLASS, INSGLASS, HULL,
   DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, ADOBE, ENGINECORE, REGULATOR, CHEST, CACTUS,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
-  DOOR_INNER, DOOR_INNER_UPPER, BED, BED_EXT,
+  DOOR_INNER, DOOR_INNER_UPPER, BED, BED_EXT, GRASS, LEAVES, WOOD, SAPLING,
 } from "./blocks";
 
 export interface ItemDef {
@@ -80,10 +80,17 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "dune_melon", name: "Dune Melon", desc: "Harvested from a ripe Melon. Eat it: +30 Water, +5 Health.", w: 2, h: 1, mass: 2, eat: { water: 30, health: 5 }, color: "#7a9a3a" }),
   I({ id: "wheat", name: "Desert Wheat", desc: "Cut from ripe Wheat. Too tough raw - smelt it at a Campfire into Cooked Wheat.", w: 1, h: 1, mass: 0.2, color: "#d8b048" }),
   I({ id: "cooked_wheat", name: "Cooked Wheat", desc: "Plain but dense. Eat it: +35 Health.", w: 1, h: 1, mass: 0.2, eat: { health: 35 }, color: "#b8853a" }),
+  // ---- trees ----
+  I({ id: "wood_log", name: "Wood Log", desc: "Trunk of a Living Tree - the renewable counterpart of Dead Wood. Fuel and crafting.", w: 1, h: 1, mass: 0.5, block: WOOD, color: "#7a5c3a" }),
+  I({ id: "kindling", name: "Kindling", desc: "Leaf scraps. Campfire fuel that burns fast and small.", w: 1, h: 1, mass: 0.1, color: "#9a8a5a" }),
+  I({ id: "seed_tree", name: "Tree Seed", desc: "Plant in Dirt. Grows a Living Tree stage by stage over ~8 minutes while water stays within 6 blocks. Found in Town chests and from broken Leaves.", w: 1, h: 1, mass: 0.1, block: SAPLING, color: "#7fae54" }),
+  // ---- water carrying ----
+  I({ id: "bucket", name: "Bucket", desc: "Scoop a water Source with it, pour it back anywhere: moves water instead of drinking it.", w: 1, h: 1, mass: 1.0, color: "#9aa0aa" }),
+  I({ id: "bucket_full", name: "Bucket (full)", desc: "Water to pour. Right-click ground to place it as a new Source.", w: 1, h: 1, mass: 3.0, color: "#3f8fe0" }),
   // ---- building ----
   I({ id: "chest_connector", name: "Chest Connector", desc: "Steel rail between Supply Chests: links their grids into one bigger Inventory Grid. Stores nothing itself.", w: 1, h: 1, mass: 1, block: CHEST_CONNECTOR, color: "#8a744a" }),
   I({ id: "metal_plating", name: "Metal Plating", desc: "The ship's plated floor and skin. Same plate, same tools - disassemble it back.", w: 1, h: 1, mass: 1.2, block: METAL_PLATING, color: "#9aa0ac" }),
-  I({ id: "door_inner", name: "Inside Door", desc: "Interior bulkhead door. Keeps rooms apart when closed; leave one open and the spaces share one temperature.", w: 1, h: 1, mass: 2, block: DOOR_INNER, color: "#82868e" }),
+  I({ id: "door_inner", name: "Inside Door", desc: "Interior bulkhead door. It divides rooms for sight and movement - and never insulates: in temperature terms it is just air, open or closed.", w: 1, h: 1, mass: 2, block: DOOR_INNER, color: "#82868e" }),
   I({ id: "bed", name: "Bed", desc: "Curtained sleep for 8 game hours, then the cool morning. One long sleep every 8 hours; press E at the bed. Takes a 2x1 floor span.", w: 2, h: 1, mass: 6, block: BED, color: "#a84a42" }),
 ];
 
@@ -94,6 +101,8 @@ for (const it of Object.values(ITEMS)) if (it.block !== undefined) BLOCK_TO_ITEM
 BLOCK_TO_ITEM[DOOR_UPPER] = "door"; // both door halves drop the same item
 BLOCK_TO_ITEM[DOOR_INNER_UPPER] = "door_inner";
 BLOCK_TO_ITEM[BED_EXT] = "bed"; // both bed halves drop the bed
+BLOCK_TO_ITEM[GRASS] = "dirt";   // grass breaks to the dirt under it
+BLOCK_TO_ITEM[LEAVES] = "kindling"; // leaves crumble to Kindling
 // crop fallbacks: the explicit breakBlock handlers give the real harvest drops
 BLOCK_TO_ITEM[MELON_1] = "seed_melon";
 BLOCK_TO_ITEM[MELON_2] = "dune_melon";

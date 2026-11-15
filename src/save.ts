@@ -10,11 +10,13 @@ export interface Settings {
   sens: number; invertY: boolean; fov: number; renderDist: number;
   quality: "low" | "med" | "high"; volume: number; units: "C" | "F";
   fullscreen: boolean; music: boolean; uiScale: number;
+  lighting: "sky" | "shadow";
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   sens: 1, invertY: false, fov: 70, renderDist: 6, quality: "med", volume: 0.67, units: "C",
   fullscreen: false, music: true, uiScale: 1,
+  lighting: "sky",
 };
 
 export function getSettings(): Settings {
@@ -67,6 +69,7 @@ export interface RunSave {
   chests?: { cells: string; slots: { itemId: string; count: number; x: number; y: number; rot?: boolean }[] }[];
   campfires: Record<string, number>;
   crops?: [string, number][]; // planted crop key -> accumulated good seconds
+  trees?: [string, number][]; // planted Living Tree key -> growth seconds
   lastSleep?: number;         // timeSec of the last bed sleep
   deltas: Record<string, number[]>;
 }

@@ -170,6 +170,7 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
   background: rgba(255,255,255,0.35); }
 #mbtns { position: absolute; right: 10px; bottom: 80px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; pointer-events: auto; }
 #mbtns button { width: 72px; height: 44px; padding: 0; font-size: 12px; }
+#mbtns button.on { background: #d8b74f; color: #14161c; border-color: #d8b74f; }
 
 /* title world list */
 .needs { color: #9aa0aa; font-size: 13px; }
