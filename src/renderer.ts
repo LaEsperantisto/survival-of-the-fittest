@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import {
   CS, CH, BLOCKS, AIR, SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, GLASS,
-  INSGLASS, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, ENGINECORE, REGULATOR,
+  INSGLASS, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, ENGINECORE, REGULATOR, CHEST, BENCH_EXT,
   isSolid,
 } from "./blocks";
 import { World, ckey, faceVisible } from "./world";
@@ -21,15 +21,20 @@ const FACES: { dir: [number, number, number]; corners: number[][]; shade: number
 // One 16x16 tile per block id, drawn on a 256x256 canvas at load. Pixel art,
 // deterministic, no external assets. Vertex colors still carry face shading.
 
-const TILE_PX = 16, ATLAS_COLS = 16;
+export const TILE_PX = 16, ATLAS_COLS = 16;
 
-function makeAtlasTexture(): THREE.CanvasTexture {
+export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, GLASS, INSGLASS,
+  HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, DOOR_OPEN, ENGINECORE, REGULATOR, CHEST, BENCH_EXT];
+
+let atlasCv: HTMLCanvasElement | null = null;
+
+/** The shared 16px-per-block texture canvas; item icons sample the same atlas. */
+export function getAtlasCanvas(): HTMLCanvasElement {
+  if (atlasCv) return atlasCv;
   const cv = document.createElement("canvas");
   cv.width = cv.height = ATLAS_COLS * TILE_PX;
   const g = cv.getContext("2d")!;
   const rng = new Rng(0xbeef);
-  const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, GLASS, INSGLASS,
-    HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, DOOR_OPEN, ENGINECORE, REGULATOR];
   const tileOf: Record<number, number> = {};
   TILE_LIST.forEach((id, i) => (tileOf[id] = i));
 
@@ -124,10 +129,25 @@ function makeAtlasTexture(): THREE.CanvasTexture {
         px(8, 7, col(0.3, 1)); px(7, 8, col(0.2, 1));
         break;
       case BENCH:
-        fill(col(0));
-        for (const ry of [5, 11]) for (let x = 0; x < 16; x++) px(x, ry, col(-0.2));
-        speckle(25, 0.14);
-        for (let i = 0; i < 6; i++) px(rng.int(3, 12), rng.int(0, 4), col(0.1));
+        // workbench top: thick slab with sawn edge, tools laid on it
+        fill(col(0)); speckle(14, 0.08);
+        for (let x = 0; x < 16; x++) { px(x, 0, col(-0.28)); px(x, 1, col(0.12)); px(x, 5, col(-0.22)); }
+        for (let x = 0; x < 16; x++) for (let y = 6; y < 16; y++) px(x, y, col(-0.12 + (y % 4 === 0 ? -0.08 : 0) + nz(0.05)));
+        // saw + mallet silhouettes on the slab
+        for (let x = 3; x <= 12; x++) px(x, 3, "rgba(150,156,168,1)");
+        px(2, 3, "rgba(90,64,40,1)"); px(2, 4, "rgba(90,64,40,1)");
+        for (let x = 8; x <= 11; x++) { px(x, 2, "rgba(110,80,50,1)"); }
+        px(11, 2, "rgba(150,156,168,1)"); px(12, 2, "rgba(150,156,168,1)"); px(11, 3, "rgba(150,156,168,1)"); px(12, 3, "rgba(150,156,168,1)");
+        break;
+      case BENCH_EXT:
+        // frame under the bench top: legs, drawer face, shelf
+        fill(col(-0.18)); speckle(10, 0.06);
+        for (const lx of [1, 2, 13, 14]) for (let y = 0; y < 16; y++) px(lx, y, col(0.1));
+        for (let y = 3; y <= 8; y++) for (let x = 4; x <= 11; x++) px(x, y, col(0.06 + nz(0.04)));
+        for (let x = 4; x <= 11; x++) { px(x, 3, col(-0.3)); px(x, 8, col(-0.3)); }
+        px(7, 5, "rgba(190,190,190,1)"); px(8, 5, "rgba(190,190,190,1)");
+        for (let x = 3; x <= 12; x++) px(x, 12, col(0.12));
+        for (let x = 3; x <= 12; x++) px(x, 13, col(-0.25));
         break;
       case CAMPFIRE:
         fill(col(-0.1));
@@ -167,11 +187,23 @@ function makeAtlasTexture(): THREE.CanvasTexture {
           else px(x, y, col(0.22 + (3 - d) * 0.1, 1, -0.05, 0.15, 0.2));
         }
         break;
+      case CHEST:
+        // wooden crate: planks, steel band across the lid, latch plate
+        fill(col(-0.02)); speckle(18, 0.07);
+        for (let x = 0; x < 16; x++) { px(x, 0, col(-0.28)); px(x, 7, col(-0.24)); px(x, 15, col(-0.3)); }
+        for (let x = 0; x < 16; x++) { px(x, 4, "rgba(148,154,166,1)"); px(x, 5, "rgba(120,126,138,1)"); }
+        for (let y = 2; y < 5; y++) for (const lx of [7, 8]) px(lx, y, "rgba(200,205,215,1)");
+        px(7, 6, "rgba(40,42,48,1)"); px(8, 6, "rgba(40,42,48,1)");
+        break;
     }
   };
   for (const id of TILE_LIST) draw(id);
+  atlasCv = cv;
+  return cv;
+}
 
-  const tex = new THREE.CanvasTexture(cv);
+function makeAtlasTexture(): THREE.CanvasTexture {
+  const tex = new THREE.CanvasTexture(getAtlasCanvas());
   tex.flipY = false; // mesher computes v from canvas top-left; default flip would sample blank rows
   tex.magFilter = tex.minFilter = THREE.NearestFilter;
   tex.generateMipmaps = false;
@@ -181,11 +213,7 @@ function makeAtlasTexture(): THREE.CanvasTexture {
 
 // block id -> tile index (exported so item icons can sample the same atlas)
 export const TILE: number[] = [];
-{
-  const list = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, GLASS, INSGLASS,
-    HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, DOOR_OPEN, ENGINECORE, REGULATOR];
-  list.forEach((id, i) => (TILE[id] = i));
-}
+TILE_LIST.forEach((id, i) => (TILE[id] = i));
 export const ATLAS_PX = ATLAS_COLS * TILE_PX;
 export const TILE_SRC = (id: number): [number, number] => {
   const t = TILE[id] ?? 0;
@@ -271,9 +299,12 @@ export class Renderer {
     this.chunkMeshes.clear();
   }
 
-  addPointLight(x: number, y: number, z: number, kind: "lamp" | "fire") {
+  addPointLight(x: number, y: number, z: number, kind: "lamp" | "fire" | "cool") {
     if (this.dynLights.length >= 12 || this.dynLights.some((d) => d.x === x && d.y === y && d.z === z)) return;
-    const light = new THREE.PointLight(kind === "lamp" ? 0xfff0b0 : 0xff8340, kind === "lamp" ? 0.9 : 1.1, kind === "lamp" ? 12 : 9, 1.3);
+    const light = new THREE.PointLight(
+      kind === "lamp" ? 0xfff0b0 : kind === "fire" ? 0xff8340 : 0x8fd8ff,
+      kind === "lamp" ? 0.9 : kind === "fire" ? 1.1 : 0.8,
+      kind === "lamp" ? 12 : kind === "fire" ? 9 : 10, 1.3);
     light.position.set(x + 0.5, y + 0.6, z + 0.5);
     this.scene.add(light);
     this.dynLights.push({ x, y, z, light, flame: kind === "fire" });
@@ -492,6 +523,34 @@ export class Renderer {
   }
   entityMesh(eid: number): THREE.Object3D | undefined {
     return this.entityGroup.children.find((ch) => ch.userData.eid === eid);
+  }
+
+  private nextEid = 1_000_000; // marker/beam ids never collide with entity ids
+
+  /** Vertical translucent beam rising from (x, y, z); used for waypoints and
+   *  the Surveyor's Visor. Returns an id accepted by removeEntityMesh. */
+  addBeam(x: number, y: number, z: number, color: number, height = 14): number {
+    const eid = this.nextEid++;
+    const m = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.28, height, 6, 1, true),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.4, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    m.position.set(x, y + height / 2, z);
+    m.userData.eid = eid;
+    this.entityGroup.add(m);
+    return eid;
+  }
+
+  /** Flat pulsing ring lying on the ground at (x, y+0.06, z). */
+  addGroundRing(x: number, y: number, z: number, color: number, radius = 1.1): number {
+    const eid = this.nextEid++;
+    const m = new THREE.Mesh(
+      new THREE.RingGeometry(radius * 0.55, radius, 24),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, y + 0.06, z);
+    m.userData.eid = eid;
+    this.entityGroup.add(m);
+    return eid;
   }
 
   render() { this.three.render(this.scene, this.camera); }

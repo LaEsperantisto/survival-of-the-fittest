@@ -3,7 +3,7 @@
 export const AIR = 0, SAND = 1, SANDSTONE = 2, ROCK = 3, GRAVEL = 4, DIRT = 5, SALT = 6,
   DEADWOOD = 7, GLASS = 8, INSGLASS = 9, HULL = 10, DOOR_CLOSED = 11, DOOR_OPEN = 12,
   LAMP = 13, METAL = 14, BEACON = 15, BENCH = 16, CAMPFIRE = 17, WATER = 18, ADOBE = 19,
-  DOOR_UPPER = 20, ENGINECORE = 21, REGULATOR = 22;
+  DOOR_UPPER = 20, ENGINECORE = 21, REGULATOR = 22, CHEST = 23, BENCH_EXT = 24;
 
 export type ToolType = "pickaxe" | "shovel" | "axe" | "disassembler";
 
@@ -57,6 +57,11 @@ export const BLOCKS: BlockDef[] = [
   // Heat Regulator: holds a sealed room at body-neutral temperature; 100 open cells
   // of capacity each, capacity stacks; see world.roomInfo.
   def({ id: REGULATOR, name: "Heat Regulator", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.35, 0.75, 0.8] }),
+  // Supply Chest: a real container block. Orthogonally linked chests merge inventories.
+  def({ id: CHEST, name: "Supply Chest", solid: true, opaque: true, transparent: false, emissive: false, R: 0.9, breakTime: 1.5, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.54, 0.43, 0.27] }),
+  // The Crafting Bench stands two blocks wide: BENCH is the working top, this the
+  // drawer-and-legs frame. Placed and broken as a pair with BENCH.
+  def({ id: BENCH_EXT, name: "Crafting Bench (frame)", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.0, tool: null, minTier: 0, placeable: false, color: [0.45, 0.36, 0.27] }),
 ];
 
 export const CH = 96;           // world height (Y)

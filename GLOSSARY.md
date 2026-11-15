@@ -83,8 +83,15 @@ _Avoid_: checkpoint, bed
 the container holding a dead player's items at the death spot. It accepts no new items and vanishes only when emptied.
 _Avoid_: grave, drop bag
 
+**Reward Cache**:
+the Crash Pod form a quest reward takes: a warning, a marker where it will land, then a container holding exactly that reward. It empties when claimed and is marked like every Cache.
+
 **Supply Chest**:
-A fixed container in the wreck's cockpit holding the first drinkable Water. Behaves like a Death Cache to open and empty, but holds its own goods, not the player's.
+A craftable container block owning an Inventory Grid of its own — 3×3 each. Chests placed face-to-face are Linked Chests and share one Grid. The wreck's cockpit holds one, stocked with the first drinkable Water. Unlike a Death Cache, it accepts and keeps the player's goods.
+_Avoid_: crate, locker
+
+**Linked Chests**:
+Chests touching face-to-face form one cluster with a single Grid: 3×3 per chest, growing sideways up to three wide, then taller — one extra row per further chest. Capacity is always 9 per chest. Breaking one chest shrinks the cluster; contents that no longer fit fall to the ground. The link is pure adjacency — break the chain and the grids split immediately, contents split with them (spilling when necessary).
 
 **World Export / Import**:
 A file format for a world, so the same world can be played on different devices.
@@ -136,6 +143,9 @@ The state of carrying above the Weight Limit (max +10%): incredibly slow, draini
 
 **Visor**:
 The player's HUD. Upgradeable to show more: heat fluctuations, marked points (the Ship, the player's Base).
+
+**Waypoint**:
+The HUD's guide to the active quest: a compass heading, a distance, and a marker at the target. A held Surveyor's Visor — a craftable Visor upgrade — additionally marks every Cache and Supply Chest through walls.
 
 **Water**:
 Exists as source blocks (Oasis pools, Bucket-placed). A placed source flows — spreading over terrain and draining — until it meets a new source or runs out. Bucket-carrying lifts exactly one source.

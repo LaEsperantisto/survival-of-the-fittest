@@ -9,12 +9,12 @@ const K_INDEX = "sotf:index", K_SET = "sotf:settings", K_BEST = "sotf:best";
 export interface Settings {
   sens: number; invertY: boolean; fov: number; renderDist: number;
   quality: "low" | "med" | "high"; volume: number; units: "C" | "F";
-  fullscreen: boolean;
+  fullscreen: boolean; music: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   sens: 1, invertY: false, fov: 70, renderDist: 6, quality: "med", volume: 0.67, units: "C",
-  fullscreen: false,
+  fullscreen: false, music: true,
 };
 
 export function getSettings(): Settings {
@@ -60,9 +60,10 @@ export interface RunSave {
   beaconMarks: { x: number; y: number; z: number }[];
   collected: number[];
   entities: { x: number; y: number; z: number; itemId: string; count: number }[];
-  pods?: { x: number; z: number; t: number; itemId: string; n: number }[];
+  pods?: { x: number; z: number; t: number; itemId: string; n: number; ringEid?: number; beamEid?: number }[];
   won?: boolean;
-  caches: { x: number; y: number; z: number; kind?: "death" | "chest"; items: { itemId: string; count: number }[] }[];
+  caches: { x: number; y: number; z: number; kind?: "death" | "chest" | "reward"; items: { itemId: string; count: number }[] }[];
+  chests?: { cells: string; slots: { itemId: string; count: number; x: number; y: number; rot?: boolean }[] }[];
   campfires: Record<string, number>;
   deltas: Record<string, number[]>;
 }

@@ -1,4 +1,4 @@
-import { Survival, BODY_MIN, BODY_MAX, SAFE_LO, SAFE_HI } from "./survival";
+import { Survival, BODY_MIN, BODY_MAX, SAFE_LO, SAFE_HI, HOT_LIMIT, COLD_LIMIT, WATER_LIMIT } from "./survival";
 import { DAY_SECONDS } from "./blocks";
 import { Inventory, ITEMS } from "./items";
 
@@ -25,7 +25,7 @@ export function setSubmerged(on: boolean) {
   $("vision-water").style.opacity = on ? "1" : "0";
 }
 
-/** safe-band markers, positioned once */
+/** safe-band markers, positioned once; plus small marks where Health starts draining */
 export function initBars() {
   const wSafe = document.querySelector("#bar-water .safe") as HTMLElement;
   wSafe.style.left = "25%"; wSafe.style.right = "0%";
@@ -33,6 +33,29 @@ export function initBars() {
   hSafe.style.left = ((SAFE_LO - BODY_MIN) / (BODY_MAX - BODY_MIN) * 100).toFixed(1) + "%";
   hSafe.style.right = ((BODY_MAX - SAFE_HI) / (BODY_MAX - BODY_MIN) * 100).toFixed(1) + "%";
   (document.querySelector("#bar-health .safe") as HTMLElement).style.display = "none";
+
+  const mark = (barId: string, pct: number, title: string) => {
+    const el = document.createElement("span");
+    el.className = "dmg"; el.style.left = pct.toFixed(1) + "%"; el.title = title;
+    document.getElementById(barId)!.appendChild(el);
+  };
+  mark("bar-water", WATER_LIMIT, "below this, dehydration drains Health");
+  const hp = (v: number) => (v - BODY_MIN) / (BODY_MAX - BODY_MIN) * 100;
+  mark("bar-heat", hp(COLD_LIMIT), "below this, hypothermia drains Health");
+  mark("bar-heat", hp(HOT_LIMIT), "above this, heat stroke drains Health");
+}
+
+/** Compass arrow + distance label pointing at the current quest waypoint. */
+export function updateWaypoint(name: string | null, wx = 0, wz = 0, px = 0, pz = 0, yaw = 0) {
+  const wp = document.getElementById("waypoint")!;
+  if (!name) { wp.classList.add("hidden"); return; }
+  const dx = wx - px, dz = wz - pz;
+  // world angle of the target vs the camera's facing (yaw=0 looks down -z)
+  const ang = Math.atan2(dx, -dz) + yaw;
+  $("wp-arrow").style.transform = `rotate(${ang * 180 / Math.PI}deg)`;
+  $("wp-name").textContent = name;
+  $("wp-dist").textContent = `${Math.round(Math.hypot(dx, dz))} m`;
+  wp.classList.remove("hidden");
 }
 
 export function updateHud(s: Survival, inv: Inventory, tSec: number, days: number, units: "C" | "F", now: number) {

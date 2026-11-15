@@ -1,6 +1,6 @@
 import {
   AIR, SAND, SANDSTONE, ROCK, GRAVEL, SALT, DEADWOOD, HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON,
-  WATER, ADOBE, INSGLASS, BENCH, ENGINECORE, CS, CH, REGULATOR,
+  WATER, ADOBE, INSGLASS, BENCH, BENCH_EXT, ENGINECORE, CS, CH, REGULATOR,
 } from "./blocks";
 import { fbm2, ridge2, value2, hash2, Rng } from "./noise";
 
@@ -170,8 +170,8 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
   set(-4, 31, -4, REGULATOR);
   // save room beacon
   set(-4, 31, -1, BEACON);
-  // crafting bench in the hall
-  set(0, 31, -3, BENCH);
+  // crafting bench in the hall — the bench is a two-block structure
+  set(0, 31, -3, BENCH); set(0, 31, -2, BENCH_EXT);
   // ceiling lamps, one per room
   for (const [lx, lz] of [[3, 0], [0, 0], [-4, 3], [-4, -3], [-5, 0]] as const) set(lx, Y1, lz, LAMP);
   // scattered metal salvage — kept clear of every doorway approach

@@ -59,8 +59,8 @@ export class World {
    * Regulator capacity stacks: each Heat Regulator bordering the region covers
    * REGULATOR_ROOM_MAX open cells.
    */
-  roomInfo(x: number, y: number, z: number, cap = 400): { size: number; sealed: boolean; regulators: number } {
-    if (this.get(x, y, z) !== AIR) return { size: 0, sealed: false, regulators: 0 };
+  roomInfo(x: number, y: number, z: number, cap = 400): { size: number; sealed: boolean; regulators: number; regCells: string[] } {
+    if (this.get(x, y, z) !== AIR) return { size: 0, sealed: false, regulators: 0, regCells: [] };
     const seen = new Set<string>([`${x},${y},${z}`]);
     const stack: [number, number, number][] = [[x, y, z]];
     const regs = new Set<string>();
@@ -78,7 +78,7 @@ export class World {
         } else if (id === REGULATOR) regs.add(nx + "," + ny + "," + nz);
       }
     }
-    return { size, sealed, regulators: regs.size };
+    return { size, sealed, regulators: regs.size, regCells: [...regs] };
   }
 
   set(x: number, y: number, z: number, id: number) {

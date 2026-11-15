@@ -1,6 +1,9 @@
 import { Game } from "./game";
-import { DAY_SECONDS } from "./blocks";
+import { DAY_SECONDS, BLOCKS } from "./blocks";
 import { Audio } from "./audio";
+import { ITEMS } from "./items";
+import { RECIPES, SMELT } from "./crafting";
+import { itemArtUrl, blockTileUrl } from "./icons";
 import {
   WorldMeta, RunSave, Settings, listWorlds, createWorld, loadRun, deleteWorld,
   getSettings, setSettings, bestScore, exportRun, importRun,
@@ -10,7 +13,7 @@ import * as hud from "./hud";
 const $ = (id: string) => document.getElementById(id)!;
 const $v = (id: string) => ($(id) as HTMLInputElement).value;
 const show = (id: string, on = true) => $(id).classList.toggle("hidden", !on);
-const SCREENS = ["screen-title", "screen-settings", "screen-instructions", "screen-pause", "screen-death", "screen-win", "ui-inventory", "ui-craft", "ui-cache"];
+const SCREENS = ["screen-title", "screen-settings", "screen-instructions", "screen-pause", "screen-death", "screen-win", "screen-catalog", "ui-inventory", "ui-craft", "ui-cache"];
 const hideAll = () => SCREENS.forEach((s) => show(s, false));
 
 const audio = new Audio();
@@ -59,6 +62,10 @@ function startGame(meta: WorldMeta, run: RunSave | null) {
   hideAll();
   show("cheats", false);
   $("hud").classList.remove("hidden");
+  // joining a world with Fullscreen on goes straight fullscreen — this click is
+  // the user gesture the browser requires; if it refuses, requestLock retries
+  if (settings.fullscreen && document.fullscreenEnabled && !document.fullscreenElement)
+    void document.documentElement.requestFullscreen().catch(() => {});
   // guest worlds are ephemeral: no save/export affordances
   $("btn-save").classList.toggle("hidden", meta.id.startsWith("guest"));
   $("btn-exportworld").classList.toggle("hidden", meta.id.startsWith("guest"));
@@ -84,6 +91,7 @@ function openOverlay(id: string) {
 function closeOverlays() {
   show("screen-settings", false);
   show("screen-instructions", false);
+  show("screen-catalog", false);
   if (game) {
     // closing any menu always closes the pause menu too
     show("ui-inventory", false);
@@ -123,6 +131,8 @@ function renderSettings() {
     (v) => { settings.invertY = v; commit(); });
   seg("Volume", [["Mute", 0], ["Low", 0.34], ["Medium", 0.67], ["High", 1]], settings.volume,
     (v) => { settings.volume = v; commit(); });
+  seg("Music", [["Off", false], ["On", true]], settings.music,
+    (v) => { settings.music = v; commit(); });
   seg("Field of view", [["60", 60], ["70", 70], ["80", 80], ["90", 90], ["100", 100]], settings.fov,
     (v) => { settings.fov = v; commit(); });
   seg("Render distance", [["Low", 4], ["Medium", 6], ["High", 8], ["Far", 10], ["Ultra", 12]], settings.renderDist,
@@ -151,18 +161,71 @@ function commit() {
   if (game) game.applySettings(settings);
 }
 
+// ---------- catalog ----------
+
+let catalogTab: "items" | "recipes" = "items";
+
+function renderCatalog() {
+  openOverlay("screen-catalog");
+  for (const t of Array.from($("catalog-tabs").querySelectorAll<HTMLButtonElement>(".tab")))
+    t.classList.toggle("active", t.dataset.tab === catalogTab);
+  const body = $("catalog-body");
+  body.innerHTML = "";
+  if (catalogTab === "items") {
+    const grid = document.createElement("div");
+    grid.className = "cat-grid";
+    const push = (art: string, name: string, meta: string, desc: string) => {
+      const card = document.createElement("div");
+      card.className = "cat-card";
+      const img = document.createElement("img");
+      img.src = art; img.alt = "";
+      const txt = document.createElement("div");
+      txt.innerHTML = `<b>${name}</b><div class="cat-meta">${meta}</div><div class="cat-desc">${desc}</div>`;
+      card.append(img, txt);
+      grid.append(card);
+    };
+    for (const it of Object.values(ITEMS).sort((a, b) => a.name.localeCompare(b.name)))
+      push(itemArtUrl(it.id), it.name, `${it.w}×${it.h} cell · ${it.mass} kg${it.block !== undefined ? " · placeable" : ""}`, it.desc);
+    for (const b of BLOCKS) {
+      if (b.id === 0 || b.name === "Air") continue;
+      const item = Object.values(ITEMS).find((i) => i.block === b.id);
+      const meta = `${b.placeable ? "placeable" : "world only"} · ${b.R > 0 ? `R ${b.R}` : "no insulation"}${b.emissive ? " · light source" : ""}`;
+      push(item ? itemArtUrl(item.id) : blockTileUrl(b.id), b.name, meta, item?.desc ?? "Found in the world; mine it to collect it." + (b.minTier > 0 ? ` Needs a tier-${b.minTier} ${b.tool ?? "tool"}.` : ""));
+    }
+    body.append(grid);
+  } else {
+    const row = (art: string, left: string, right: string, where: string) => {
+      const d = document.createElement("div");
+      d.className = "cat-recipe";
+      const img = document.createElement("img");
+      img.src = art; img.alt = ""; img.style.width = "36px"; img.style.height = "36px";
+      img.style.imageRendering = "pixelated";
+      d.append(img, Object.assign(document.createElement("span"), { innerHTML: `${left} <span class="arrow">→</span> <b>${right}</b> <span class="needs">(${where})</span>` }));
+      body.append(d);
+    };
+    for (const r of RECIPES) {
+      const needs = Object.entries(r.needs).map(([id, n]) => `${n}× ${ITEMS[id].name}`).join(" + ");
+      row(itemArtUrl(r.out), needs, `${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""}`, r.bench ? "Crafting Bench" : "hands");
+    }
+    for (const s of SMELT)
+      row(itemArtUrl(s.out), `1× ${ITEMS[s.in].name}`, ITEMS[s.out].name, "Campfire, 1 fuel charge");
+  }
+}
+for (const t of Array.from($("catalog-tabs").querySelectorAll<HTMLButtonElement>(".tab")))
+  t.onclick = () => { catalogTab = t.dataset.tab as "items" | "recipes"; renderCatalog(); };
+
 // ---------- instructions ----------
 
 const DESKTOP_KEYS: [string, string][] = [
   ["WASD", "move"], ["Shift", "sprint (sweats, costs water)"], ["Space", "jump one block"],
   ["Mouse", "look (click the world to capture the pointer)"], ["Left click, hold", "mine a block (right tool tier matters)"],
   ["Right click", "place the selected block"], ["E", "interact: doors, beacon save, bench, campfire, oasis / water-station refill, death caches"],
-  ["Q", "drink a full canister (+25 water)"], ["I", "inventory"], ["1-9 / mouse wheel", "select item"],
-  ["Esc", "close open menu, or pause"], ["F1", "this screen"],
+  ["Q", "drink a full canister (+25 water)"], ["X", "sweat surge: spend 15 water to force your body cool (needs 20+ water, 10 s cooldown)"], ["I", "inventory"], ["1-9 / mouse wheel", "select item"],
+  ["Esc", "close open menu, or pause"], ["P", "pause / resume"], ["F1", "this screen"],
 ];
 const MOBILE_KEYS: [string, string][] = [
   ["Left stick", "move"], ["Drag the right half of the screen", "look"],
-  ["JUMP / BREAK / PLACE / ACT / DRINK / ITEM / BAG", "buttons on the right"],
+  ["JUMP / BREAK / PLACE / ACT / DRINK / SURGE / ITEM / BAG", "buttons on the right"],
 ];
 
 function renderInstructions() {
@@ -212,6 +275,8 @@ $("btn-import").onclick = () => $("import-file").click();
 $("btn-settings").onclick = renderSettings;
 $("btn-pause-settings").onclick = renderSettings;
 $("btn-instructions").onclick = renderInstructions;
+$("btn-catalog").onclick = renderCatalog;
+$("btn-catalog-title").onclick = renderCatalog;
 
 for (const btn of document.querySelectorAll<HTMLButtonElement>(".close-btn"))
   btn.onclick = () => {
@@ -226,12 +291,29 @@ $("btn-save").onclick = () => hud.toast("Manual saves are not allowed — save a
 $("btn-exportworld").onclick = () => { if (game) game.exportWorld(); };
 $("btn-quit").onclick = () => toTitle();
 $("btn-cheats").onclick = () => show("cheats", $("cheats").classList.contains("hidden"));
-for (const b of Array.from($("cheats").querySelectorAll("button"))) {
-  (b as HTMLButtonElement).onclick = () => {
+const cheatItemSel = $("cheat-item") as HTMLSelectElement;
+for (const [id, def] of Object.entries(ITEMS).sort((a, b) => a[1].name.localeCompare(b[1].name))) {
+  const o = document.createElement("option");
+  o.value = id; o.textContent = def.name;
+  cheatItemSel.appendChild(o);
+}
+$("btn-cheat-add").onclick = () => {
+  if (!game) return;
+  const id = cheatItemSel.value;
+  if (game.inv.addItem(id, 1)) hud.toast("No room in your pack.");
+  else hud.toast(`Added ${ITEMS[id].name}.`);
+};
+for (const b of Array.from($("cheats").querySelectorAll<HTMLButtonElement>("button[data-speed], button[data-immortal], button[data-frac]"))) {
+  b.onclick = () => {
     if (!game) return;
     if (b.dataset.speed !== undefined) {
       game.speedMul = Number(b.dataset.speed);
       hud.toast(`Player speed ×${b.dataset.speed}.`);
+      return;
+    }
+    if (b.dataset.immortal !== undefined) {
+      game.survival.invincible = b.dataset.immortal === "1";
+      hud.toast(`Immortality ${game.survival.invincible ? "on" : "off"}.`);
       return;
     }
     const frac = Number(b.dataset.frac);

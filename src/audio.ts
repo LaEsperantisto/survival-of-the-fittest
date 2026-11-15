@@ -1,8 +1,16 @@
-// Procedural audio: wind bed + event SFX. No assets, no music.
+// Procedural audio: wind bed + generative ambient score + event SFX. No assets.
+
+const DAY_SCALE = [196.0, 220.0, 246.9, 293.7, 329.6, 392.0];        // G pentatonic-ish, bright
+const NIGHT_SCALE = [147.0, 164.8, 196.0, 220.0, 261.6, 293.7];      // D minor pentatonic, lonesome
 
 export class Audio {
   private ctx: AudioContext | null = null;
   private windGain: GainNode | null = null;
+  private musicGain: GainNode | null = null;
+  private droneOscs: OscillatorNode[] = [];
+  private musicTimer = 0;
+  private musicOn = true;
+  private isDay = true;
   volume = 0.7;
   private heartTimer = 0;
 
@@ -35,11 +43,83 @@ export class Audio {
       src.start();
     }
     if (this.ctx.state === "suspended") this.ctx.resume();
+    this.startMusic();
   }
 
   setVolume(v: number) {
     this.volume = v;
     if (this.windGain) this.windGain.gain.value = 0.12 * v;
+    if (this.ctx && this.musicGain)
+      this.musicGain.gain.setTargetAtTime((this.musicOn ? 0.09 : 0) * v, this.ctx.currentTime, 0.4);
+  }
+
+  /** On/off ambient score (Settings > Music). */
+  setMusic(on: boolean) {
+    this.musicOn = on;
+    if (this.ctx && this.musicGain)
+      this.musicGain.gain.setTargetAtTime((on ? 0.09 : 0) * this.volume, this.ctx.currentTime, 0.6);
+  }
+
+  /** Day/night signal from the game loop: retunes the drone. */
+  setDay(day: boolean) {
+    if (this.isDay === day) return;
+    this.isDay = day;
+    if (!this.ctx || !this.droneOscs.length) return;
+    const t = this.ctx.currentTime;
+    const roots = day ? [98, 147, 196] : [73.4, 110, 147];
+    this.droneOscs.forEach((o, i) => o.frequency.setTargetAtTime(roots[i], t, 5));
+  }
+
+  private startMusic() {
+    if (!this.ctx || this.musicGain) return;
+    const ctx = this.ctx;
+    this.musicGain = ctx.createGain();
+    this.musicGain.gain.value = this.musicOn ? 0.09 * this.volume : 0;
+    this.musicGain.connect(ctx.destination);
+    // feedback delay: sparse plucks ring out across the dunes
+    const delay = ctx.createDelay(1); delay.delayTime.value = 0.38;
+    const fb = ctx.createGain(); fb.gain.value = 0.35;
+    const wet = ctx.createGain(); wet.gain.value = 0.35;
+    this.musicGain.connect(delay); delay.connect(fb); fb.connect(delay); delay.connect(wet); wet.connect(ctx.destination);
+    const roots = this.isDay ? [98, 147, 196] : [73.4, 110, 147];
+    roots.forEach((f, i) => {
+      const o = ctx.createOscillator(); o.type = i === 2 ? "sine" : "triangle";
+      o.frequency.value = f; o.detune.value = i * 3 - 3;
+      const g = ctx.createGain(); g.gain.value = 0.03 / (i + 1);
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.05 + i * 0.017;
+      const lg = ctx.createGain(); lg.gain.value = 0.018;
+      lfo.connect(lg).connect(g.gain); lfo.start();
+      o.connect(g).connect(this.musicGain!);
+      o.start();
+      this.droneOscs.push(o);
+    });
+    this.musicTimer = window.setInterval(() => this.musicBar(), 2600);
+  }
+
+  // A slow, sparse random walk over a pentatonic scale: the score breathes with
+  // long silences, bright by day, lonesome at night.
+  private musicBar() {
+    if (!this.ctx || !this.musicGain || !this.musicOn) return;
+    if (Math.random() < 0.35) return;
+    const scale = this.isDay ? DAY_SCALE : NIGHT_SCALE;
+    const f = scale[Math.floor(Math.random() * scale.length)];
+    const t = this.ctx.currentTime + 0.05;
+    const o = this.ctx.createOscillator(); o.type = "sine"; o.frequency.value = f;
+    const o2 = this.ctx.createOscillator(); o2.type = "sine"; o2.frequency.value = f * 2.001;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.12, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
+    const g2 = this.ctx.createGain(); g2.gain.value = 0.25;
+    o.connect(g); o2.connect(g2); g2.connect(g);
+    g.connect(this.musicGain);
+    o.start(t); o.stop(t + 2); o2.start(t); o2.stop(t + 2);
+    if (Math.random() < 0.3) setTimeout(() => this.musicBar(), 900 + Math.random() * 900);
+  }
+
+  stopMusic() {
+    clearInterval(this.musicTimer);
+    this.musicTimer = 0;
   }
 
   private blip(freq: number, dur: number, type: OscillatorType, gain = 0.2, slide = 0) {
