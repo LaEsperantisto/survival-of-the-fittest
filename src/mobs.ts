@@ -2,7 +2,7 @@ import * as THREE from "three";
 
 // ---------------------------------------------------------------- definitions
 
-export type MobKind = "snake" | "rat";
+export type MobKind = "snake" | "rat" | "scorpion" | "wurm";
 
 export interface MobDef {
   kind: MobKind;
@@ -16,6 +16,7 @@ export interface MobDef {
   hitR: number;             // approximate body radius for hit tests
   height: number;           // visual overall height
   drops: { itemId: string; count: number }[];
+  dropChance?: number[];      // per-drop probability, aligned with drops (default 1)
 }
 
 export const MOB_DEFS: Record<MobKind, MobDef> = {
@@ -30,6 +31,20 @@ export const MOB_DEFS: Record<MobKind, MobDef> = {
     aggroR: 0, fleeR: 6, biteDmg: 0, biteCd: 0,
     hitR: 0.5, height: 0.5,
     drops: [{ itemId: "rat_raw", count: 1 }],
+  },
+  scorpion: {
+    kind: "scorpion", name: "Dust Scorpion", hp: 20, speed: 1.9,
+    aggroR: 3.5, fleeR: 0, biteDmg: 7, biteCd: 2.2,
+    hitR: 0.6, height: 0.5,
+    drops: [{ itemId: "chitin", count: 1 }, { itemId: "stinger", count: 1 }],
+    dropChance: [1, 0.3],
+  },
+  wurm: {
+    kind: "wurm", name: "Sand Wurm", hp: 45, speed: 1.0,
+    aggroR: 7, fleeR: 0, biteDmg: 12, biteCd: 2.5,
+    hitR: 0.8, height: 0.9,
+    drops: [{ itemId: "wurm_hide", count: 2 }, { itemId: "chitin", count: 1 }],
+    dropChance: [1, 0.5],
   },
 };
 
@@ -124,13 +139,71 @@ function ratTex(): THREE.CanvasTexture {
   });
 }
 
-// ---------------------------------------------------------------- materials
+/** Scorpion chitin: sandy-red base, dark plate seams across the back, pale underside. */
+function scorpionTex(): THREE.CanvasTexture {
+  return canvasTex((g, rnd) => {
+    g.fillStyle = "#a4552e";
+    g.fillRect(0, 0, 64, 64);
+    // grain speckle
+    for (let i = 0; i < 520; i++) {
+      g.fillStyle = rnd() > 0.5 ? "#b56a3c" : "#8f4526";
+      g.fillRect((rnd() * 64) | 0, (rnd() * 64) | 0, 1, 1);
+    }
+    // plate seams: dark horizontal bands with a lighter lip
+    for (const y of [6, 18, 30, 42]) {
+      g.fillStyle = "#6e3018";
+      g.fillRect(0, y, 64, 2);
+      g.fillStyle = "#c47a4a";
+      g.fillRect(0, y + 2, 64, 1);
+    }
+    // center ridge column
+    g.fillStyle = "#8a3f20";
+    g.fillRect(30, 0, 4, 50);
+    for (let i = 0; i < 40; i++) {
+      g.fillStyle = "#b56a3c";
+      g.fillRect(30 + ((rnd() * 4) | 0), ((rnd() * 50) | 0), 1, 1);
+    }
+    // pale underside (bottom rows; flipY makes v=0 the canvas bottom)
+    for (let y = 52; y < 64; y++) {
+      g.fillStyle = y >= 56 ? "#e3cfa8" : "#c9ae83";
+      g.fillRect(0, y, 64, 1);
+    }
+  });
+}
+
+/** Wurm hide: sand-yellow base, darker plate ridges, coarse mottling. */
+function wurmTex(): THREE.CanvasTexture {
+  return canvasTex((g, rnd) => {
+    g.fillStyle = "#c2a266";
+    g.fillRect(0, 0, 64, 64);
+    for (let i = 0; i < 620; i++) {
+      g.fillStyle = rnd() > 0.5 ? "#d3b77e" : "#ab8a52";
+      g.fillRect((rnd() * 64) | 0, (rnd() * 64) | 0, 1, 1);
+    }
+    // plate ridges: dark band pairs with scale notches
+    for (const y of [5, 17, 29, 41]) {
+      g.fillStyle = "#7d5f36";
+      g.fillRect(0, y, 64, 3);
+      g.fillStyle = "#96744499";
+      for (let x = 0; x < 64; x += 4) g.fillRect(x, y + 3, 2, 1);
+    }
+    // pale belly (bottom rows; flipY makes v=0 the canvas bottom)
+    for (let y = 54; y < 64; y++) {
+      g.fillStyle = y >= 58 ? "#e6d6ac" : "#d2bf94";
+      g.fillRect(0, y, 64, 1);
+    }
+  });
+}
 
 interface SnakeMats { body: THREE.MeshLambertMaterial; ridge: THREE.MeshLambertMaterial; eye: THREE.MeshLambertMaterial; }
 interface RatMats { fur: THREE.MeshLambertMaterial; pale: THREE.MeshLambertMaterial; dark: THREE.MeshLambertMaterial; pink: THREE.MeshLambertMaterial; }
+interface ScorpionMats { shell: THREE.MeshLambertMaterial; claw: THREE.MeshLambertMaterial; stinger: THREE.MeshLambertMaterial; eye: THREE.MeshLambertMaterial; }
+interface WurmMats { hide: THREE.MeshLambertMaterial; ridge: THREE.MeshLambertMaterial; eye: THREE.MeshLambertMaterial; }
 
 let snakeMats: SnakeMats | null = null;
 let ratMats: RatMats | null = null;
+let scorpionMats: ScorpionMats | null = null;
+let wurmMats: WurmMats | null = null;
 
 function getSnakeMats(): SnakeMats {
   if (!snakeMats) {
@@ -153,6 +226,29 @@ function getRatMats(): RatMats {
     };
   }
   return ratMats;
+}
+
+function getScorpionMats(): ScorpionMats {
+  if (!scorpionMats) {
+    scorpionMats = {
+      shell: new THREE.MeshLambertMaterial({ map: scorpionTex() }),
+      claw: new THREE.MeshLambertMaterial({ color: 0x7e3a1e }),
+      stinger: new THREE.MeshLambertMaterial({ color: 0x552411 }),
+      eye: new THREE.MeshLambertMaterial({ color: 0x16100a }),
+    };
+  }
+  return scorpionMats;
+}
+
+function getWurmMats(): WurmMats {
+  if (!wurmMats) {
+    wurmMats = {
+      hide: new THREE.MeshLambertMaterial({ map: wurmTex() }),
+      ridge: new THREE.MeshLambertMaterial({ color: 0x7d5f36 }),
+      eye: new THREE.MeshLambertMaterial({ color: 0x16100a }),
+    };
+  }
+  return wurmMats;
 }
 
 // ---------------------------------------------------------------- visuals
@@ -289,6 +385,179 @@ function makeRat(): MobVisual {
   return { group, animate };
 }
 
+// one unit sphere reused by rounded mob parts; shapes come from mesh.scale
+const SPHERE = new THREE.SphereGeometry(1, 14, 10);
+
+function sph(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
+  const m = new THREE.Mesh(SPHERE, mat);
+  m.scale.set(w, h, d);
+  m.position.set(x, y, z);
+  return m;
+}
+
+// dust scorpion: ~1.1 m body, ~0.5 m tall with raised tail; faces +Z (head at +Z)
+function makeScorpion(): MobVisual {
+  const mats = getScorpionMats();
+  const group = new THREE.Group();
+  const pivot = new THREE.Group(); // subtle walk bob
+  group.add(pivot);
+
+  const legH = 0.09;
+
+  // flattened segmented body: prosoma + 3 abdominal plates
+  const prosoma = box(0.46, 0.14, 0.34, mats.shell, 0, legH + 0.07, 0.02);
+  pivot.add(prosoma);
+  const segs: Seg[] = [];
+  const zs = [-0.26, -0.45, -0.62];
+  const ws = [0.40, 0.34, 0.26];
+  const hs = [0.13, 0.12, 0.10];
+  for (let i = 0; i < zs.length; i++) {
+    const m = box(ws[i], hs[i], 0.20, mats.shell, 0, legH + hs[i] / 2, zs[i]);
+    segs.push({ mesh: m, bx: 0, w: ws[i], h: hs[i], d: 0.20 });
+    pivot.add(m);
+  }
+
+  // small head plate + eyes at the front
+  const headRoot = new THREE.Group();
+  headRoot.position.set(0, legH + 0.045, 0.25);
+  headRoot.add(box(0.26, 0.09, 0.13, mats.shell, 0, 0, 0));
+  headRoot.add(box(0.03, 0.03, 0.02, mats.eye, -0.08, 0.05, 0.05));
+  headRoot.add(box(0.03, 0.03, 0.02, mats.eye, 0.08, 0.05, 0.05));
+  pivot.add(headRoot);
+
+  // clawed pedipalps: arm + two-jaw pincer, reach forward-outward
+  const jaws: { up: THREE.Mesh; dn: THREE.Mesh }[] = [];
+  const pedipalps: THREE.Group[] = [];
+  for (const side of [-1, 1]) {
+    const root = new THREE.Group();
+    root.position.set(side * 0.24, legH + 0.04, 0.14);
+    root.rotation.y = side * 0.5;
+    root.add(box(0.075, 0.055, 0.2, mats.shell, 0, 0, 0.10));
+    root.add(box(0.07, 0.05, 0.1, mats.claw, 0, 0, 0.24));
+    const up = box(0.025, 0.022, 0.13, mats.claw, 0, 0.026, 0.33);
+    const dn = box(0.025, 0.022, 0.13, mats.claw, 0, -0.026, 0.33);
+    root.add(up, dn);
+    jaws.push({ up, dn });
+    pedipalps.push(root);
+    pivot.add(root);
+  }
+
+  // eight legs: slanted rods, 4 pairs
+  const legs: THREE.Mesh[] = [];
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 4; i++) {
+      const leg = box(0.03, 0.11, 0.03, mats.shell, side * 0.30, legH * 0.5, 0.12 - i * 0.14);
+      leg.rotation.z = -side * 0.55;
+      legs.push(leg);
+      pivot.add(leg);
+    }
+  }
+
+  // upcurved 3-segment tail ending in a bulbous stinger (nested groups curve it up)
+  const tail1 = new THREE.Group();
+  tail1.position.set(0, legH + 0.10, -0.70);
+  tail1.rotation.x = 0.5;
+  tail1.add(box(0.16, 0.16, 0.22, mats.shell, 0, 0, -0.11));
+  const tail2 = new THREE.Group();
+  tail2.position.set(0, 0.04, -0.22);
+  tail2.rotation.x = 0.7;
+  tail2.add(box(0.13, 0.13, 0.18, mats.shell, 0, 0, -0.09));
+  const tail3 = new THREE.Group();
+  tail3.position.set(0, 0.03, -0.18);
+  tail3.rotation.x = 0.8;
+  tail3.add(box(0.10, 0.10, 0.15, mats.shell, 0, 0, -0.075));
+  const bulb = sph(0.22, 0.20, 0.24, mats.stinger, 0, 0.06, -0.22);
+  const barb = box(0.035, 0.035, 0.13, mats.stinger, 0, 0.16, -0.30);
+  barb.rotation.x = 0.5;
+  tail3.add(bulb, barb);
+  tail2.add(tail3);
+  tail1.add(tail2);
+  pivot.add(tail1);
+
+  const animate = (t: number, moving: number): void => {
+    const mv = Math.max(0, Math.min(1, moving));
+    pivot.position.y = Math.abs(Math.sin(t * (5.5 + 5 * mv))) * 0.012 * mv;
+    // legs scuttle in alternating pairs
+    const lp = t * (6 + 6 * mv);
+    for (let i = 0; i < legs.length; i++) {
+      const pair = i % 4, side = i < 4 ? 0 : Math.PI;
+      legs[i].rotation.x = Math.sin(lp + pair * 1.7 + side) * 0.5 * mv;
+    }
+    // abdomen breathes
+    const br = 1 + Math.sin(t * 1.6) * 0.03 * (1 - mv * 0.5);
+    for (const s of segs) s.mesh.scale.set(s.w * br, s.h, s.d);
+    // pedipalps sway forward when moving; pincers snap open/closed
+    for (let i = 0; i < 2; i++) {
+      const r = pedipalps[i], j = jaws[i];
+      r.rotation.z = Math.sin(lp + i * Math.PI) * 0.25 * mv;
+      const open = 0.06 + Math.abs(Math.sin(t * (1.4 + 1.6 * mv) + i * 1.3)) * (0.08 + 0.14 * mv);
+      j.up.rotation.x = -open;
+      j.dn.rotation.x = open;
+    }
+    // tail sweeps slowly, higher when agitated/moving
+    const sway = 0.06 + 0.14 * mv;
+    tail1.rotation.y = Math.sin(t * (1.1 + 1.4 * mv)) * sway;
+    tail3.rotation.x = 0.8 + Math.sin(t * 1.7) * 0.08;
+    headRoot.rotation.y = Math.sin(t * 1.5) * 0.05 * (1 - mv * 0.5);
+  };
+  return { group, animate };
+}
+
+// sand wurm: ~2.4 m long plated worm, ~0.9 m tall; faces +Z (head at +Z), sits on the ground
+function makeWurm(): MobVisual {
+  const mats = getWurmMats();
+  const group = new THREE.Group();
+
+  // body: separate plated sphere segments (tail -> neck) so they can wiggle
+  const segs: Seg[] = [];
+  const ridges: Ridge[] = [];
+  const zs = [-0.95, -0.45, 0.10, 0.62];
+  const ws = [0.34, 0.40, 0.44, 0.42];
+  const hs = [0.30, 0.37, 0.42, 0.40];
+  const d  = [0.40, 0.45, 0.48, 0.45];
+  for (let i = 0; i < zs.length; i++) {
+    const y = hs[i] + 0.01; // resting on the ground
+    const m = sph(ws[i] * 2, hs[i] * 2, d[i] * 2, mats.hide, 0, y, zs[i]);
+    segs.push({ mesh: m, bx: 0, w: ws[i] * 2, h: hs[i] * 2, d: d[i] * 2 });
+    ridges.push({ mesh: box(ws[i], 0.06, d[i] * 0.8, mats.ridge, 0, y + hs[i] - 0.04, zs[i]), w: ws[i] });
+    group.add(m, ridges[i].mesh);
+  }
+
+  // blunt head with small dark eyes; sways independently
+  const headRoot = new THREE.Group();
+  headRoot.position.set(0, 0.36, 1.15);
+  headRoot.add(sph(0.72, 0.68, 0.76, mats.hide, 0, 0, 0));
+  headRoot.add(box(0.05, 0.05, 0.04, mats.eye, -0.19, 0.12, 0.26));
+  headRoot.add(box(0.05, 0.05, 0.04, mats.eye, 0.19, 0.12, 0.26));
+  group.add(headRoot);
+
+  const animate = (t: number, moving: number): void => {
+    const mv = Math.max(0, Math.min(1, moving));
+    const amp = 0.02 + 0.11 * mv;
+    const ph = t * (1.5 + 1.5 * mv);
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
+      const wob = Math.sin(ph - i * 0.8) * amp;
+      s.mesh.position.x = s.bx + wob;
+      s.mesh.rotation.y = -wob * 1.1;
+      const br = 1 + Math.sin(t * 1.1 - i * 0.6) * 0.03;
+      s.mesh.scale.set(s.w * br, s.h, s.d * br);
+      const r = ridges[i];
+      r.mesh.position.x = s.mesh.position.x;
+      r.mesh.rotation.y = s.mesh.rotation.y;
+      r.mesh.scale.x = r.w * br;
+    }
+    headRoot.position.x = Math.sin(ph + 0.8) * amp * 0.7;
+    headRoot.rotation.y = Math.sin(t * (1.2 + 1.4 * mv)) * (0.07 + 0.13 * mv);
+  };
+  return { group, animate };
+}
+
 export function makeMobMesh(kind: MobKind): MobVisual {
-  return kind === "snake" ? makeSnake() : makeRat();
+  switch (kind) {
+    case "snake": return makeSnake();
+    case "rat": return makeRat();
+    case "scorpion": return makeScorpion();
+    case "wurm": return makeWurm();
+  }
 }

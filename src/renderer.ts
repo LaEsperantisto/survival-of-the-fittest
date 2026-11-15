@@ -5,6 +5,7 @@ import {
   WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING,
+  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT,
   isSolid, isWater, waterStrength,
 } from "./blocks";
 import { World, ckey, faceVisible } from "./world";
@@ -26,6 +27,75 @@ const FACES: { dir: [number, number, number]; corners: number[][]; shade: number
   { dir: [0, 0, -1], corners: [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]], shade: 0.65, uv: [0, 1] },
 ];
 
+// ---------------- non-cube hull shapes ----------------
+// World storage has no rotation metadata, so these shapes are orientation-
+// independent: CURVED_HULL chamfers its four vertical edges (the ship's rounded
+// hull), HULL_SLOPE its four top edges. Axis faces cull against solid
+// neighbours exactly like plain cubes; the 45° chamfer facets are always
+// drawn. UVs are planar projections mirroring the cube face each one replaces,
+// so every face keeps sampling the HULL plating tile.
+
+const CHAMFER = 0.28;
+interface ShapeFace {
+  /** outward normal; axis faces cull on it, chamfers sample light on it */
+  dir: [number, number, number];
+  /** tile slot in FACE_T: 0 top, 1 bottom, 2 side (chamfers borrow the side) */
+  kind: 0 | 1 | 2;
+  /** convex ring, fan-triangulated, wound so the normal matches dir */
+  pts: [number, number, number][];
+  sh: number;
+  uv: (p: [number, number, number]) => [number, number];
+}
+
+function shapeFace(dir: [number, number, number], kind: 0 | 1 | 2, sh: number,
+  pts: [number, number, number][], uv: (p: [number, number, number]) => [number, number]): ShapeFace {
+  // flip the ring if it was written in the wrong winding
+  const a = pts[1].map((v, i) => v - pts[0][i]);
+  const b = pts[2].map((v, i) => v - pts[0][i]);
+  const nx = a[1] * b[2] - a[2] * b[1], ny = a[2] * b[0] - a[0] * b[2], nz = a[0] * b[1] - a[1] * b[0];
+  if (nx * dir[0] + ny * dir[1] + nz * dir[2] < 0) pts.reverse();
+  return { dir, kind, pts, sh, uv };
+}
+
+const HULL_SHAPES: Record<number, ShapeFace[]> = (() => {
+  const c = CHAMFER, k = 1 - c; // k: inner chamfer coordinate
+  const uvXZ = (p: [number, number, number]) => [p[0], p[2]] as [number, number];
+  const uvXY = (p: [number, number, number]) => [p[0], p[1]] as [number, number];
+  const uvZY = (p: [number, number, number]) => [p[2], p[1]] as [number, number];
+  // 45° facets: u continues roughly the strip of one adjacent face's planar u
+  const uvChamDiag = (p: [number, number, number]) => [(p[2] - p[0]) / 2 + 0.5, p[1]] as [number, number];
+  const uvChamAnti = (p: [number, number, number]) => [(p[0] + p[2]) / 2, p[1]] as [number, number];
+  const oct: [number, number][] = [[c, 0], [k, 0], [1, c], [1, k], [k, 1], [c, 1], [0, k], [0, c]];
+  const curved: ShapeFace[] = [
+    shapeFace([0, 1, 0], 0, 1.0, oct.map(([px, pz]) => [px, 1, pz]), uvXZ),
+    shapeFace([0, -1, 0], 1, 0.45, oct.map(([px, pz]) => [px, 0, pz]), uvXZ),
+    shapeFace([1, 0, 0], 2, 0.8, [[1, 0, c], [1, 0, k], [1, 1, k], [1, 1, c]], uvZY),
+    shapeFace([-1, 0, 0], 2, 0.7, [[0, 0, k], [0, 1, k], [0, 1, c], [0, 0, c]], uvZY),
+    shapeFace([0, 0, 1], 2, 0.85, [[c, 0, 1], [k, 0, 1], [k, 1, 1], [c, 1, 1]], uvXY),
+    shapeFace([0, 0, -1], 2, 0.65, [[c, 0, 0], [c, 1, 0], [k, 1, 0], [k, 0, 0]], uvXY),
+    // vertical chamfers; shade = mean of the two adjacent face shades
+    shapeFace([-1, 0, -1], 2, 0.675, [[c, 0, 0], [c, 1, 0], [0, 1, c], [0, 0, c]], uvChamDiag),
+    shapeFace([1, 0, -1], 2, 0.725, [[k, 0, 0], [k, 1, 0], [1, 1, c], [1, 0, c]], uvChamAnti),
+    shapeFace([1, 0, 1], 2, 0.825, [[1, 0, k], [1, 1, k], [k, 1, 1], [k, 0, 1]], uvChamDiag),
+    shapeFace([-1, 0, 1], 2, 0.775, [[0, 0, k], [0, 1, k], [c, 1, 1], [c, 0, 1]], uvChamAnti),
+  ];
+  const slope: ShapeFace[] = [
+    shapeFace([0, 1, 0], 0, 1.0, [[c, 1, c], [c, 1, k], [k, 1, k], [k, 1, c]], uvXZ),
+    shapeFace([0, -1, 0], 1, 0.45, [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]], uvXZ),
+    shapeFace([1, 0, 0], 2, 0.8, [[1, 0, 0], [1, 0, 1], [1, k, 1], [1, k, 0]], uvZY),
+    shapeFace([-1, 0, 0], 2, 0.7, [[0, 0, 0], [0, k, 0], [0, k, 1], [0, 0, 1]], uvZY),
+    shapeFace([0, 0, 1], 2, 0.85, [[0, 0, 1], [1, 0, 1], [1, k, 1], [0, k, 1]], uvXY),
+    shapeFace([0, 0, -1], 2, 0.65, [[0, 0, 0], [0, k, 0], [1, k, 0], [1, 0, 0]], uvXY),
+    // top-edge chamfers; u continues the side face below, v = y keeps them
+    // seamless against that side's tile band
+    shapeFace([0, 1, -1], 2, 0.825, [[0, k, 0], [1, k, 0], [1, 1, c], [0, 1, c]], uvXY),
+    shapeFace([0, 1, 1], 2, 0.925, [[1, k, 1], [0, k, 1], [0, 1, c], [1, 1, c]], uvXY),
+    shapeFace([-1, 1, 0], 2, 0.85, [[0, k, 1], [0, k, 0], [0, 1, c], [0, 1, k]], uvZY),
+    shapeFace([1, 1, 0], 2, 0.9, [[1, k, 0], [1, k, 1], [1, 1, k], [1, 1, c]], uvZY),
+  ];
+  return { [CURVED_HULL]: curved, [HULL_SLOPE]: slope };
+})();
+
 // ---------------- procedural texture atlas ----------------
 // One 16x16 tile per face kind, drawn on a 256x256 canvas at load: a base tile
 // per block id (also sampled by the item icons) plus variant tiles for faces
@@ -40,7 +110,8 @@ export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, G
   HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, DOOR_OPEN, ENGINECORE, REGULATOR, CHEST, BENCH_EXT, CACTUS,
   WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
-  DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING];
+  DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING,
+  IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT];
 
 // extra face tiles, appended after the base tiles; each recipe is shaded with
 // the named block's base colour
@@ -125,6 +196,15 @@ export function getAtlasCanvas(): HTMLCanvasElement {
     for (const k of offs) for (let i = 0; i < 16; i++) {
       const y = i - k;
       if (y >= 0 && y < 16) px(i, y, col(dl, alpha));
+    }
+  };
+  // one metal/crystal grain set in host rock: dark rim, top-left glint,
+  // tinted by (hr,hg,hb) so ores read as their mineral, not the matrix
+  const grain = (cx: number, cy: number, r: number, hr: number, hg: number, hb: number) => {
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const d = Math.hypot(dx, dy);
+      if (d > r + 0.3) continue;
+      px(cx + dx, cy + dy, col(d > r - 0.5 ? -0.22 : dx + dy < 0 ? 0.24 : 0.04, 1, hr, hg, hb));
     }
   };
 
@@ -617,6 +697,87 @@ export function getAtlasCanvas(): HTMLCanvasElement {
     px(8, 2, col(0.1));
     px(6, 5, col(0.02)); px(10, 5, col(0.02));                                                             // side leaves
   });
+  R(String(IRON_ORE), () => {
+    fbmFill((x, y, n) => n * 0.1 - 0.02);                                                                 // rock matrix
+    crack(11, 0.06, -0.14); crack(7, 0.06, -0.18);
+    for (let i = 0; i < 5; i++) grain(rng.int(3, 12), rng.int(3, 12), rng.int(1, 2), -0.06, -0.05, 0.04); // grey metal bands
+    speckle(12, 0.1);
+  });
+  R(String(COPPER_ORE), () => {
+    fbmFill((x, y, n) => n * 0.1 - 0.04);
+    crack(9, 0.06, -0.14);
+    for (let i = 0; i < 3; i++) grain(rng.int(3, 12), rng.int(3, 12), rng.int(1, 2), 0.26, 0.04, -0.18);  // native copper
+    for (let i = 0; i < 2; i++) grain(rng.int(4, 11), rng.int(4, 11), 1, -0.12, 0.16, 0.0);               // green patina
+    speckle(10, 0.08);
+  });
+  R(String(COBALT_ORE), () => {
+    fbmFill((x, y, n) => n * 0.07 - 0.24);                                                                // dark host stone
+    crack(10, 0.04, -0.08);
+    for (let i = 0; i < 4; i++) {                                                                         // angular blue crystals
+      const cx = rng.int(4, 11), cy = rng.int(4, 11), s = rng.int(2, 3);
+      for (let dy = -s; dy <= s; dy++) {
+        const w = s - Math.abs(dy);
+        for (let dx = -w; dx <= w; dx++) {
+          const spread = Math.abs(dx) + Math.abs(dy);
+          px(cx + dx, cy + dy, col(spread === s ? -0.16 : spread === 0 ? 0.4 : 0.16, 1, -0.16, -0.06, 0.3));
+        }
+      }
+    }
+  });
+  R(String(ALABASTER), () => {
+    const n = fbm();
+    for (let y = 0; y < 16; y++) {                                                                        // pale drifting strata
+      const band = Math.floor(((y + n[y * 16 + 8] * 2 + 16) % 16) / 4);
+      const tone = [-0.02, 0.05, -0.06, 0.02][band % 4];
+      for (let x = 0; x < 16; x++) px(x, y, col(tone + n[y * 16 + x] * 0.03 + (y % 4 === 0 ? -0.06 : 0)));
+    }
+    for (let i = 0; i < 3; i++) crack(rng.int(6, 10), 0.02, 0.06);                                        // calcite veins
+    speckle(10, 0.05);
+  });
+  // shared plate shell for both thruster variants: dark welded plates, rivets,
+  // rust bleeding down the seams
+  const thrusterShell = (n: number[]) => {
+    for (let x = 0; x < 16; x++) { px(x, 0, col(-0.22)); px(x, 15, col(-0.22)); }
+    for (const sx of [0, 8]) for (let y = 1; y < 15; y++) {
+      if (n[y * 16 + sx] > -0.2) px(sx, y, col(-0.16));                                                   // weld seams
+      if (sx && (y === 3 || y === 7 || y === 11)) px(sx, y, col(0.2));                                    // rivets
+    }
+    for (let i = 0; i < 4; i++) {                                                                         // rust streaks
+      const rx = rng.int(1, 14), y0 = rng.int(1, 5), len = rng.int(4, 8);
+      for (let y = y0; y < Math.min(15, y0 + len); y++)
+        if (rng.next() > 0.25) px(rx, y, col(-0.06 + nz(0.04), 1, 0.3, 0.05, -0.22));
+    }
+    for (let i = 0; i < 8; i++) px(rng.int(1, 14), rng.int(1, 14), col(-0.05));                            // dents
+  };
+  R(String(THRUSTER), () => {
+    const n = fbmFill((x, y, nn) => nn * 0.04 - 0.1 + (x % 8 === 0 ? -0.05 : 0));                          // dark plating
+    thrusterShell(n);
+    for (let i = 0; i < 30; i++) {                                                                        // big nozzle ring
+      const a = (i / 30) * Math.PI * 2;
+      px(8 + Math.round(Math.cos(a) * 6), 8 + Math.round(Math.sin(a) * 6), col(0.16));
+      px(8 + Math.round(Math.cos(a) * 5), 8 + Math.round(Math.sin(a) * 5), col(-0.26));
+    }
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {                                   // cold throat
+      if (Math.hypot(dx, dy) > 4.2) continue;
+      px(8 + dx, 8 + dy, col(-0.34 + n[(8 + dy) * 16 + 8 + dx] * 0.06));
+    }
+  });
+  R(String(THRUSTER_LIT), () => {
+    const n = fbmFill((x, y, nn) => nn * 0.04 - 0.08 + (x % 8 === 0 ? -0.05 : 0));
+    thrusterShell(n);
+    for (let i = 0; i < 30; i++) {                                                                        // red-hot ring lip
+      const a = (i / 30) * Math.PI * 2;
+      px(8 + Math.round(Math.cos(a) * 6), 8 + Math.round(Math.sin(a) * 6), col(0.2));
+      px(8 + Math.round(Math.cos(a) * 5), 8 + Math.round(Math.sin(a) * 5), col(-0.1, 1, 0.35, 0.05, -0.3));
+    }
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {                                   // ember flame throat
+      const d = Math.hypot(dx, dy);
+      if (d > 4.2) continue;
+      px(8 + dx, 8 + dy, col(0.35 - d * 0.08 + n[(8 + dy) * 16 + 8 + dx] * 0.08, 1, 0.55 - d * 0.05, 0.12 - d * 0.04, -0.45));
+    }
+    for (const [sx, sy] of [[3, 2], [12, 4], [5, 13], [11, 12]] as const)                                 // stray sparks
+      px(sx, sy, col(0.4, 1, 0.5, 0.1, -0.35));
+  });
 
   // paint every registered tile into its slot
   const paint = (key: string, t: number, rgb: readonly number[]) => {
@@ -644,6 +805,10 @@ function makeAtlasTexture(): THREE.CanvasTexture {
 // block id -> tile index (exported so item icons can sample the same atlas)
 export const TILE: number[] = [];
 TILE_LIST.forEach((id, i) => (TILE[id] = i));
+// the chamfered hull shapes draw with the plain HULL plating, so they share
+// its tile; icons sample the same sheet
+TILE[CURVED_HULL] = TILE[HULL];
+TILE[HULL_SLOPE] = TILE[HULL];
 export const ATLAS_PX = ATLAS_COLS * TILE_PX;
 export const TILE_SRC = (id: number): [number, number] => {
   const t = TILE[id] ?? 0;
@@ -662,6 +827,10 @@ setFaces(WOOD, VI.wood_top, VI.wood_top, TILE[WOOD]);
 setFaces(FARMLAND, TILE[FARMLAND], TILE[DIRT], VI.farmland_side);
 setFaces(SANDSTONE, VI.sandstone_top, TILE[SANDSTONE], TILE[SANDSTONE]);
 setFaces(HULL, VI.hull_top, TILE[HULL], TILE[HULL]);
+// hull shapes pick their FACE_T slot by kind in emitShape; chamfer facets use
+// the side tile, the top octagon/square the sun-bleached hull top
+setFaces(CURVED_HULL, VI.hull_top, TILE[HULL], TILE[HULL]);
+setFaces(HULL_SLOPE, VI.hull_top, TILE[HULL], TILE[HULL]);
 setFaces(BED, TILE[BED], TILE[BED], VI.bed_side);
 setFaces(BED_EXT, TILE[BED_EXT], TILE[BED_EXT], VI.bed_side);
 setFaces(CHEST, VI.chest_top, TILE[CHEST], TILE[CHEST]);
@@ -796,6 +965,8 @@ export class Renderer {
   });
 
   torch: THREE.PointLight;
+  /** Head Lantern light: shown at the player's head while a lantern is on */
+  private playerLight: THREE.PointLight;
   private dynLights: { x: number; y: number; z: number; light: THREE.PointLight; flame: boolean }[] = [];
 
   constructor(canvasParent: HTMLElement) {
@@ -809,6 +980,10 @@ export class Renderer {
     this.torch = new THREE.PointLight(0xffd2a0, 0.4, 17, 1.4);
     this.torch.position.set(0.25, -0.15, 0.1);
     this.camera.add(this.torch);
+    // head lantern: a world-space warm light toggled by setPlayerLight
+    this.playerLight = new THREE.PointLight(0xffd76a, 1.4, 14, 1.4);
+    this.playerLight.visible = false;
+    this.scene.add(this.playerLight);
     this.sun = new THREE.DirectionalLight(0xffffff, 1.0);
     this.hemi = new THREE.HemisphereLight(0xbfd4e6, 0x8a7455, 0.55);
     this.scene.add(this.sun, this.hemi);
@@ -958,6 +1133,13 @@ export class Renderer {
     u.uLightCol.value[n].set(tc.r, tc.g, tc.b).multiplyScalar(this.torch.intensity);
     u.uLightRange.value[n] = this.torch.distance;
     n++;
+    if (this.playerLight.visible && n < MAX_SKY_LIGHTS) {
+      u.uLightPos.value[n].copy(this.playerLight.position);
+      const pc = this.playerLight.color;
+      u.uLightCol.value[n].set(pc.r, pc.g, pc.b).multiplyScalar(this.playerLight.intensity);
+      u.uLightRange.value[n] = this.playerLight.distance;
+      n++;
+    }
     for (const d of this.dynLights) {
       if (n >= MAX_SKY_LIGHTS) break;
       u.uLightPos.value[n].copy(d.light.position);
@@ -992,6 +1174,14 @@ export class Renderer {
     if (!target) { this.highlight.visible = false; return; }
     this.highlight.visible = true;
     this.highlight.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
+  }
+
+  /** Head Lantern: show the warm player light at pos, or hide it when null.
+   *  Cheap enough for a per-frame call; the light itself is created once. */
+  setPlayerLight(pos: { x: number; y: number; z: number } | null): void {
+    if (!pos) { this.playerLight.visible = false; return; }
+    this.playerLight.visible = true;
+    this.playerLight.position.set(pos.x, pos.y, pos.z);
   }
 
   rebuildDirty(world: World) {
@@ -1072,6 +1262,12 @@ export class Renderer {
         };
         quad(x, z, x + 1, z + 1);
         quad(x + 1, z, x, z + 1);
+        continue;
+      }
+      if (id === CURVED_HULL || id === HULL_SLOPE) {
+        // chamfered cube: axis faces cull exactly like a plain cube, the 45°
+        // facets are always drawn
+        this.emitShape(HULL_SHAPES[id], pos, col, idx, uvs, lite, id, world, x, y, z, cx * CS, cz * CS, faceLight);
         continue;
       }
       if (id >= WATER7 && id <= WATER1) {
@@ -1212,6 +1408,36 @@ export class Renderer {
     face([[s0, 0, t0], [s0, 0, t1], [s0, 1, t1], [s0, 1, t0]], [[tf(t1), 0], [tf(t0), 0], [tf(t0), 1], [tf(t1), 1]], 0.6); // -s edge (hinge side)
     face([[s0, 1, t0], [s1, 1, t0], [s1, 1, t1], [s0, 1, t1]], [[sf(s0), tf(t0)], [sf(s1), tf(t0)], [sf(s1), tf(t1)], [sf(s0), tf(t1)]], 1.0); // top
     face([[s0, 0, t0], [s1, 0, t0], [s1, 0, t1], [s0, 0, t1]], [[sf(s0), tf(t1)], [sf(s1), tf(t1)], [sf(s1), tf(t0)], [sf(s0), tf(t0)]], 0.45); // bottom
+  }
+
+  /** CURVED_HULL / HULL_SLOPE: chamfered-cube faces. Axis faces cull against
+   *  solid neighbours like plain cubes and bake the light of the air cell in
+   *  front of them; the 45° facets are always drawn and take the brighter of
+   *  their two adjacent axis cells (the diagonal cell has no baked value of
+   *  its own in the chunk halo). Shading is per face, mirroring FACES. */
+  private emitShape(faces: ShapeFace[], P: number[], C: number[], I: number[], U: number[], Lm: number[],
+    id: number, world: World, x: number, y: number, z: number, ox: number, oz: number,
+    faceLight: (nx: number, ny: number, nz: number) => number) {
+    for (const f of faces) {
+      const axis = (f.dir[0] ? 1 : 0) + (f.dir[1] ? 1 : 0) + (f.dir[2] ? 1 : 0);
+      if (axis === 1 && !faceVisible(world, ox + x + f.dir[0], y + f.dir[1], oz + z + f.dir[2], id)) continue;
+      const ft = FACE_T[id * 6 + f.kind];
+      const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
+      let lv = 0;
+      if (f.dir[0]) lv = Math.max(lv, faceLight(x + f.dir[0], y, z));
+      if (f.dir[1]) lv = Math.max(lv, faceLight(x, y + f.dir[1], z));
+      if (f.dir[2]) lv = Math.max(lv, faceLight(x, y, z + f.dir[2]));
+      const base = P.length / 3;
+      for (const p of f.pts) {
+        P.push(x + p[0], y + p[1], z + p[2]);
+        C.push(f.sh, f.sh, f.sh);
+        Lm.push(lv);
+        const [u, v] = f.uv(p);
+        U.push((tx0 + 0.5 + u * (TILE_PX - 1)) / ATLAS_PX, (ty0 + 0.5 + v * (TILE_PX - 1)) / ATLAS_PX);
+      }
+      // convex ring: fan from the first corner keeps the flat face normal
+      for (let t = 1; t + 1 < f.pts.length; t++) I.push(base, base + t, base + t + 1);
+    }
   }
 
   // ---- ground items / caches ----

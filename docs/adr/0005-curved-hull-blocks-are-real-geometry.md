@@ -1,0 +1,3 @@
+# Curved Hull blocks are true geometry, not texture-camouflage
+
+The chunk mesh already draws only whole cubes (plus face/cross specials), so the obvious way to "round" the Ship was fake-curved textures on cubes. We deliberately chose the harder path: Curved Hull Plating are real cut-corner/slope geometries emitted by the chunk builder, with collision decomposed to fit and thermal/light still treating the cell as a full solid cube (a curved wall insulates and shades exactly like the cube it fills). Accepted cost: the meshing pass now owns shape logic per special block, and light baking cannot see the shape. Rejected: texture-only curves — the silhouette of the wreck would never actually be round, which is the whole point of the block.

@@ -3,7 +3,7 @@
 
 export interface QuestDef {
   id: string;
-  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "wreck" | "core" | "finish";
+  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "wreck" | "core" | "finish" | "thruster";
   title: string;
   desc: string;
   goal: number;
@@ -57,7 +57,11 @@ export const QUESTS: QuestDef[] = [
   },
   {
     id: "finish", kind: "finish", title: "Escape Vector",
-    desc: "Carry the Engine Core home and set it right next to a Save Beacon.", goal: 1,
+    desc: "Carry the Engine Core home and set it right next to a Save Beacon — that wakes the wreck's power.", goal: 1,
+  },
+  {
+    id: "wings", kind: "thruster", title: "Wings of the Wreck",
+    desc: "The Ship's four wingtip engines are dead. Mine Cobalt Ore in the deep Caves, smelt it at a Campfire, craft a Thruster Nozzle (Cobalt + Copper + Metal), and press E at each Broken Thruster. All four lit lifts the Ship.", goal: 4,
   },
 ];
 

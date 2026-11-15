@@ -7,7 +7,9 @@ export const AIR = 0, SAND = 1, SANDSTONE = 2, ROCK = 3, GRAVEL = 4, DIRT = 5, S
   WATER7 = 26, WATER6 = 27, WATER5 = 28, WATER4 = 29, WATER3 = 30, WATER2 = 31, WATER1 = 32,
   FARMLAND = 33, MELON_1 = 34, MELON_2 = 35, WHEAT_1 = 36, WHEAT_2 = 37, CACTUS_FRUIT = 38,
   CHEST_CONNECTOR = 39, METAL_PLATING = 40, DOOR_INNER = 41, DOOR_INNER_UPPER = 42,
-  DOOR_INNER_OPEN = 43, BED = 44, BED_EXT = 45, GRASS = 46, WOOD = 47, LEAVES = 48, SAPLING = 49;
+  DOOR_INNER_OPEN = 43, BED = 44, BED_EXT = 45, GRASS = 46, WOOD = 47, LEAVES = 48, SAPLING = 49,
+  CURVED_HULL = 50, HULL_SLOPE = 51, IRON_ORE = 52, COPPER_ORE = 53, ALABASTER = 54,
+  COBALT_ORE = 55, THRUSTER = 56, THRUSTER_LIT = 57;
 
 export type ToolType = "pickaxe" | "shovel" | "axe" | "disassembler";
 
@@ -119,6 +121,21 @@ export const BLOCKS: BlockDef[] = [
   def({ id: LEAVES, name: "Leaves", solid: true, opaque: true, transparent: false, emissive: false, R: 0.7, breakTime: 0.25, tool: null, minTier: 0, placeable: false, color: [0.2, 0.45, 0.2] }),
   // A planted Tree Seed — a growing tree's first stage; see game.updateTrees.
   def({ id: SAPLING, name: "Sapling", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: false, color: [0.3, 0.55, 0.3] }),
+  // Curved Hull Plating: the same insulating hull metal, drawn as real geometry —
+  // a corner-cut elbow and a top-slope — used to round the Ship's corners and spine.
+  def({ id: CURVED_HULL, name: "Curved Hull Plating", solid: true, opaque: true, transparent: false, emissive: false, R: 3, breakTime: 6, tool: "disassembler", minTier: 0, placeable: true, color: [0.52, 0.55, 0.6] }),
+  def({ id: HULL_SLOPE, name: "Hull Slope", solid: true, opaque: true, transparent: false, emissive: false, R: 3, breakTime: 6, tool: "disassembler", minTier: 0, placeable: true, color: [0.5, 0.53, 0.58] }),
+  // Minerals: ore blocks that crust the walls of Caves (see gen.ts). Each drops
+  // its Raw Ore; Campfires smelt Rods out of them. Cobalt veins run only in the
+  // deepest stone — the Ship's repair hangs on them.
+  def({ id: IRON_ORE, name: "Iron Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 2.6, tool: "pickaxe", minTier: 1, placeable: true, color: [0.62, 0.52, 0.42] }),
+  def({ id: COPPER_ORE, name: "Copper Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 2.6, tool: "pickaxe", minTier: 1, placeable: true, color: [0.72, 0.42, 0.26] }),
+  def({ id: ALABASTER, name: "Alabaster", solid: true, opaque: true, transparent: false, emissive: false, R: 1.4, breakTime: 1.8, tool: "pickaxe", minTier: 0, placeable: true, color: [0.86, 0.83, 0.74] }),
+  def({ id: COBALT_ORE, name: "Cobalt Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.6, breakTime: 4.2, tool: "pickaxe", minTier: 3, placeable: true, color: [0.36, 0.46, 0.68] }),
+  // Broken Thruster: one of the wreck's four dead wingtip engines. Bolted to the
+  // Ship: nothing takes it down; its only interaction is a Thruster Nozzle (E).
+  def({ id: THRUSTER, name: "Broken Thruster", solid: true, opaque: true, transparent: false, emissive: false, R: 1, breakTime: -1, tool: null, minTier: 0, placeable: false, color: [0.42, 0.44, 0.5] }),
+  def({ id: THRUSTER_LIT, name: "Thruster (lit)", solid: true, opaque: true, transparent: false, emissive: true, R: 1, breakTime: -1, tool: null, minTier: 0, placeable: false, color: [0.9, 0.6, 0.3] }),
 ];
 
 export const CH = 96;           // world height (Y)

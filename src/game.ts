@@ -4,8 +4,8 @@ import { Player } from "./player";
 import { Survival, REGULATOR_ROOM_MAX } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
-import { Inventory, ITEMS, slotDims, type ItemDef, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, CS, CH, DAY_SECONDS, isSolid, isWater } from "./blocks";
+import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, type ItemDef, type Slot } from "./items";
+import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, CS, CH, DAY_SECONDS, isSolid, isWater } from "./blocks";
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
 import { heightAt, biomeAt, TOWN_L, treePlan, TreePart } from "./gen";
@@ -52,7 +52,13 @@ export class Game {
   private mobSpawnAcc = 9;
   private attackCd = 0;
   // Armour Slots: equipped gear lives here, not in the inventory grid
-  equip: { backpack: Slot | null; head: Slot | null; body: Slot | null } = { backpack: null, head: null, body: null };
+  equip: { backpack: Slot | null; head: Slot | null; body: Slot | null; regulator: Slot | null; light: Slot | null } =
+    { backpack: null, head: null, body: null, regulator: null, light: null };
+  // Head Lantern burns fuel charges while lit; the worn Body Heat Regulator burns
+  // Coolant Cell charges passively. Both counts live on the equipped Slot.
+  lanternOn = false;
+  private lanternAcc = 0;   // seconds burned toward the next lantern charge
+  private regulatorAcc = 0; // seconds burned toward the next coolant charge
   collected = new Set<number>();
   running = false;
   paused = false;
@@ -61,7 +67,7 @@ export class Game {
   private prevHp = 100;
   private lastHitFlash = -10;
   private lastDmgAt = -10;
-  ui: null | "inv" | "bench" | "smelt" | "cache" = null;
+  ui: null | "inv" | "bench" | "smelt" | "cache" | "liftoff" = null;
   openCacheId: number | null = null;
   openStation: [number, number, number] | null = null;
   private breaking: { x: number; y: number; z: number; need: number; elapsed: number } | null = null;
@@ -339,9 +345,9 @@ export class Game {
       this.inv.baseLimit = 30; this.inv.bonusLimit = run.inventory.bonusLimit;
     } else this.inv.bonusLimit = run.inventory.bonusLimit;
     // Armour Slots: restore gear without touching grid sizes (the saved w/h/bonusLimit already encode them)
-    for (const slot of ["backpack", "head", "body"] as const) {
+    for (const slot of ["backpack", "head", "body", "regulator", "light"] as const) {
       const id = run.equip?.[slot];
-      if (id) this.equip[slot] = { itemId: id, x: 0, y: 0 };
+      if (id) this.equip[slot] = { itemId: id, x: 0, y: 0, charges: run.equip?.charges?.[slot as "regulator" | "light"] };
     }
     this.beaconMarks = run.beaconMarks ?? [];
     this.trees = new Map(run.trees ?? []);
@@ -414,7 +420,14 @@ export class Game {
       survival: { health: this.survival.health, water: this.survival.water, body: this.survival.body },
       quest: { i: this.quests.i, p: this.quests.p.slice() },
       inventory: { slots: this.inv.slots.map((s) => ({ ...s })), selected: this.inv.selected, w: this.inv.w, h: this.inv.h, bonusLimit: this.inv.bonusLimit },
-      equip: { backpack: this.equip.backpack?.itemId, head: this.equip.head?.itemId, body: this.equip.body?.itemId },
+      equip: {
+        backpack: this.equip.backpack?.itemId, head: this.equip.head?.itemId, body: this.equip.body?.itemId,
+        regulator: this.equip.regulator?.itemId, light: this.equip.light?.itemId,
+        charges: {
+          regulator: this.equip.regulator?.charges,
+          light: this.equip.light?.charges,
+        },
+      },
       beaconMarks: this.beaconMarks,
       collected: this.collectedCanisterIndices(),
       entities: this.entities.filter((e) => !e.buried).map((e) => ({ x: e.x, y: e.y, z: e.z, itemId: e.itemId })),
@@ -566,7 +579,7 @@ export class Game {
     hud.toast(`Quest complete: ${done.title}`);
     if (done.reward) this.crashPod(done.reward.item, done.reward.n);
     this.audio.savePing();
-    if (done.kind === "finish") this.win();
+    if (done.kind === "finish") hud.toast("Power runs through the wreck. Four dead engines left — find them a way to burn.");
     this.renderQuest();
     this.saveNow(true);
   }
@@ -768,6 +781,7 @@ export class Game {
       if (ke.code === "KeyE") this.act();
       if (ke.code === "KeyQ") this.useItem();
       if (ke.code === "KeyX") this.surge();
+      if (ke.code === "KeyT") this.toggleLantern();
       if (ke.code === "KeyI") this.toggleInv();
       if (ke.code === "KeyR" && this.ui === "inv") {
         if (this.temp) {
@@ -781,10 +795,11 @@ export class Game {
         this.renderInv();
       }
       if (ke.code === "Escape") {
+        if (this.liftoff) return; // the Ship is mid-flight; nothing to close
         if (this.tut && !this.ui) { this.tut.finish(); return; }
         this.escape();
       }
-      if (ke.code === "KeyP") this.escape(true);
+      if (ke.code === "KeyP" && !this.liftoff) this.escape(true);
       if (ke.code.startsWith("Digit")) {
         const n = Number(ke.code.slice(5));
         const hb = this.hotbarItems();
@@ -900,6 +915,7 @@ export class Game {
       mb("m-act", () => this.act());
       mb("m-use", () => this.useItem());
       mb("m-surge", () => this.surge());
+      mb("m-lamp", () => this.toggleLantern());
       mb("m-next", () => this.cycleItem(1));
       mb("m-inv", () => this.toggleInv());
       mb("m-pause", () => this.escape());
@@ -1018,7 +1034,32 @@ export class Game {
         sprinting: this.player.sprinting && (mx !== 0 || mz !== 0),
         overencumbered, biome, tSec: this.timeSec, sunElev: kf.sunElev, sunDir, inWater: this.player.inWater,
         warmth: this.fireWarmth(this.player.pos),
+        regulator: (this.equip.regulator?.charges ?? 0) > 0,
+        terrainH: (x, z) => heightAt(this.seed, x, z),
       });
+      // worn gear burns its charges: a coolant cell holds 2 game days, a lantern charge 4 hours
+      const reg = this.equip.regulator;
+      if (reg && (reg.charges ?? 0) > 0) {
+        this.regulatorAcc += dt;
+        if (this.regulatorAcc >= 48 * 60) {
+          this.regulatorAcc = 0;
+          reg.charges = (reg.charges ?? 0) - 1;
+          if (reg.charges <= 0) { reg.charges = 0; hud.toast("The Coolant Cell in your Regulator is spent."); this.audio.error(); }
+          else hud.toast("A Coolant Cell has been used up.");
+        }
+      }
+      const lamp = this.equip.light;
+      if (this.lanternOn && lamp) {
+        if ((lamp.charges ?? 0) <= 0) this.toggleLantern();
+        else {
+          this.lanternAcc += dt;
+          if (this.lanternAcc >= 4 * 60) {
+            this.lanternAcc = 0;
+            lamp.charges = (lamp.charges ?? 0) - 1;
+            if ((lamp.charges ?? 0) <= 0) { this.toggleLantern(); hud.toast("The Head Lantern gutters out — refuel it at a Campfire."); }
+          }
+        }
+      }
       this.updateBreaking(dt);
       this.updatePickups();
     }
@@ -1030,9 +1071,17 @@ export class Game {
       cam.position.copy(this.player.eye());
       cam.rotation.order = "YXZ";
       cam.rotation.set(this.player.pitch, this.player.yaw, 0);
+      if (this.liftoff) {
+        // the whole ravine rattles while the Ship climbs
+        cam.position.x += (Math.random() - 0.5) * 0.14;
+        cam.position.y += (Math.random() - 0.5) * 0.10;
+        cam.position.z += (Math.random() - 0.5) * 0.14;
+      }
     }
+    this.liftoffFrame(dt);
 
     const target = this.raycastTarget();
+    this.renderer.setPlayerLight(this.lanternOn ? this.player.eye() : null);
     this.renderer.setHighlight((this.ui || this.cine) ? null : (target?.hit ?? null));
     hud.setPrompt((this.ui || this.cine) ? null : this.promptFor(target));
     hud.setBlockName((this.ui || this.cine) || !target?.hit ? null
@@ -1149,6 +1198,7 @@ export class Game {
       if (id === BENCH || id === BENCH_EXT) return "E: Craft";
       if (id === CAMPFIRE) return "E: Smelt";
       if (id === REGULATOR) return "E: Draw neutral air (37 °C)";
+      if (id === THRUSTER) return this.inv.has("thruster_nozzle", 1) ? "E: Install Thruster Nozzle" : null;
     }
     if (t.water) return "E: Refill canister";
     return null;
@@ -1196,7 +1246,7 @@ export class Game {
         const kx = mb.x - this.player.pos.x, kz = mb.z - this.player.pos.z;
         const kl = Math.max(0.2, Math.hypot(kx, kz));
         const kb = weapon ? 1.1 : 0.6;
-        if (this.mobCanStand(mb, mb.x + (kx / kl) * kb, mb.z + (kz / kl) * kb)) { mb.x += (kx / kl) * kb; mb.z += (kz / kl) * kb; mb.y = this.mobSurface(mb.x, mb.z); }
+        if (this.mobCanStand(mb, mb.x + (kx / kl) * kb, mb.z + (kz / kl) * kb)) { mb.x += (kx / kl) * kb; mb.z += (kz / kl) * kb; mb.y = this.mobGround(mb, mb.x, mb.z); }
         if (mb.hp <= 0) this.killMob(mb);
       }
       return;
@@ -1362,9 +1412,21 @@ export class Game {
     return -1;
   }
 
+  /** Ground the mob stands on in this column. Cave fauna walks on its Cave floor,
+   *  never gets yanked up to the surface: scan down from the mob's own feet cell. */
+  private mobGround(m: Mob, x: number, z: number): number {
+    if (m.kind !== "scorpion" && m.kind !== "wurm") return this.mobSurface(x, z);
+    const fx = Math.floor(x), fz = Math.floor(z);
+    for (let y = Math.floor(m.y); y >= 0; y--) {
+      const id = this.world.get(fx, y, fz);
+      if (id !== AIR && BLOCKS[id].solid) return y + 1;
+    }
+    return -1;
+  }
+
   /** Can this mob stand at (x,z): floor within one step climb, headroom above it? */
   private mobCanStand(m: Mob, x: number, z: number): boolean {
-    const gy = this.mobSurface(x, z);
+    const gy = this.mobGround(m, x, z);
     if (gy < 0 || gy > m.y + 1.01) return false;
     return this.world.get(Math.floor(x), gy, Math.floor(z)) === AIR;
   }
@@ -1383,29 +1445,66 @@ export class Game {
   private killMob(m: Mob) {
     this.renderer.removeSceneObject(m.vis.group);
     this.mobs = this.mobs.filter((x) => x !== m);
-    for (const d of MOB_DEFS[m.kind].drops) this.giveOrDrop(d.itemId, d.count);
-    hud.toast(`${MOB_DEFS[m.kind].name} killed.`);
+    const def = MOB_DEFS[m.kind];
+    def.drops.forEach((d, i) => {
+      const p = def.dropChance?.[i] ?? 1;
+      if (p >= 1 || Math.random() < p) this.giveOrDrop(d.itemId, d.count);
+    });
+    hud.toast(`${def.name} killed.`);
   }
 
-  /** Keep the desert stocked around the player: up to 4 snakes, 8 kangaroo rats. */
+  /** Keep the desert stocked: 4 snakes, 8 rats tops above ground; the Caves
+   *  keep their own fauna — up to 4 Dust Scorpions and a lone Sand Wurm,
+   *  spawned only while you are down in them. */
   private topUpMobs() {
-    const targets: Record<MobKind, number> = { snake: 4, rat: 8 };
-    const counts: Record<MobKind, number> = { snake: 0, rat: 0 };
+    const targets: Record<MobKind, number> = { snake: 4, rat: 8, scorpion: 4, wurm: 1 };
+    const counts: Record<MobKind, number> = { snake: 0, rat: 0, scorpion: 0, wurm: 0 };
+    // anything strayed far from the player gives its slot back
+    const p0 = this.player.pos;
+    this.mobs = this.mobs.filter((m) => {
+      if (Math.abs(m.x - p0.x) + Math.abs(m.z - p0.z) > 190) { this.renderer.removeSceneObject(m.vis.group); return false; }
+      return true;
+    });
     for (const m of this.mobs) counts[m.kind]++;
     const p = this.player.pos;
-    for (const kind of ["snake", "rat"] as MobKind[]) {
+    for (const kind of ["snake", "rat", "scorpion", "wurm"] as MobKind[]) {
+      const underground = kind === "scorpion" || kind === "wurm";
+      if (underground && p.y > 27) continue; // the deep fauna only stirs when you are down there
       while (counts[kind] < targets[kind]) {
         counts[kind]++; // every attempt, successful or not, spends a slot this round
         const a = Math.random() * Math.PI * 2, r = 30 + Math.random() * 30;
         const x = Math.floor(p.x + Math.cos(a) * r) + 0.5, z = Math.floor(p.z + Math.sin(a) * r) + 0.5;
-        if (Math.hypot(x, z) < 24) continue; // keep the crash site quiet
-        if (this.beaconMarks.some((b) => Math.hypot(b.x + 0.5 - x, b.z + 0.5 - z) < 16)) continue; // save points stay safe
-        const gy = this.mobSurface(x, z);
-        if (gy <= 1 || this.world.get(Math.floor(x), gy, Math.floor(z)) !== AIR ||
-            this.world.get(Math.floor(x), gy + 1, Math.floor(z)) !== AIR) continue;
-        this.spawnMob(kind, x, gy, z);
+        if (!underground) {
+          if (Math.hypot(x, z) < 24) continue; // keep the crash site quiet
+          if (this.beaconMarks.some((b) => Math.hypot(b.x + 0.5 - x, b.z + 0.5 - z) < 16)) continue; // save points stay safe
+          const gy = this.mobSurface(x, z);
+          if (gy <= 1 || this.world.get(Math.floor(x), gy, Math.floor(z)) !== AIR ||
+              this.world.get(Math.floor(x), gy + 1, Math.floor(z)) !== AIR) continue;
+          this.spawnMob(kind, x, gy, z);
+        } else {
+          const lo = kind === "wurm" ? 5 : 8, hi = kind === "wurm" ? 16 : 24;
+          const gy = this.caveSpot(x, z, lo, hi);
+          if (gy < 0) continue;
+          this.spawnMob(kind, x, gy, z);
+        }
       }
     }
+  }
+
+  /** A floor cell inside a Cave between lo..hi: solid ground, two clear head
+   *  cells, and rock within three blocks above — a proper cave dweller's pocket. */
+  private caveSpot(x: number, z: number, lo: number, hi: number): number {
+    const bx = Math.floor(x), bz = Math.floor(z);
+    for (let y = hi; y >= lo; y--) {
+      if (this.world.get(bx, y, bz) !== AIR) continue;
+      if (this.world.get(bx, y - 1, bz) === AIR) continue;            // needs a floor
+      if (this.world.get(bx, y + 1, bz) !== AIR) continue;            // needs headroom
+      let roof = -1;
+      for (let d = 1; d <= 3; d++) if (isSolid(this.world.get(bx, y + d, bz))) { roof = d; break; }
+      if (roof < 0) continue;                                         // open shaft — not a cave pocket
+      return y;
+    }
+    return -1;
   }
 
   /** The mob nearest the crosshair within reach, if no block is closer. A held weapon extends reach. */
@@ -1461,9 +1560,9 @@ export class Game {
         m.yaw = Math.atan2(vx, vz);
         if (dist < 1.2 + def.hitR && m.biteCd <= 0) {
           m.biteCd = def.biteCd;
-          const armor = this.equip.body ? 0.6 : 1; // Reptile Armour: scales shrug off 40%
+          const armor = 1 - (this.equip.body ? (ITEMS[this.equip.body.itemId].armor ?? 0) : 0);
           this.survival.hurt(def.biteDmg * armor, `${def.name.toLowerCase()} bite`);
-          hud.toast(armor < 1 ? `A ${def.name.toLowerCase()} bites you — the Reptile Armour soaks some of it.` : `A ${def.name.toLowerCase()} bites you!`);
+          hud.toast(armor < 1 ? `A ${def.name.toLowerCase()} bites you — the armour soaks some of it.` : `A ${def.name.toLowerCase()} bites you!`);
         }
       } else if (def.fleeR > 0 && dist < def.fleeR && dist > 0.01) {
         vx = (-dx / dist) * def.speed; vz = (-dz / dist) * def.speed;
@@ -1480,7 +1579,7 @@ export class Game {
         if (this.mobCanStand(m, nx, nz)) { m.x = nx; m.z = nz; moving = 1; }
         else m.wanderYaw = m.yaw = Math.random() * Math.PI * 2; // walk into a wall -> pick a new direction
       }
-      m.y = this.mobSurface(m.x, m.z);
+      m.y = this.mobGround(m, m.x, m.z);
       m.vis.group.position.set(m.x, m.y, m.z);
       m.vis.group.rotation.y = m.yaw;
       m.vis.animate(t, moving);
@@ -1498,10 +1597,15 @@ export class Game {
     return true;
   }
 
+  private bagSize(): { w: number; h: number; kg: number } {
+    const b = this.equip.backpack ? ITEMS[this.equip.backpack.itemId].bag : null;
+    return b ?? { w: 3, h: 4, kg: 0 };
+  }
+
   private applyEquip() {
-    const wantW = this.equip.backpack ? 4 : 3, wantH = this.equip.backpack ? 5 : 4;
-    if (this.inv.w !== wantW || this.inv.h !== wantH)
-      this.inv.setBackpack(wantW, wantH, this.equip.backpack ? 20 : 0);
+    const b = this.bagSize();
+    if (this.inv.w !== b.w || this.inv.h !== b.h)
+      this.inv.setBackpack(b.w, b.h, b.kg);
     if (this.inv.selected >= this.inv.slots.length) this.inv.selected = 0;
     this.renderInv();
   }
@@ -1520,25 +1624,31 @@ export class Game {
       return;
     }
     this.inv.slots.splice(this.inv.slots.indexOf(sel), 1);
+    if (slot === "light") this.lanternOn = false; // the new lamp starts cold
+    if ((slot === "light" || slot === "regulator") && sel.charges === undefined) sel.charges = 0;
     this.equip[slot] = sel;
     this.applyEquip();
     this.audio.pickup();
     hud.toast(`${d.name} equipped in the ${slot} slot.`);
   }
 
-  private unequipSlot(slot: "backpack" | "head" | "body") {
+  private unequipSlot(slot: "backpack" | "head" | "body" | "regulator" | "light") {
     const it = this.equip[slot];
     if (!it) return;
-    if (!this.gridFits(this.equip.backpack && slot === "backpack" ? 3 : this.inv.w, this.equip.backpack && slot === "backpack" ? 5 : this.inv.h)) {
+    // when the pack comes off, contents must fit the base 3x4 grid it shrinks to
+    const b = slot === "backpack" ? { w: 3, h: 4 } : this.bagSize();
+    if (!this.gridFits(b.w, b.h)) {
       hud.toast("Your pack is too full — make room before taking it off.");
       this.audio.error();
       return;
     }
     this.equip[slot] = null;
+    if (slot === "light") this.lanternOn = false;
     this.applyEquip(); // grid may shrink to 3×4 before the item lands back in it
     this.inv.addItem(it.itemId, 1);
     this.audio.place();
     hud.toast(`${ITEMS[it.itemId].name} taken off.`);
+    this.renderInv(); // the item is only in the grid after applyEquip resized it
   }
 
   /** The other half of a two-block Crafting Bench, or null. */
@@ -1551,12 +1661,7 @@ export class Game {
   }
 
   private blockItemId(id: number): string | null {
-    const map: Record<number, string> = {
-      1: "sand", 2: "sandstone", 3: "rock", 4: "gravel", 5: "dirt", 6: "salt", 7: "deadwood",
-      8: "glass", 9: "insglass", 10: "hull", 11: "door", 13: "lamp", 14: "metal", 16: "bench",
-      17: "campfire", 19: "adobe", 21: "engine_core", 22: "regulator", 23: "chest", 24: "bench",
-    };
-    return map[id] ?? null;
+    return BLOCK_TO_ITEM[id] ?? null;
   }
 
   giveOrDrop(itemId: string, count: number) {
@@ -1653,11 +1758,11 @@ export class Game {
     if (def.block === MELON_1 || def.block === WHEAT_1) { this.crops.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); }
     if (def.block === SAPLING) { this.trees.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); hud.toast("Seed in the soil. Keep water within 6 blocks and it climbs, stage by stage."); }
     if (def.block === ENGINECORE) {
-      // the relay completes the moment the Core sits right next to a Save Beacon
+      // the Core beside a beacon wakes the wreck's power — the Ship still needs its wings
       if (this.beaconAdjacent(bx, by, bz)) {
         const q = currentQuest(this.quests);
         if (q && q.kind === "finish" && !this.tut) this.questBump("finish");
-        else this.win();
+        else hud.toast("The Core hums next to the beacon. Power runs — now wake the wingtip engines.");
       } else hud.toast("The relay needs the Core right next to a Save Beacon.");
     }
     if (def.block === LAMP) this.renderer.addPointLight(bx, by, bz, "lamp");
@@ -1736,6 +1841,22 @@ export class Game {
       }
       if (id === BENCH || id === BENCH_EXT) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("bench"); return; }
       if (id === CAMPFIRE) { this.openStation = [x, y, z]; this.ui = "smelt"; this.unlockPointer(); this.renderCraft("smelt"); return; }
+      if (id === THRUSTER) {
+        if (!this.inv.has("thruster_nozzle", 1)) {
+          this.audio.error();
+          hud.toast("A dead wingtip engine. It needs a Thruster Nozzle — Cobalt from the deep Caves.");
+          return;
+        }
+        this.inv.removeItem("thruster_nozzle", 1);
+        this.world.set(x, y, z, THRUSTER_LIT);
+        this.renderer.addPointLight(x, y, z, "fire");
+        this.questBump("thruster");
+        this.audio.door();
+        this.audio.win();
+        hud.toast("Nozzle seated. The engine coughs, catches, holds.");
+        if (!this.liftoff && this.thrustersAllLit()) this.startLiftoff();
+        return;
+      }
       if (id === REGULATOR) {
         // An activated Regulator (sealed room, capacity not exceeded) settles the body at 37 °C.
         let room = null as null | ReturnType<World["roomInfo"]>;
@@ -1989,6 +2110,17 @@ export class Game {
     this.renderHeld();
   }
 
+  /** T: the Head Lantern — burns one fuel charge per 4 game hours. */
+  private toggleLantern() {
+    const lamp = this.equip.light;
+    if (!lamp) { hud.toast("Nothing in your Light slot. A Head Lantern lights the dark."); this.audio.error(); return; }
+    if (this.lanternOn) { this.lanternOn = false; return; }
+    if ((lamp.charges ?? 0) <= 0) { hud.toast("The lantern is dry — press E at a Campfire to refuel it."); this.audio.error(); return; }
+    this.lanternOn = true;
+    this.lanternAcc = 0;
+    hud.toast("Head Lantern on. T puts it out.");
+  }
+
   private surge() {
     if (this.ui || this.paused) return;
     const r = this.survival.surge();
@@ -2055,6 +2187,87 @@ export class Game {
 
   // ---------- victory ----------
 
+  // ---------- liftoff ----------
+  // All four wingtip engines lit: the Ship lifts off IN PLACE — hull rows blink
+  // out top-down over ~2 s, hover in the sky as an afterimage, then re-stack
+  // bottom-up in its crater. Voxel-styled lift; no physics, no new geometry.
+
+  /** Ship materials — everything that belongs to the hull, not the desert. */
+  private static readonly SHIP_IDS = new Set([
+    HULL, METAL_PLATING, CURVED_HULL, HULL_SLOPE, INSGLASS,
+    DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN,
+    LAMP, BEACON, BENCH, BENCH_EXT, REGULATOR, ENGINECORE, BED, BED_EXT,
+  ]);
+
+  private liftoff: {
+    t: number; rows: [number, number, number, number][][]; step: number; restored: number;
+  } | null = null;
+
+  private thrustersAllLit(): boolean {
+    let lit = 0;
+    for (let y = 29; y <= 37; y++)
+      for (let x = -8; x <= 6; x++)
+        for (let z = -13; z <= 13; z++) {
+          const id = this.world.get(x, y, z);
+          if (id === THRUSTER) return false;
+          if (id === THRUSTER_LIT) lit++;
+        }
+    return lit >= 4;
+  }
+
+  private startLiftoff() {
+    const rows: [number, number, number, number][][] = [];
+    for (let y = 37; y >= 29; y--) {
+      const cells: [number, number, number, number][] = [];
+      for (let x = -8; x <= 6; x++)
+        for (let z = -13; z <= 13; z++) {
+          const id = this.world.get(x, y, z);
+          if (Game.SHIP_IDS.has(id)) cells.push([x, y, z, id]);
+        }
+      if (cells.length) rows.push(cells);
+    }
+    this.liftoff = { t: 0, rows, step: 0, restored: 0 };
+    this.ui = "liftoff"; // locks movement, acting, and prompts until the Ship settles
+    if (document.pointerLockElement) document.exitPointerLock();
+    const fx = document.getElementById("lift-fx")!;
+    fx.classList.remove("hidden");
+    fx.textContent = "ENGINE IGNITION";
+    hud.toast("The whole Ship shudders. Every plate rattles at once.");
+    this.audio.win();
+  }
+
+  /** Advances the liftoff each frame; wins when the Ship has settled back down. */
+  private liftoffFrame(dt: number) {
+    const L = this.liftoff;
+    if (!L) return;
+    L.t += dt;
+    const per = 2.2 / L.rows.length;   // one hull row blinks out every `per` s
+    const IGNITE_END = 2.4, HOVER_END = 4.6, LAND_END = HOVER_END + 2.2;
+    const fx = document.getElementById("lift-fx")!;
+    fx.textContent = L.t < IGNITE_END ? "LIFT-OFF" : L.t < HOVER_END ? "RESCUE SIGNAL LIVE" : "TOUCHDOWN";
+    // rising: rows vanish top-down with a thud per row
+    while (L.step < L.rows.length && L.t >= L.step * per) {
+      for (const [x, y, z] of L.rows[L.step]) this.world.set(x, y, z, AIR);
+      this.audio.door();
+      L.step++;
+    }
+    // falling: the same rows re-stack bottom-up
+    if (L.t > HOVER_END) {
+      while (L.restored < L.rows.length && L.t - HOVER_END >= L.restored * per) {
+        for (const [x, y, z, id] of L.rows[L.rows.length - 1 - L.restored]) this.world.set(x, y, z, id);
+        this.audio.door();
+        L.restored++;
+      }
+    }
+    if (L.t >= LAND_END + 0.4) {
+      this.liftoff = null;
+      this.ui = null;
+      fx.classList.add("hidden");
+      this.saveNow(true);
+      this.win();
+    }
+  }
+
   private win() {
     if (this.won) return;
     this.won = true;
@@ -2064,7 +2277,7 @@ export class Game {
     if (document.pointerLockElement) document.exitPointerLock();
     document.getElementById("screen-win")!.classList.remove("hidden");
     document.getElementById("win-stats")!.textContent =
-      `Main Quest complete. Survived ${this.scoreDays().toFixed(1)} days. Best: ${bestScore().toFixed(1)} days. The beacon relay is live — rescuers are on their way.`;
+      `The Ship lifts off. All four engines burn. Survived ${this.scoreDays().toFixed(1)} days. Best: ${bestScore().toFixed(1)} days.`;
   }
 
   // ---------- death / respawn ----------
@@ -2080,14 +2293,15 @@ export class Game {
       // everything you carried AND everything you wore waits in the cache
       items: [
         ...this.inv.slots.map((s) => ({ itemId: s.itemId, count: 1 })),
-        ...(["backpack", "head", "body"] as const)
+        ...(["backpack", "head", "body", "regulator", "light"] as const)
           .map((sl) => this.equip[sl])
           .filter((s): s is Slot => !!s)
           .map((s) => ({ itemId: s.itemId, count: 1 })),
       ],
     });
     this.inv.slots = []; this.inv.selected = 0;
-    this.equip = { backpack: null, head: null, body: null };
+    this.equip = { backpack: null, head: null, body: null, regulator: null, light: null };
+    this.lanternOn = false;
     submitBest(this.scoreDays());
     this.survival.health = 0; // stay dead until respawn button
     this.running = true;
@@ -2214,8 +2428,8 @@ export class Game {
     }
     dropTemp.classList.toggle("hidden", !this.temp);
 
-    // Armour Slots row: Backpack / Head / Body
-    for (const slot of ["backpack", "head", "body"] as const) {
+    // Armour Slots row: Backpack / Head / Body / Regulator / Light
+    for (const slot of ["backpack", "head", "body", "regulator", "light"] as const) {
       const el = document.getElementById("eq-" + slot)!;
       const it = this.equip[slot];
       if (it) {
@@ -2223,12 +2437,17 @@ export class Game {
         el.classList.add("filled");
         el.style.background = d.color;
         el.style.backgroundImage = `url(${itemTiles(it.itemId)[0] ?? ""})`;
-        el.title = `Click to take off the ${d.name}`;
+        const ch = it.charges;
+        el.textContent = ch !== undefined && ch > 0 ? String(ch) : "";
+        el.title = ch !== undefined
+          ? `Click to take off the ${d.name} — ${ch} charge${ch === 1 ? "" : "s"} left`
+          : `Click to take off the ${d.name}`;
         el.onclick = () => this.unequipSlot(slot);
       } else {
         el.classList.remove("filled");
         el.style.background = "#23262e";
         el.style.backgroundImage = "";
+        el.textContent = "";
         el.title = "";
         // tap/click an empty slot to wear the selected gear (no hunt for the side-panel button)
         el.onclick = () => {
@@ -2268,6 +2487,24 @@ export class Game {
         eqBtn.textContent = `Equip (${d.equip} slot)`;
         eqBtn.onclick = () => this.equipItem();
         side.appendChild(eqBtn);
+      }
+      if (sel.itemId === "coolant_cell" && this.equip.regulator) {
+        // spare Coolant Cells load straight into the worn Regulator
+        const reg = this.equip.regulator;
+        const full = (reg.charges ?? 0) >= 3;
+        const ld = document.createElement("button");
+        ld.textContent = full ? "Regulator holds 3 cells already — that's six days of neutral air"
+          : "Load Coolant Cell into the Regulator (each lasts 2 game days)";
+        ld.disabled = full || !this.inv.has("coolant_cell", 1);
+        ld.onclick = () => {
+          if (full || !this.inv.has("coolant_cell", 1)) return;
+          this.inv.removeItem("coolant_cell", 1);
+          reg.charges = (reg.charges ?? 0) + 1;
+          this.audio.pickup();
+          hud.toast(`Coolant Cell loaded — ${reg.charges} charge${reg.charges === 1 ? "" : "s"} running.`);
+          this.renderInv();
+        };
+        side.appendChild(ld);
       }
     }
     if (sel) {
@@ -2633,17 +2870,37 @@ export class Game {
         this.campCharges.set(key, fuel + 3);
         this.renderCraft("smelt");
       };
+      // an equipped Head Lantern drinks from the fire too
+      const lamp = this.equip.light;
+      if (lamp) {
+        const lc = lamp.charges ?? 0;
+        const ref = document.createElement("div");
+        ref.className = "craft-row";
+        ref.innerHTML = `<span class="what">Head Lantern <span class="needs">(${lc}/5 charges)</span></span>`;
+        const rb = document.createElement("button");
+        rb.textContent = "Refuel Lantern (+1, uses 1 fuel)";
+        rb.disabled = lc >= 5 || fuel < 1;
+        rb.onclick = () => {
+          if (lc >= 5 || fuel < 1) return;
+          this.campCharges.set(key, fuel - 1);
+          lamp.charges = lc + 1;
+          this.audio.place();
+          this.renderCraft("smelt");
+        };
+        ref.appendChild(rb);
+        list.appendChild(ref);
+      }
       for (const s of SMELT) {
         const row = document.createElement("div");
         row.className = "craft-row";
-        row.innerHTML = `<span class="what"><img class="craft-art" src="${itemArtUrl(s.out)}" alt="">${ITEMS[s.in].name} → ${ITEMS[s.out].name} <span class="needs">(1 fuel charge)</span></span>`;
+        row.innerHTML = `<span class="what"><img class="craft-art" src="${itemArtUrl(s.out)}" alt="">${ITEMS[s.in].name} → ${ITEMS[s.out].name}${s.n && s.n > 1 ? " ×" + s.n : ""} <span class="needs">(1 fuel charge)</span></span>`;
         const b = document.createElement("button");
         b.textContent = "Smelt";
         b.disabled = !this.inv.has(s.in, 1) || fuel < 1;
         b.onclick = () => {
           this.inv.removeItem(s.in, 1);
           this.campCharges.set(key, fuel - 1);
-          const left = this.inv.addItem(s.out, 1);
+          const left = this.inv.addItem(s.out, s.n ?? 1);
           if (left > 0) this.giveOrDrop(s.out, left);
           this.audio.place();
           this.renderCraft("smelt");

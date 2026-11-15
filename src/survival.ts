@@ -7,6 +7,7 @@ export const BODY_MIN = 20, BODY_MAX = 45;     // heat bar display range (°C bo
 export const SAFE_LO = 36.0, SAFE_HI = 37.5;   // safe body temperature zone
 // where Health starts draining — the HUD paints a mark on each bar here
 export const HOT_LIMIT = 39.5, COLD_LIMIT = 31.5, WATER_LIMIT = 5;
+export const CAVE_AMBIENT = 22;              // Deep Air Temperature: near-constant mild (ADR-0004)
 
 const AMBIENT_MEAN = 27, AMBIENT_AMP = 25;     // 24-min desert day: ~2 °C night, ~52 °C peak
 export const REGULATOR_ROOM_MAX = 150;         // open cells (sealed) one Heat Regulator can hold at neutral
@@ -21,7 +22,7 @@ export class Survival {
   lastRoom: { size: number; sealed: boolean; regulators: number } = { size: 0, sealed: false, regulators: 0 };
 
   private embedKey = "";
-  private embedAir: { R: number; openSky: boolean; shelter: number; ambEff: number; room: ReturnType<World["roomInfo"]> } | null = null;
+  private embedAir: { R: number; openSky: boolean; shelter: number; ambEff: number; room: ReturnType<World["roomInfo"]>; deep: boolean } | null = null;
 
   constructor(private weatherSeed: number) {}
 
@@ -45,6 +46,7 @@ export class Survival {
   update(dt: number, world: World, pos: THREE.Vector3, opts: {
     sprinting: boolean; overencumbered: boolean; biome: number; tSec: number; sunElev: number;
     sunDir: { x: number; y: number; z: number } | null; inWater: boolean; warmth: number;
+    regulator: boolean; terrainH: (x: number, z: number) => number;
   }) {
     if (this.health <= 0) return;
     if (this.surgeCooldown > 0) this.surgeCooldown -= dt;
@@ -56,20 +58,25 @@ export class Survival {
     // A sealed space's air drifts to the outside temperature — walls alone don't
     // save you. Only Heat Regulators, whose capacity (150 cells each) stacks,
     // hold a sealed room at body-neutral temperature.
+    // Underground (ADR-0004): Deep Air Temperature is near-constant mild — two
+    // or more cells below the terrain surface, the rock swallows the day's swing.
+    // Caves trade darkness and enemies for thermal refuge; that is the trade.
     const cellAir = (x: number, y: number, z: number) => {
+      const deep = y <= opts.terrainH(x, z) - 2;
+      const amb0 = deep ? CAVE_AMBIENT : amb;
       const { R, openSky } = world.skyResistance(x, y, z);
       let shelter = 1 - Math.exp(-R);        // 0 exposed .. ~0.997 sealed
-      let ambEff = amb;
+      let ambEff = amb0;
       // direct sun is a line to the sun, like the shader's shadow — shade from
       // rocks, trees and roofs falls where the line is broken, not just overhead
-      if (opts.sunElev > 0 && opts.sunDir && world.sunVisible(x, y, z, opts.sunDir.x, opts.sunDir.y, opts.sunDir.z))
+      if (!deep && opts.sunElev > 0 && opts.sunDir && world.sunVisible(x, y, z, opts.sunDir.x, opts.sunDir.y, opts.sunDir.z))
         ambEff += 8 + 10 * opts.sunElev; // direct sun beats down
       const room = world.roomInfo(x, y, z);
       if (room.sealed) {
         if (room.regulators * REGULATOR_ROOM_MAX >= room.size) { ambEff = 36.6; shelter = 1; }
-        else { ambEff = amb; shelter = 0; }
+        else { ambEff = amb0; if (!deep) shelter = 0; } // "walls don't insulate" is a Ship rule; underground, the rock itself shelters you
       }
-      return { R, openSky, shelter, ambEff, room };
+      return { R, openSky, shelter, ambEff, room, deep };
     };
 
     let here = cellAir(fx, fy, fz);
@@ -102,9 +109,11 @@ export class Survival {
       ambEff = (ambEff + wt) / 2;
     }
     if (opts.warmth) ambEff += opts.warmth; // a campfire at your back
-    // body always regulates toward 36.6; exposure pulls it toward the effective air temp
-    const target = 36.6 + (ambEff - 36.6) * (1 - shelter);
-    this.lastAmbient = amb; this.lastAmbientEff = ambEff; this.lastShelterR = here.R; this.lastTarget = target;
+    // body always regulates toward 36.6; exposure pulls it toward the effective air temp.
+    // A worn Body Heat Regulator short-circuits that: while its Coolant Cell lasts,
+    // the body just holds at 36.6 no matter the air. It regulates you, never the room.
+    const target = opts.regulator ? 36.6 : 36.6 + (ambEff - 36.6) * (1 - shelter);
+    this.lastAmbient = here.deep ? CAVE_AMBIENT : amb; this.lastAmbientEff = ambEff; this.lastShelterR = here.R; this.lastTarget = target;
 
     // sealed air moves the body fast — a hot room cooks you in minutes, and so does a cold one
     const k = room.sealed ? 0.022 : 0.0075; // tau ~45 s inside, ~2 min out in the open

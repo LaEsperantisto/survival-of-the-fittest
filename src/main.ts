@@ -218,7 +218,7 @@ function renderCatalog() {
       row(itemArtUrl(r.out), needs, `${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""}`, r.bench ? "Crafting Bench" : "hands");
     }
     for (const s of SMELT)
-      row(itemArtUrl(s.out), `1× ${ITEMS[s.in].name}`, ITEMS[s.out].name, "Campfire, 1 fuel charge");
+      row(itemArtUrl(s.out), `1× ${ITEMS[s.in].name}`, `${ITEMS[s.out].name}${s.n && s.n > 1 ? " ×" + s.n : ""}`, "Campfire, 1 fuel charge");
   }
 }
 for (const t of Array.from($("catalog-tabs").querySelectorAll<HTMLButtonElement>(".tab")))
@@ -230,14 +230,15 @@ const DESKTOP_KEYS: [string, string][] = [
   ["WASD", "move"], ["Shift", "sprint (sweats, costs water)"], ["Space", "jump one block"],
   ["Mouse", "look (click the world to capture the pointer)"], ["Left click, hold", "mine a block or hit a mob (right tool tier matters)"],
   ["Metal Sword", "Crafting Bench: 2 Metal Rods + 1 Dead Wood — far harder hits, longer reach (snake dies in 2 swings, rat in 1)"],
-  ["Right click", "place the selected block"], ["E", "interact: doors, beacon save, bench, campfire, Heat Regulator (set body to 37 °C), oasis / water-station refill, death caches"],
+  ["Right click", "place the selected block"], ["E", "interact: doors, beacon save, bench, campfire, Heat Regulator (set body to 37 °C), oasis / water-station refill, death caches, Broken Thruster on a wingtip (needs a Thruster Nozzle)"],
+  ["T", "toggle the Head Lantern — it burns one fuel charge per 4 game-minutes; refuel it at a Campfire"],
   ["Q", "use the held item: drink a full canister (+25 water, cools you a little), or eat food"], ["X", "sweat surge: spend 10 water to force your body cool (needs 20+ water, 10 s cooldown)"], ["I", "inventory — Equip gear"],
   ["1-9 / mouse wheel / click hotbar", "select item — press the number or click the already-held item to empty your hands"],
   ["Esc", "close open menu, or pause"], ["P", "pause / resume"],
 ];
 const MOBILE_KEYS: [string, string][] = [
   ["Left stick", "move"], ["Drag the right half of the screen", "look"],
-  ["JUMP / BREAK / PLACE / ACT / DRINK / SURGE / ITEM / BAG", "buttons on the right"],
+  ["JUMP / BREAK / PLACE / ACT / DRINK / SURGE / LAMP / ITEM / BAG", "buttons on the right"],
   ["BREAK, aimed at a mob", "fight it — hold the Metal Sword for far harder hits and longer reach"],
   ["Tap an item, then another cell", "move it there (occupants swap); tap an Armour Slot to wear the selected gear; tap empty space to deselect"],
   ["Bottom hotbar", "tap a slot to select that item; the ITEM button cycles through it"],
@@ -256,7 +257,7 @@ function renderInstructions() {
   }
   const extra = document.createElement("div");
   extra.className = "needs";
-  extra.textContent = "Keep the three bars inside their white safe bands; a pulsing ☀ beside the TEMP bar means you are overheating, ❄ means freezing. The Ship Interior is always sealed: your body heat drifts back to 36.6 °C there. Outside, midday cooks you and night freezes you — shade, walls and doors change what you are exposed to. Death costs everything you carry: it waits in a Death Cache where you fell. Respawning only works at a Save Beacon you activated with E. Beacons are the only save points. The desert is alive: Desert Snakes bite anything that steps too close, and Kangaroo Rats bolt — hunt one, cook the meat at a Campfire, eat it to heal. Break Cacti for Prickly Pears to drink. Snake skins stitch into Reptile Armour. Backpack, Visor and Armour go in the three Armour Slots inside the inventory: select the gear, then click or tap the empty slot to wear it.";
+  extra.textContent = "Keep the three bars inside their white safe bands; a pulsing ☀ beside the TEMP bar means you are overheating, ❄ means freezing. Walls block the wind but not heat: a sealed room's air drifts toward the outside temperature. Only Heat Regulator blocks hold a sealed room at ~37 °C — each covers 150 cells, they stack in bigger rooms; the Ship Interior comes with one. Direct midday sun adds a punishing +8…18 °C — shade from rocks, dunes and walls cancels it; at night the desert freezes you. Dig into the Caves: two or more cells under the terrain the air sits at a constant mild ~22 °C, and shelter there lets your body claw back toward 36.6 °C. That is the refuge — but it is dark (wear a Head Lantern, toggle with T), Scorpions and Sand Wurms live only down there, and Cobalt Ore — the one thing that can fix the Ship's engines — hides there too. The goal: mine Cobalt, smelt and craft four Thruster Nozzles, press E at each Broken Thruster on the wingtips, and lift off. Or just keep surviving and beat your best day count. Death costs everything you carry: it waits in a Death Cache where you fell. Respawning only works at a Save Beacon you activated with E. Beacons are the only save points. The desert is alive: Desert Snakes bite anything that steps too close, Kangaroo Rats bolt, Scorpions and Wurms ambush in the dark — hunt what you can, cook the meat at a Campfire, eat it to heal. Break Cacti for Prickly Pears to drink. Snake skins stitch into Reptile Armour. Backpack, Visor, Armour, Regulator and Light go in the five Armour Slots inside the inventory: select the gear, then click or tap the empty slot to wear it.";
   body.appendChild(extra);
 }
 

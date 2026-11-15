@@ -79,6 +79,9 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 #weight.encumbered { color: #ff7b5e; }
 #toast { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); background: rgba(0,0,0,0.65);
   padding: 8px 14px; border-radius: 6px; opacity: 0; transition: opacity 0.4s; font-size: 15px; }
+#lift-fx { position: fixed; left: 50%; top: 14%; transform: translateX(-50%); z-index: 28; pointer-events: none;
+  font-size: clamp(26px, 5vw, 46px); letter-spacing: 8px; text-transform: uppercase; color: #ffd76a;
+  text-shadow: 0 0 18px #ff8a3c, 0 0 46px #ff6a1c, 0 2px 4px #000; }
 
 /* screens & panels */
 .screen { position: fixed; inset: 0; z-index: 30; overflow: auto;
@@ -141,7 +144,7 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
   color: #fff; text-shadow: 0 1px 2px #000; background-size: 100% 100%; image-rendering: pixelated; }
 #inv-temp.filled { border-style: solid; }
 #btn-drop-temp { margin-top: 2px; }
-/* Armour Slots: Backpack / Head / Body — equipped gear lives outside the grid */
+/* Armour Slots: Backpack / Head / Body / Regulator / Light — equipped gear lives outside the grid */
 #equip-row { display: flex; align-items: flex-end; gap: 14px; margin: 2px 0 12px; }
 .equip-slot { text-align: center; }
 .equip-cell { width: 56px; height: 56px; background: #23262e; border: 1px dashed #5a6270; border-radius: 4px;

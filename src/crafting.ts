@@ -13,6 +13,11 @@ export const RECIPES: Recipe[] = [
   { out: "wood_pickaxe", count: 1, needs: { deadwood: 3 }, bench: false },
   { out: "wood_shovel", count: 1, needs: { deadwood: 3 }, bench: false },
   { out: "wood_axe", count: 1, needs: { deadwood: 3 }, bench: false },
+  // Alloy (tier 4): Copper Rods bound with Metal - faster tools, a better disassembler.
+  { out: "alloy_pickaxe", count: 1, needs: { metal: 2, copperrod: 2, deadwood: 1 }, bench: true },
+  { out: "alloy_shovel", count: 1, needs: { metal: 2, copperrod: 2, deadwood: 1 }, bench: true },
+  { out: "alloy_axe", count: 1, needs: { metal: 2, copperrod: 2, deadwood: 1 }, bench: true },
+  { out: "alloy_disassembler", count: 1, needs: { metal: 3, copperrod: 2, rock: 2 }, bench: true },
   { out: "stone_pickaxe", count: 1, needs: { rock: 3, deadwood: 2 }, bench: true },
   { out: "stone_shovel", count: 1, needs: { rock: 3, deadwood: 2 }, bench: true },
   { out: "stone_axe", count: 1, needs: { rock: 3, deadwood: 2 }, bench: true },
@@ -20,6 +25,16 @@ export const RECIPES: Recipe[] = [
   { out: "metal_shovel", count: 1, needs: { metal: 2, deadwood: 1 }, bench: true },
   { out: "metal_axe", count: 1, needs: { metal: 2, deadwood: 1 }, bench: true },
   { out: "metal_disassembler", count: 1, needs: { metal: 4, rock: 2 }, bench: true },
+  // ---- what the underground unlocks ----
+  { out: "backpack2", count: 1, needs: { deadwood: 10, metal: 4, snake_skin: 2 }, bench: true },
+  { out: "wurmsuit", count: 1, needs: { wurm_hide: 3, chitin: 1 }, bench: true },
+  { out: "stinger_blade", count: 1, needs: { metal: 2, stinger: 1, deadwood: 1 }, bench: true },
+  { out: "body_regulator", count: 1, needs: { metal: 4, copperrod: 2, cobaltrod: 1, catalyst: 1 }, bench: true },
+  { out: "coolant_cell", count: 1, needs: { salt: 2, canister_empty: 1, copperrod: 1 }, bench: true },
+  { out: "head_lantern", count: 1, needs: { metal: 1, glass: 1, copperrod: 1, deadwood: 1 }, bench: true },
+  { out: "curved_hull", count: 2, needs: { metal: 2, sand: 2 }, bench: true },
+  { out: "hull_slope", count: 2, needs: { metal: 2, sand: 2 }, bench: true },
+  { out: "thruster_nozzle", count: 1, needs: { cobaltrod: 1, copperrod: 2, metal: 1 }, bench: true },
   { out: "sword", count: 1, needs: { metal: 2, deadwood: 1 }, bench: true },
   { out: "door", count: 1, needs: { metal: 2, deadwood: 2 }, bench: true },
   { out: "hull", count: 2, needs: { metal: 2, sand: 2 }, bench: true },
@@ -43,7 +58,7 @@ export const RECIPES: Recipe[] = [
 ];
 
 /** Campfire smelting: consumes one fuel charge per item. */
-export const SMELT: { in: string; out: string }[] = [
+export const SMELT: { in: string; out: string; n?: number }[] = [
   { in: "sand", out: "glass" },
   { in: "farmland", out: "glass" }, // Farm Land is packed dirt - the kiln doesn't care
   { in: "dirt", out: "adobe" },
@@ -51,6 +66,10 @@ export const SMELT: { in: string; out: string }[] = [
   { in: "rock", out: "ironrod" },
   { in: "rat_raw", out: "rat_cooked" },
   { in: "wheat", out: "cooked_wheat" },
+  // Ore yields double: the dig is the expensive part, not the fire.
+  { in: "iron_ore", out: "ironrod", n: 2 },
+  { in: "copper_ore", out: "copperrod", n: 2 },
+  { in: "cobalt_ore", out: "cobaltrod", n: 2 },
 ];
 
 export function canCraft(inv: Inventory, r: Recipe): boolean {

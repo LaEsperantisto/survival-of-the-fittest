@@ -3,6 +3,7 @@ import {
   DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, ADOBE, ENGINECORE, REGULATOR, CHEST, CACTUS,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, BED, BED_EXT, GRASS, LEAVES, WOOD, SAPLING,
+  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE,
 } from "./blocks";
 
 export interface ItemDef {
@@ -15,7 +16,10 @@ export interface ItemDef {
   tool?: { type: "pickaxe" | "shovel" | "axe" | "disassembler"; tier: number };
   weapon?: { reach: number; dmg: number };   // swings reach farther and hit harder than fists/tools
   eat?: { water?: number; health?: number };  // eating applies these to the player
-  equip?: "backpack" | "head" | "body";       // goes in that Armour Slot
+  equip?: "backpack" | "head" | "body" | "regulator" | "light"; // goes in that Armour Slot
+  bag?: { w: number; h: number; kg: number }; // Backpack-slot gear: grid size + weight bonus
+  armor?: number;            // Body-slot gear: fraction of every damage shrugged off
+  fuel?: number;             // max fuel charges (Head Lantern)
   color: string;             // icon color
 }
 
@@ -60,13 +64,15 @@ const ITEM_LIST: ItemDef[] = [
   toolItem("pickaxe", 1, "wood", "#a8834f"), toolItem("pickaxe", 2, "stone", "#8d8680"), toolItem("pickaxe", 3, "metal", "#9aa0aa"),
   toolItem("shovel", 1, "wood", "#a8834f"), toolItem("shovel", 2, "stone", "#8d8680"), toolItem("shovel", 3, "metal", "#9aa0aa"),
   toolItem("axe", 1, "wood", "#a8834f"), toolItem("axe", 2, "stone", "#8d8680"), toolItem("axe", 3, "metal", "#9aa0aa"),
+  toolItem("pickaxe", 4, "alloy", "#c07848"), toolItem("shovel", 4, "alloy", "#c07848"), toolItem("axe", 4, "alloy", "#c07848"),
   toolItem("disassembler", 1, "metal", "#c0c8d8"),
+  toolItem("disassembler", 2, "alloy", "#c07848"),
   I({
     id: "sword", name: "Metal Sword",
     desc: "A forged blade. Hits Desert Snakes and rats far harder than any tool, and reaches farther.",
     w: 1, h: 2, mass: 2.2, weapon: { reach: 4.6, dmg: 7 }, color: "#c9d2dc",
   }),
-  I({ id: "backpack1", name: "Backpack I", desc: "Equipped in the Backpack slot: inventory grid grows to 4×5, weight limit +20 kg.", w: 2, h: 2, mass: 2.0, equip: "backpack", color: "#7a5a3a" }),
+  I({ id: "backpack1", name: "Backpack I", desc: "Equipped in the Backpack slot: inventory grid grows to 4×5, weight limit +20 kg.", w: 2, h: 2, mass: 2.0, equip: "backpack", bag: { w: 4, h: 5, kg: 20 }, color: "#7a5a3a" }),
   I({ id: "cactus", name: "Cactus", desc: "Tall desert column. Replantable anywhere on sand or farm land; with water it fruits on its own. Break a fruit-topped one for the Prickly Pear.", w: 1, h: 2, mass: 1.5, block: CACTUS, color: "#3d8042" }),
   I({ id: "prickly_pear", name: "Prickly Pear", desc: "Cactus fruit. Eat it: +8 Water, +1 Health.", w: 1, h: 1, mass: 0.2, eat: { water: 8, health: 1 }, color: "#d64a82" }),
   I({ id: "snake_skin", name: "Snake Skin", desc: "Tough desert hide. Three of them stitch into Reptile Armour at a Crafting Bench.", w: 1, h: 2, mass: 0.6, color: "#b3946a" }),
@@ -92,6 +98,28 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "metal_plating", name: "Metal Plating", desc: "The ship's plated floor and skin. Same plate, same tools - disassemble it back.", w: 1, h: 1, mass: 1.2, block: METAL_PLATING, color: "#9aa0ac" }),
   I({ id: "door_inner", name: "Inside Door", desc: "Interior bulkhead door. It divides rooms for sight and movement - and never insulates: in temperature terms it is just air, open or closed.", w: 1, h: 1, mass: 2, block: DOOR_INNER, color: "#82868e" }),
   I({ id: "bed", name: "Bed", desc: "Curtained sleep for 8 game hours, then the cool morning. One long sleep every 8 hours; press E at the bed. Takes a 2x1 floor span.", w: 2, h: 1, mass: 6, block: BED, color: "#a84a42" }),
+  // ---- underground: minerals ----
+  I({ id: "iron_ore", name: "Iron Ore", desc: "Dense ore from Cave walls. Smelt it at a Campfire: one ore bakes two Iron Rods.", w: 1, h: 1, mass: 1.6, block: IRON_ORE, color: "#9e8468" }),
+  I({ id: "copper_ore", name: "Copper Ore", desc: "Reddened Cave stone. Smelts into Copper Rods - the heart of tier-4 Alloy gear.", w: 1, h: 1, mass: 1.6, block: COPPER_ORE, color: "#b86b42" }),
+  I({ id: "alabaster", name: "Alabaster", desc: "Pale Cave stone. Cuts soft, decorates well, and takes a Lamp's light like nothing else.", w: 1, h: 1, mass: 1.2, block: ALABASTER, color: "#dcd5bd" }),
+  I({ id: "cobalt_ore", name: "Cobalt Ore", desc: "Bluish ore of the deepest stone (Metal Pickaxe or better). The Ship's repair hangs on it.", w: 1, h: 1, mass: 2.2, block: COBALT_ORE, color: "#5c74a8" }),
+  I({ id: "copperrod", name: "Copper Rod", desc: "Smelted from Copper Ore. Never a tool by itself - always a component of better things.", w: 1, h: 1, mass: 1.0, color: "#c07848" }),
+  I({ id: "cobaltrod", name: "Cobalt Rod", desc: "Smelted from Cobalt Ore, found only in the deep underground. One Thruster Nozzle needs one.", w: 1, h: 1, mass: 1.4, color: "#6a84bc" }),
+  // ---- gear: slots ----
+  I({ id: "backpack2", name: "Backpack II", desc: "The big pack: inventory grid grows to 5x6, weight limit +40 kg. Reptile-hide stitching.", w: 2, h: 2, mass: 3.5, equip: "backpack", bag: { w: 5, h: 6, kg: 40 }, color: "#6a4c30" }),
+  I({ id: "body_regulator", name: "Body Heat Regulator", desc: "Worn in the Regulator slot: pins your Heat toward neutral while a Coolant Cell lasts. It regulates you - never a room.", w: 2, h: 2, mass: 3.0, equip: "regulator", color: "#4fa8c8" }),
+  I({ id: "coolant_cell", name: "Coolant Cell", desc: "Consumable fuel for the Body Heat Regulator: one cell carries about 2 game days of regulation. Spent cells are gone.", w: 1, h: 1, mass: 0.8, color: "#7fd4e8" }),
+  I({ id: "head_lantern", name: "Head Lantern", desc: "The Portable Light: worn in the Light slot, toggled with T. Burns fuel charges (5 max) - refill at a Campfire or load Kindling.", w: 1, h: 1, mass: 1.0, equip: "light", fuel: 5, color: "#ffd76a" }),
+  // ---- hunting the deep ----
+  I({ id: "chitin", name: "Chitin", desc: "Dust Scorpion armor plate. Tough, thin, and very hard to burn.", w: 1, h: 1, mass: 0.3, color: "#6a4a3a" }),
+  I({ id: "stinger", name: "Stinger", desc: "A Dust Scorpion's barb. Tipped onto a blade, it makes the deadliest weapon in the desert.", w: 1, h: 1, mass: 0.2, color: "#a84a3a" }),
+  I({ id: "wurm_hide", name: "Wurm Hide", desc: "Sand Wurm skin - heat-tempered plating for the toughest Body gear.", w: 1, h: 2, mass: 1.2, color: "#8a6a48" }),
+  I({ id: "wurmsuit", name: "Wurmsuit", desc: "Body-slot armour of Wurm Hide and Chitin: shrugs off 55% of every blow. Warmer against the cold night too.", w: 2, h: 2, mass: 5.0, equip: "body", armor: 0.55, color: "#7a5c40" }),
+  I({ id: "stinger_blade", name: "Stinger Blade", desc: "A Metal Sword tipped with a Scorpion Stinger: hits harder and farther than anything above ground.", w: 1, h: 2, mass: 2.4, weapon: { reach: 5.2, dmg: 12 }, color: "#c9b048" }),
+  // ---- the Ship's wings ----
+  I({ id: "curved_hull", name: "Curved Hull Plating", desc: "Hull Plating shaped as an elbow - insulates exactly like flat plating, and rounds any corner you build.", w: 1, h: 1, mass: 2.0, block: CURVED_HULL, color: "#7d8390" }),
+  I({ id: "hull_slope", name: "Hull Slope", desc: "A beveled hull block for spines, roofs and shoulders. Same insulation, rounder silhouette.", w: 1, h: 1, mass: 2.0, block: HULL_SLOPE, color: "#767d88" }),
+  I({ id: "thruster_nozzle", name: "Thruster Nozzle", desc: "Cobalt-and-Copper replacement engine part. Press E at a Broken Thruster to wake it. All four wake the Ship.", w: 1, h: 2, mass: 3.0, color: "#c88a50" }),
 ];
 
 export const ITEMS: Record<string, ItemDef> = Object.fromEntries(ITEM_LIST.map((d) => [d.id, d]));
@@ -113,7 +141,7 @@ BLOCK_TO_ITEM[CACTUS_FRUIT] = "cactus";
 // ---------------- Inventory Grid ----------------
 
 /** One slot holds exactly one item — items never stack, anywhere. */
-export interface Slot { itemId: string; x: number; y: number; rot?: boolean; }
+export interface Slot { itemId: string; x: number; y: number; rot?: boolean; charges?: number; }
 
 /** Effective footprint of a placed item (rot swaps w/h). */
 export function slotDims(s: Slot): { w: number; h: number } {

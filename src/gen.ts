@@ -2,6 +2,7 @@ import {
   AIR, SAND, SANDSTONE, ROCK, GRAVEL, SALT, DEADWOOD, DIRT, HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL_PLATING, BEACON,
   WATER, ADOBE, INSGLASS, BENCH, BENCH_EXT, ENGINECORE, CS, CH, REGULATOR, CACTUS, CACTUS_FRUIT,
   DOOR_INNER, DOOR_INNER_UPPER, CHEST, BED, BED_EXT, MELON_2, WHEAT_2, FARMLAND, GRASS, WOOD, LEAVES,
+  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, THRUSTER,
 } from "./blocks";
 import { fbm2, ridge2, value2, hash2, Rng } from "./noise";
 
@@ -172,6 +173,161 @@ function surfaceBlock(seed: number, x: number, z: number, y: number, h: number):
   return bi === B_MESA || bi === B_CANYON ? ROCK : SANDSTONE;
 }
 
+/* ── Underground: caves, wall ores, deep water ──────────────────────────────
+ * Everything below the surface is a pure function of (seed, x, y, z), so
+ * chunk edges agree no matter who evaluates a shared cell. */
+
+/** Cheap trilinear value noise in 3D, built on hash2 (noise.ts has no 3D). */
+function noise3(x: number, y: number, z: number, seed: number): number {
+  const sm = (t: number) => t * t * (3 - 2 * t);
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const g = (i: number, j: number, k: number) => hash2(i + k * 911, j + k * 577, seed);
+  const xf = sm(x - xi), yf = sm(y - yi), zf = sm(z - zi);
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  const x00 = lerp(g(xi, yi, zi), g(xi + 1, yi, zi), xf);
+  const x10 = lerp(g(xi, yi + 1, zi), g(xi + 1, yi + 1, zi), xf);
+  const x01 = lerp(g(xi, yi, zi + 1), g(xi + 1, yi, zi + 1), xf);
+  const x11 = lerp(g(xi, yi + 1, zi + 1), g(xi + 1, yi + 1, zi + 1), xf);
+  return lerp(lerp(x00, x10, yf), lerp(x01, x11, yf), zf);
+}
+
+/** Highest cave cell for a column: exactly the 4 solid cells under the
+ *  surface stay rock (roof rule), and mesas don't drag the band above y 30. */
+const caveTop = (h: number) => Math.min(h - 4, 30);
+
+const oasisCache = new Map<number, Oasis[]>();
+const oasesOf = (seed: number): Oasis[] => {
+  let o = oasisCache.get(seed);
+  if (!o) { o = new Structures(seed).oases; oasisCache.set(seed, o); }
+  return o;
+};
+
+/** Is (x,y,z) cave air? One big-cheese 3D-noise field: two scales mixed, the
+ *  threshold easing a little deeper down. Floor never below y=2, the crash
+ *  site's footing stays whole, and the bowl under an oasis pool stays dry.
+ *  Pass h when the caller already knows it. */
+function caveAt(seed: number, x: number, y: number, z: number, h?: number): boolean {
+  if (y < 3) return false;
+  if (x * x + z * z < 240) return false; // the crash site's footing stays solid
+  const hs = h ?? Math.round(heightAt(seed, x, z));
+  let top = caveTop(hs);
+  for (const o of oasesOf(seed))
+    if (Math.abs(x - o.x) <= o.r + 1 && Math.abs(z - o.z) <= o.r + 1)
+      top = Math.min(top, Math.round(heightAt(seed, o.x, o.z)) - 5); // keep pools sealed
+  if (y > top) return false;
+  const a = noise3(x / 9, y / 5.5, z / 9, seed + 301);
+  const b = noise3(x / 23, y / 15, z / 23, seed + 307);
+  // the cave roof hugs the solid crust (dig down half a dozen blocks and you
+  // break through into something real); the field thins out deeper down
+  return a * 0.55 + b * 0.45 > 0.575 + Math.max(0, top - y - 4) * 0.005;
+}
+
+/* ── Town dungeons ───────────────────────────────────────────────────────────
+ * ~60% of Towns hide a small dungeon under the sand: 2-4 rooms on a 6-cell
+ * lattice joined by 1-wide tunnels, a nest alcove off the first room, and a
+ * 1x1 spiral stair shaft down from the surface near the plot edge. The whole
+ * layout is a pure function of (townX, townZ, seed) — genChunk carves it,
+ * dungeonEntrance() tells game.ts where the hole in the sand is, and any
+ * chunk computes the same rooms independently. */
+
+interface Dungeon {
+  x0: number; x1: number; z0: number; z1: number; y0: number; y1: number;
+  air: Set<string>;
+  sh: { x: number; z: number; y0: number };
+}
+const DKEY = (x: number, y: number, z: number) => x + "," + y + "," + z;
+
+function dungeonPlan(townX: number, townZ: number, seed: number): Dungeon | null {
+  if (hash2(townX, townZ, seed + 121) >= 0.6) return null; // ~60% get one
+  const hT = Math.round(heightAt(seed, townX, townZ));
+  const yTop = hT - 4, yBot = hT - 16; // never closer than 4 below the surface
+  if (yBot < 4) return null;
+  const nR = 2 + (hash2(townX, townZ, seed + 123) * 3 | 0); // 2..4 rooms
+  const rc: { x: number; z: number; hx: number; hz: number }[] = [];
+  for (let i = 0; i < nR; i++) {
+    const gx = -1 + (hash2(townX + i * 3, townZ, seed + 125) * 4 | 0); // lattice -1..2
+    const gz = -1 + (hash2(townX, townZ + i * 3, seed + 127) * 4 | 0);
+    rc.push({
+      x: townX + gx * 6, z: townZ + gz * 6,
+      hx: 1 + (hash2(townX - i, townZ + i, seed + 129) * 3 | 0), // side 3..7
+      hz: 1 + (hash2(townX + i, townZ - i, seed + 131) * 3 | 0),
+    });
+  }
+  const air = new Set<string>();
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, ya = Infinity, yb = -Infinity;
+  const add = (x: number, y: number, z: number) => {
+    air.add(DKEY(x, y, z));
+    if (x < x0) x0 = x; if (x > x1) x1 = x;
+    if (z < z0) z0 = z; if (z > z1) z1 = z;
+    if (y < ya) ya = y; if (y > yb) yb = y;
+  };
+  const carveRect = (ax: number, bx: number, az: number, bz: number, ya2: number, yb2: number) => {
+    for (let x = Math.min(ax, bx); x <= Math.max(ax, bx); x++)
+      for (let z = Math.min(az, bz); z <= Math.max(az, bz); z++)
+        for (let y = ya2; y <= yb2; y++) add(x, y, z);
+  };
+  for (const r of rc) carveRect(r.x - r.hx, r.x + r.hx, r.z - r.hz, r.z + r.hz, yBot, yTop);
+  // 1-wide tunnels, room centre to room centre (L-shaped)
+  for (let i = 1; i < rc.length; i++) {
+    carveRect(rc[i - 1].x, rc[i].x, rc[i - 1].z, rc[i - 1].z, yBot, yTop);
+    carveRect(rc[i].x, rc[i].x, rc[i - 1].z, rc[i].z, yBot, yTop);
+  }
+  // nest alcove: a 2x2 pocket hanging off the first room's seaward wall
+  const r0 = rc[0];
+  const asx = hash2(townX, townZ + 1, seed + 133) > 0.5 ? 1 : -1;
+  const asz = hash2(townX + 1, townZ, seed + 135) > 0.5 ? 1 : -1;
+  const azx = r0.x + asx * (r0.hx + 1), azz = r0.z + asz * (r0.hz + 1);
+  carveRect(azx, azx + 1, azz, azz + 1, yBot, yTop - 3);
+  // entrance shaft: a 1x1 spiral stair near the plot edge — each step drops
+  // one block around a 2x2 well, so it stays walkable all the way down
+  const cand = [[9, -6], [9, 7], [-11, -5]] as const;
+  const off = cand[hash2(townX, townZ, seed + 137) * 3 | 0];
+  const sh = { x: townX + off[0], z: townZ + off[1] };
+  const hS = Math.round(heightAt(seed, sh.x, sh.z));
+  const y0 = hS, yEnd = Math.min(yTop - 8, hS - 3);
+  if (y0 - yEnd < 4) return null; // surface too low here — no sensible shaft
+  const ring = [[0, 0], [1, 0], [1, 1], [0, 1]] as const;
+  for (let k = 0; k <= y0 - yEnd; k++) {
+    const p = ring[k & 3];
+    const y = y0 - k;
+    add(sh.x + p[0], y, sh.z + p[1]);
+    add(sh.x + p[0], y + 1, sh.z + p[1]); // headroom
+  }
+  // bottom gallery at stair foot -> room 1 centre (2 tall to walk through):
+  // one x-run at the shaft's z, then one z-run into the room
+  carveRect(sh.x, r0.x, sh.z, sh.z, yEnd, yEnd + 1);
+  carveRect(r0.x, r0.x, sh.z, r0.z, yEnd, yEnd + 1);
+  return { x0, x1, z0, z1, y0: ya, y1: yb, air, sh: { ...sh, y0 } };
+}
+
+/** Carve one town's dungeon into this chunk and line its shell with Adobe,
+ *  streaking in Alabaster — the reline is computed from the pure layout, so
+ *  the lining matches across every chunk border. */
+function paintDungeon(set: (x: number, y: number, z: number, id: number) => void, t: Town, seed: number) {
+  const p = dungeonPlan(t.x, t.z, seed);
+  if (!p) return;
+  for (let x = p.x0; x <= p.x1; x++) for (let z = p.z0; z <= p.z1; z++)
+    for (let y = p.y0; y <= p.y1; y++)
+      if (p.air.has(DKEY(x, y, z))) set(x, y, z, AIR);
+  for (let x = p.x0 - 1; x <= p.x1 + 1; x++) for (let z = p.z0 - 1; z <= p.z1 + 1; z++)
+    for (let y = p.y0 - 1; y <= p.y1 + 1; y++) {
+      if (p.air.has(DKEY(x, y, z))) continue;
+      const exposed =
+        p.air.has(DKEY(x + 1, y, z)) || p.air.has(DKEY(x - 1, y, z)) ||
+        p.air.has(DKEY(x, y + 1, z)) || p.air.has(DKEY(x, y - 1, z)) ||
+        p.air.has(DKEY(x, y, z + 1)) || p.air.has(DKEY(x, y, z - 1));
+      if (exposed) set(x, y, z, hash2(x * 3 + z * 7, y * 5 + z, seed + 139) < 0.16 ? ALABASTER : ADOBE);
+    }
+}
+
+/** Where the buried stair into this Town's dungeon pokes through the surface,
+ *  or null if this Town has no dungeon. Pure and deterministic; game.ts marks
+ *  these without gen.ts importing anything back. */
+export function dungeonEntrance(seed: number, townX: number, townZ: number): { x: number; y: number; z: number } | null {
+  const p = dungeonPlan(townX, townZ, seed);
+  return p ? { x: p.sh.x, y: p.sh.y0, z: p.sh.z } : null;
+}
+
 /** Paint the crashed ship: a small, rounded wreck with wings and a raised spine.
  *  Interior x -5..3, z -4..4, floor y=30, interior y 31..33, ceiling y=34.
  *  Layout: forward cockpit (x 2..3, insulating-glass windscreen); central hall
@@ -192,6 +348,11 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
   // rounding: clip the outer corners of the bow/stern faces, top and bottom
   const clipped = (x: number, y: number, z: number): boolean =>
     (x === 4 || x === -6) && Math.abs(z) >= 3 && (y === Y0 || y === Y1);
+  // rounded corners: the four outer shell corner posts (every y in the shell)
+  // and the flank cells the wings bolt into are Curved Hull, not flat HULL
+  const cornerPost = (x: number, z: number) => Math.abs(z) === 5 && (x === 3 || x === -5);
+  const wingJoint = (x: number, z: number, y: number) =>
+    Math.abs(z) === 5 && x >= -3 && x <= 2 && y >= 31 && y <= 33;
   for (let x = -6; x <= 4; x++)
     for (let z = -5; z <= 5; z++)
       for (let y = Y0; y <= Y1; y++) {
@@ -199,15 +360,20 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
         // the cockpit tapers narrower than the rest of the hull
         const narrow = x >= 2 && Math.abs(z) > 2;
         const interior = x >= -5 && x <= 3 && z >= -4 && z <= 4 && y >= 31 && y <= 33 && !narrow;
-        set(x, y, z, interior ? AIR : y === Y0 ? METAL_PLATING : HULL);
+        set(x, y, z, interior ? AIR : cornerPost(x, z) || wingJoint(x, z, y) ? CURVED_HULL : y === Y0 ? METAL_PLATING : HULL);
       }
-  // rounded spine along the roof
-  for (let x = -3; x <= 1; x++) for (let z = -2; z <= 2; z++) set(x, 35, z, HULL);
-  for (let x = -2; x <= 0; x++) for (let z = -1; z <= 1; z++) set(x, 36, z, HULL);
+  // rounded spine along the roof — sloped hull plates catch the light right
+  for (let x = -3; x <= 1; x++) for (let z = -2; z <= 2; z++) set(x, 35, z, HULL_SLOPE);
+  for (let x = -2; x <= 0; x++) for (let z = -1; z <= 1; z++) set(x, 36, z, HULL_SLOPE);
   // wings: thin plated planes out from the flanks, tapering at the tips
   for (let x = -2; x <= 1; x++) for (const z of [6, 7, 8, 9, -6, -7, -8, -9]) set(x, 32, z, METAL_PLATING);
   for (const x of [-3, 2]) for (const z of [6, 7, 8, -6, -7, -8]) set(x, 32, z, METAL_PLATING);
   for (const x of [-1, 0]) { set(x, 31, 10, METAL_PLATING); set(x, 31, -10, METAL_PLATING); }
+  // the wingtips' last plating step, then the wreck's only surviving drive:
+  // exactly 4 Thruster nozzles, one per wingtip, a hand's reach from a player
+  // standing on the wing (their feet are at y 33, the nozzles sit at y 32)
+  for (const x of [-1, 0]) { set(x, 31, 11, METAL_PLATING); set(x, 31, -11, METAL_PLATING); }
+  for (const x of [-1, 0]) { set(x, 32, 11, THRUSTER); set(x, 32, -11, THRUSTER); }
 
   const door = (x: number, y: number, z: number) => { set(x, y, z, DOOR_CLOSED); set(x, y + 1, z, DOOR_UPPER); };
   // Inside Doors: interior bulkheads. Closed they keep rooms apart on their own
@@ -244,10 +410,21 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
 
 function paintSecondShip(set: (x: number, y: number, z: number, id: number) => void, t: { x: number; z: number }, seed: number) {
   const r = new Rng(SP + 77);
+  // a stub of the hull still stands where she hit: a 5x5 shell outline,
+  // three tall, rounded at the corner posts like her sister wreck — but this
+  // one burned through her drive, so no thrusters survive out here
+  const h = Math.round(heightAt(seed, t.x, t.z));
+  for (let x = -2; x <= 2; x++) for (let z = -2; z <= 2; z++) {
+    if (Math.abs(x) !== 2 && Math.abs(z) !== 2) continue;
+    const corner = Math.abs(x) === 2 && Math.abs(z) === 2;
+    for (let y = h + 1; y <= h + 3; y++) set(t.x + x, y, t.z + z, corner ? CURVED_HULL : HULL);
+  }
+  for (let y = h + 1; y <= h + 2; y++) set(t.x, y, t.z - 2, AIR); // a gap to walk in through
   for (let i = 0; i < 40; i++) {
     const x = t.x + r.int(-5, 5), z = t.z + r.int(-5, 5);
     const y = Math.round(heightAt(seed, x, z));
-    set(x, y + r.int(0, 1), z, r.next() < 0.5 ? HULL : METAL_PLATING);
+    const roll = r.next();
+    set(x, y + r.int(0, 1), z, roll < 0.45 ? HULL : roll < 0.55 ? CURVED_HULL : METAL_PLATING);
   }
   // the Engine Core sits at the exact center of the debris field, on the ground
   set(t.x, Math.round(heightAt(seed, t.x, t.z)) + 1, t.z, ENGINECORE);
@@ -412,18 +589,96 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number): 
     if (x >= 0 && x < CS && z >= 0 && z < CS && wy >= 0 && wy < CH) c[(x * CS + z) * CH + wy] = id;
   };
 
+  // Chunk-local cave mask with a 1-cell margin for the wall-ore checks:
+  // 0 = not asked yet, 1 = solid, 2 = cave air. caveAt is pure in
+  // (seed, wx, wy, wz), so shared chunk edges agree no matter who evaluates.
+  const CW = CS + 2;
+  const caveM = new Uint8Array(CW * CW * CH);
+  const hM = new Int16Array(CW * CW).fill(-1);
+  const hCol = (wx: number, wz: number): number => {
+    const i = (wx - cx * CS + 1) * CW + (wz - cz * CS + 1);
+    if (hM[i] < 0) hM[i] = Math.round(heightAt(seed, wx, wz));
+    return hM[i];
+  };
+  const caveC = (wx: number, wy: number, wz: number): boolean => {
+    const lx = wx - cx * CS + 1, lz = wz - cz * CS + 1;
+    if (lx < 0 || lx >= CW || lz < 0 || lz >= CW) return caveAt(seed, wx, wy, wz);
+    const idx = (lx * CW + lz) * CH + wy;
+    if (!caveM[idx]) caveM[idx] = caveAt(seed, wx, wy, wz, hCol(wx, wz)) ? 2 : 1;
+    return caveM[idx] === 2;
+  };
+
   for (let x = 0; x < CS; x++) {
     for (let z = 0; z < CS; z++) {
       const wx = cx * CS + x, wz = cz * CS + z;
       const h = Math.round(heightAt(seed, wx, wz));
       for (let y = 0; y <= h; y++) c[(x * CS + z) * CH + y] = surfaceBlock(seed, wx, wz, y, h);
       const atCrash = wx * wx + wz * wz < 240; // keep the crash site clear of scenery
-      // boulders
+      const top = caveTop(h); // cave ceiling: >= 4 solid cells under the surface
+
+      // ── the underground band: caves, ores crusting the walls, rare pools ──
+      if (!atCrash) for (let y = 3; y <= top; y++) {
+        const idx = (x * CS + z) * CH + y;
+        if (caveC(wx, y, wz)) {
+          // a Deep Water pocket: one rare blob of Source blocks per big cave —
+          // the desert's buried drink, reachable by canister chains
+          c[idx] = y >= 8 && y <= 18 && noise3(wx / 26, y / 19, wz / 26, seed + 401) > 0.785
+            ? WATER : AIR;
+          continue;
+        }
+        const base = c[idx];
+        if (base !== ROCK && base !== SANDSTONE) continue;
+        if (!(caveC(wx + 1, y, wz) || caveC(wx - 1, y, wz) || caveC(wx, y + 1, wz) ||
+              caveC(wx, y - 1, wz) || caveC(wx, y, wz + 1) || caveC(wx, y, wz - 1))) continue;
+        // wall crust: 3D-noise blobs clinging to the cave skin
+        if (y <= 15 && hash2(wx * 5 + y, wz * 7 - y, seed + 333) < 0.4 &&
+            noise3(wx / 5 + 40, y / 5, wz / 5, seed + 331) > 0.72) c[idx] = COBALT_ORE;
+        else if (y >= 12 && noise3(wx / 5, y / 5, wz / 5, seed + 313) > 0.665) c[idx] = IRON_ORE;
+        else if (y >= 12 && noise3(wx / 5, y / 5 + 60, wz / 5, seed + 317) > 0.7) c[idx] = COPPER_ORE;
+        else if (y >= 8 && y <= 24 && noise3(wx / 5, y / 5, wz / 5 + 70, seed + 321) > 0.715) c[idx] = ALABASTER;
+      }
+
+      // occasional 1x1 entrance shaft: one column punched straight down from
+      // the surface into the cave band, with a rock floor — never at the
+      // crash, under a Town (its stair shaft owns those columns) or an oasis
+      if (!atCrash && h >= 12 && hash2(wx, wz, seed + 201) > 0.984 &&
+          st.townNear(wx, wz, 14) === null && st.nearOasis(wx, wz) === null) {
+        const d = top - 4; // a little open headroom at the cave floor
+        if (d >= 7) {
+          for (let y = h - 1; y >= d; y--) c[(x * CS + z) * CH + y] = AIR;
+          c[(x * CS + z) * CH + (d - 1)] = ROCK;
+        }
+      }
+
+      // stone formations — biome-flavoured surface outcrops (boulder density)
       if (!atCrash && hash2(wx, wz, seed + 21) > 0.988) {
         const bi = biomeAt(wx, wz, seed);
-        if (bi === B_DUNES || bi === B_ROCKY) {
-          for (let dy = 1; dy <= 2; dy++) setW(wx, h + dy, wz, ROCK);
-          if (x > 0) setW(wx - 1, h + 1, wz, ROCK);
+        const inR = (xx: number, zz: number) => xx >= 0 && xx < CS && zz >= 0 && zz < CS;
+        if (bi === B_MESA || bi === B_CANYON) {
+          // monolith: a crooked column of dead rock, 3-5 tall
+          const mh = 3 + (hash2(wx, wz, seed + 22) * 3 | 0);
+          for (let dy = 1; dy <= mh; dy++) setW(wx, h + dy, wz, ROCK);
+          if (x > 0 && hash2(wx, wz, seed + 27) > 0.5) setW(wx - 1, h + 1, wz, ROCK);
+        } else if (bi === B_ROCKY) {
+          // leaning slab: 2-3 blocks stacked over by one at the top
+          const n = 2 + (hash2(wx, wz, seed + 24) * 2 | 0);
+          const ld = [[1, 0], [-1, 0], [0, 1], [0, -1]][hash2(wx, wz, seed + 25) * 4 | 0];
+          for (let i = 0; i < n; i++) {
+            const o = i === n - 1 ? 1 : 0;
+            if (inR(x + ld[0] * o, z + ld[1] * o)) setW(wx + ld[0] * o, h + 1 + i, wz + ld[1] * o, ROCK);
+          }
+        } else if (bi === B_SALT) {
+          // salt raft: a flat plate of SALT standing proud of the crust
+          for (const [ox, oz] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const)
+            if (inR(x + ox, z + oz)) setW(wx + ox, h + 1, wz + oz, SALT);
+        } else {
+          // rubble: a scatter of loose stones in the dunes
+          const n = 2 + (hash2(wx, wz, seed + 26) * 3 | 0);
+          for (let i = 0; i < n; i++) {
+            const ox = (hash2(wx + i, wz, seed + 33) * 3 | 0) - 1, oz = (hash2(wx, wz + i, seed + 35) * 3 | 0) - 1;
+            if (!inR(x + ox, z + oz)) continue;
+            setW(wx + ox, h + 1, wz + oz, hash2(wx + i, wz - i, seed + 43) > 0.5 ? ROCK : SANDSTONE);
+          }
         }
       }
       // dead trees
@@ -461,6 +716,9 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number): 
     const t = st.townCenter(tx, tz);
     // paint into any chunk whose cells overlap the town footprint (huts span ±8, the plot reaches further)
     if (cx * CS <= t.x + 16 && cx * CS + CS - 1 >= t.x - 12 && cz * CS <= t.z + 12 && cz * CS + CS - 1 >= t.z - 16) paintTown(setW, t, seed);
+    // the dungeon and its stair shaft reach ~30 cells from the town centre —
+    // paintDungeon early-bails for the ~40% of towns without one
+    if (cx * CS <= t.x + 30 && cx * CS + CS - 1 >= t.x - 30 && cz * CS <= t.z + 30 && cz * CS + CS - 1 >= t.z - 30) paintDungeon(setW, t, seed);
   }
   if (Math.abs(cx * CS + 8 - st.secondShip.x) < 12 && Math.abs(cz * CS + 8 - st.secondShip.z) < 12)
     paintSecondShip(setW, st.secondShip, seed);

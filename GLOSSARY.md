@@ -224,7 +224,7 @@ A rectangular grid of slots; items occupy footprints (Water Canister 1×2). Expa
 _Avoid_: stacking, merging slots
 
 **Armour Slot**:
-One of three dedicated equipment places above the Inventory Grid: Backpack, Head, Body. Gear in an Armour Slot works passively, takes no room in the Grid, and comes off by clicking the filled slot.
+One of five dedicated equipment places above the Inventory Grid: Backpack, Head, Body, Regulator, Light. Gear in an Armour Slot works passively, takes no room in the Grid, and comes off by clicking the filled slot.
 _Avoid_: equip slot, paper doll
 
 **Temporary Storage**:
@@ -269,8 +269,86 @@ A rare traveling trader in Towns: barters rare loot for Water Canisters; finite 
 **Engine Core**:
 The single quest-exclusive item — the final quest artifact. Everything else in the game is eventually craftable.
 
+**Cave**:
+A hollow in the ground: tunnel networks and chambers dug through rock, entered at dark surface mouths in the rocky biomes. Deep Air Temperature barely moves with the sky — caves are a refuge at noon and a warmth at night. Without light underground there is only blackness.
+_Avoid_: tunnel, hole, mine (as the natural hollow)
+
+**Cave Pool**:
+A rare standing Water Source deep underground: drinkable supply, paid for in danger and darkness.
+
+**Ore Vein**:
+A visible seam of a Mineral embedded in cave stone. Mining a vein yields its Raw Ore.
+_Avoid_: deposit (ambiguous with Cache)
+
+**Iron Ore**:
+The densest source of Iron; smelts at a Campfire into Iron Rod where surface Rock yields only one.
+_Avoid_: iron (bare)
+
+**Copper Ore**:
+A reddish Mineral. Smelts into Copper Rod — never a tool by itself, always a component of higher things.
+_Avoid_: bronze
+
+**Alabaster**:
+A pale Mineral stone, mined and worked whole: decorative and a component, not structural.
+
+**Dungeon**:
+A buried structure: a findable sealed entrance on the surface descending into procedurally generated rooms holding valuable loot — and enemies. One per Town lattice cell, deterministic per World Seed.
+_Avoid_: cave nest (dungeons are built, not grown)
+
+**Dust Scorpion**:
+An armored cave predator, neutral until approached. Its Chitin and Stinger are crafting materials.
+
+**Chitin**:
+Dust Scorpion armor plates — component of tougher gear.
+
+**Stinger**:
+A Dust Scorpion's barb — tips the deadliest weapons.
+
+**Body Heat Regulator**:
+Worn gear in its own Armour Slot that regulates the wearer's own Heat, not a Space: it pins the Body toward neutral while a Coolant Cell is spent. Unlike a Heat Regulator, it travels with you; unlike the Heat Regulator, it is not a block and never touches Air Temperature.
+_Avoid_: heating vest, suit (it is a device, not clothing)
+
+**Coolant Cell**:
+A consumable that fuels a Body Heat Regulator for a stretch of game time; spent cells are gone, craft more.
+_Avoid_: battery (it is thermal, not electric)
+
+**Portable Light**:
+A carried Lamp worn in its own Armour Slot, casting real light on whatever the player walks into; it burns fuel and must be refueled.
+
+**Curved Hull Plating**:
+Hull Plating shaped as an elbow or a slope rather than a cube — insulating exactly like Hull Plating, used to round the Ship's corners and spine.
+
+**Stone Formation**:
+Free-standing stone scenery: arches, leaning slabs, tall monoliths, and rubble clusters — each biome getting its own mix.
+_Avoid_: boulder (the lone L-shaped lump it replaces)
+
+**Cobalt Ore**:
+A deep bluish Mineral, found only near the bottom of the underground — the material the Ship's repair hangs on.
+_Avoid_: cobalt (bare)
+
+**Broken Thruster**:
+One of the wreck's four dead wingtip engines. Immovable: it cannot be broken or Disassembled — until the quest is done, the only interaction it accepts is a Thruster Nozzle.
+
+**Thruster Nozzle**:
+The replacement part that wakes a Broken Thruster: crafted from what the deep caves give up (Cobalt, Copper). Installing all four completes the Main Quest.
+
+**Lift-off**:
+The ending: with every Thruster woken, the Ship takes off. The player may then continue on the ground where it lands again — the sky, and what is up there, stays for later.
+
+**Sand Wurm**:
+A rare, blind, segmented deep predator: slow, nearly unkillable by early gear, and usually best outrun. Its Hide is the warmest armour there is.
+
+**Wurm Hide**:
+Sand Wurm skin — thick, heat-tempered plating for the toughest Body gear.
+
+**Wurmsuit**:
+Body-slot armour stitched from Wurm Hide and Chitin; shrugs off more of every hit than Reptile Armour.
+
+**Head Lantern**:
+The Portable Light worn in the Light slot: toggled at will, it burns fuel charges and must be refueled — the only way to carry a Cave's worth of darkness back out.
+
 **Backpack**:
-An upgrade worn in the Backpack slot, expanding the Inventory Grid and/or raising the Weight Limit.
+An upgrade worn in the Backpack slot, expanding the Inventory Grid and/or raising the Weight Limit. (Backpack I, then the larger Backpack II.)
 
 **Settings**:
 Menu with units (Celsius/Fahrenheit), controls, and rendering options.
