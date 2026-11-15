@@ -1,4 +1,4 @@
-import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, LEAVES, REGULATOR, CS, CH, isOpaque, isWater, waterStrength, flowId } from "./blocks";
+import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, LEAVES, REGULATOR, INSGLASS, CS, CH, isOpaque, isWater, waterStrength, flowId } from "./blocks";
 import { genChunk, Structures } from "./gen";
 
 export const ckey = (cx: number, cz: number) => cx + "," + cz;
@@ -63,6 +63,31 @@ export class World {
       if (seal >= 6) return { R, openSky: false };
     }
     return { R, openSky: seal === 0 };
+  }
+
+  /** Is this cell in direct Sunlight from a sun sitting in direction (dx,dy,dz)
+   *  (normalized, dy > 0)? Marches from the cell centre toward the sun: any
+   *  opaque block stops the beam — and so does Insulating Glass, which is
+   *  see-through but never lets sunlight through. */
+  sunVisible(x: number, y: number, z: number, dx: number, dy: number, dz: number, maxDist = 64): boolean {
+    if (dy <= 0) return false;
+    let cx = x, cy = y, cz = z;
+    const sx = Math.sign(dx), sy = 1, sz = Math.sign(dz);
+    const tdx = sx ? Math.abs(1 / dx) : Infinity, tdy = 1 / dy, tdz = sz ? Math.abs(1 / dz) : Infinity;
+    // distance along the ray to the first cell boundary on each axis
+    let tmx = sx ? (sx > 0 ? cx + 1 - (x + 0.5) : x + 0.5 - cx) * tdx : Infinity;
+    let tmy = (y + 1 - (y + 0.5)) * tdy; // dy > 0: first boundary is always the cell top
+    let tmz = sz ? (sz > 0 ? cz + 1 - (z + 0.5) : z + 0.5 - cz) * tdz : Infinity;
+    for (let steps = 0; steps < 192; steps++) {
+      let t: number;
+      if (tmx <= tmy && tmx <= tmz) { cx += sx; t = tmx; tmx += tdx; }
+      else if (tmy <= tmz) { cy += sy; t = tmy; tmy += tdy; }
+      else { cz += sz; t = tmz; tmz += tdz; }
+      if (t > maxDist) return true; // reached far enough: treat as clear sky
+      const id = this.get(cx, cy, cz);
+      if (id === INSGLASS || isOpaque(id)) return false;
+    }
+    return true;
   }
 
   /**

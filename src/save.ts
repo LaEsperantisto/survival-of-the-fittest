@@ -58,15 +58,15 @@ export interface RunSave {
   player: { x: number; y: number; z: number; yaw: number; pitch: number };
   survival: { health: number; water: number; body: number };
   quest?: { i: number; p: number[] };
-  inventory: { slots: { itemId: string; count: number; x: number; y: number; rot?: boolean }[]; selected: number; w: number; h: number; bonusLimit: number };
+  inventory: { slots: { itemId: string; count?: number; x: number; y: number; rot?: boolean }[]; selected: number; w: number; h: number; bonusLimit: number }; // count: legacy only — items never stack now
   equip?: { backpack?: string; head?: string; body?: string };
   beaconMarks: { x: number; y: number; z: number }[];
   collected: number[];
-  entities: { x: number; y: number; z: number; itemId: string; count: number }[];
+  entities: { x: number; y: number; z: number; itemId: string; count?: number }[];
   pods?: { x: number; z: number; t: number; itemId: string; n: number; ringEid?: number; beamEid?: number }[];
   won?: boolean;
   caches: { x: number; y: number; z: number; kind?: "death" | "chest" | "reward"; items: { itemId: string; count: number }[] }[];
-  chests?: { cells: string; slots: { itemId: string; count: number; x: number; y: number; rot?: boolean }[] }[];
+  chests?: { cells: string; slots: { itemId: string; count?: number; x: number; y: number; rot?: boolean }[] }[];
   campfires: Record<string, number>;
   crops?: [string, number][]; // planted crop key -> accumulated good seconds
   trees?: [string, number][]; // planted Living Tree key -> growth seconds

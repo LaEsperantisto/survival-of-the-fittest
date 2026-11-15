@@ -28,7 +28,11 @@ _Avoid_: safe wall
 A block that transmits heat. Ordinary Glass conducts — it is the exception the player must engineer around.
 
 **Insulating Glass**:
-A rare, hard-to-craft transparent Insulating Block. The wreck's cockpit already has it.
+A rare, hard-to-craft transparent Insulating Block. The wreck's cockpit already has it. It is see-through, but it never lets Sunlight through.
+
+**Sunlight**:
+Direct light from the Sun. Only an unbroken line to the Sun counts as sunlit: any opaque block — and Insulating Glass, see-through though it is — breaks the line. Shade falls where the Sun actually is, not merely overhead.
+_Avoid_: UV, daylight bonus
 
 **Sealed Door**:
 An opening in the Hull that insulates exactly like Hull Plating while closed.

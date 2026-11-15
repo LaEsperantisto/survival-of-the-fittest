@@ -43,7 +43,8 @@ export class Survival {
 
   /** body-temp target from shelter + sun; nothing hardcoded "inside ship". */
   update(dt: number, world: World, pos: THREE.Vector3, opts: {
-    sprinting: boolean; overencumbered: boolean; biome: number; tSec: number; sunElev: number; inWater: boolean; warmth: number;
+    sprinting: boolean; overencumbered: boolean; biome: number; tSec: number; sunElev: number;
+    sunDir: { x: number; y: number; z: number } | null; inWater: boolean; warmth: number;
   }) {
     if (this.health <= 0) return;
     if (this.surgeCooldown > 0) this.surgeCooldown -= dt;
@@ -51,7 +52,7 @@ export class Survival {
     const amb = this.ambient(opts.biome, frac, opts.tSec);
     const fx = Math.floor(pos.x), fy = Math.floor(pos.y), fz = Math.floor(pos.z);
 
-    // One cell's air: column shelter + sun + sealed-room regulators.
+    // One cell's air: column shelter + directional Sunlight + sealed-room regulators.
     // A sealed space's air drifts to the outside temperature — walls alone don't
     // save you. Only Heat Regulators, whose capacity (100 cells each) stacks,
     // hold a sealed room at body-neutral temperature.
@@ -59,7 +60,10 @@ export class Survival {
       const { R, openSky } = world.skyResistance(x, y, z);
       let shelter = 1 - Math.exp(-R);        // 0 exposed .. ~0.997 sealed
       let ambEff = amb;
-      if (openSky && opts.sunElev > 0) ambEff += 8 + 10 * opts.sunElev; // direct sun beats down
+      // direct sun is a line to the sun, like the shader's shadow — shade from
+      // rocks, trees and roofs falls where the line is broken, not just overhead
+      if (opts.sunElev > 0 && opts.sunDir && world.sunVisible(x, y, z, opts.sunDir.x, opts.sunDir.y, opts.sunDir.z))
+        ambEff += 8 + 10 * opts.sunElev; // direct sun beats down
       const room = world.roomInfo(x, y, z);
       if (room.sealed) {
         if (room.regulators * REGULATOR_ROOM_MAX >= room.size) { ambEff = 36.6; shelter = 1; }
@@ -131,10 +135,12 @@ export class Survival {
   airTempAt(world: World, x: number, y: number, z: number, tSec: number): number {
     const frac = this.worldTimeToDayFrac(tSec);
     const amb = this.ambient(0, frac, tSec);
-    const { openSky } = world.skyResistance(x, y, z);
     let ambEff = amb;
-    const sun = Math.max(0, Math.sin((frac - 0.28) * Math.PI * 2)); // rough solar elevation over the day
-    if (openSky && sun > 0) ambEff += 8 + 10 * sun;
+    const a = (frac - 0.25) * Math.PI * 2, elev = Math.sin(a); // same sun arc the renderer draws
+    if (elev > 0) {
+      const inv = 1 / Math.hypot(Math.cos(a), elev, 0.4);
+      if (world.sunVisible(x, y, z, Math.cos(a) * inv, elev * inv, 0.4 * inv)) ambEff += 8 + 10 * elev;
+    }
     const room = world.roomInfo(x, y, z);
     if (room.sealed) ambEff = room.regulators * REGULATOR_ROOM_MAX >= room.size ? 36.6 : amb;
     return ambEff;

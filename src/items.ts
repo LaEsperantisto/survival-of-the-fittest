@@ -112,7 +112,8 @@ BLOCK_TO_ITEM[CACTUS_FRUIT] = "cactus";
 
 // ---------------- Inventory Grid ----------------
 
-export interface Slot { itemId: string; count: number; x: number; y: number; rot?: boolean; }
+/** One slot holds exactly one item — items never stack, anywhere. */
+export interface Slot { itemId: string; x: number; y: number; rot?: boolean; }
 
 /** Effective footprint of a placed item (rot swaps w/h). */
 export function slotDims(s: Slot): { w: number; h: number } {
@@ -134,14 +135,14 @@ export class Inventory {
     const old = this.slots;
     this.w = sizeW; this.h = sizeH; this.bonusLimit = extraKg;
     this.slots = [];
-    for (const s of old) this.addItem(s.itemId, s.count);
+    for (const s of old) this.addItem(s.itemId, 1);
   }
 
   weightLimit(): number { return this.baseLimit + this.bonusLimit; }
 
   weight(): number {
     let m = 0;
-    for (const s of this.slots) m += ITEMS[s.itemId].mass * s.count;
+    for (const s of this.slots) m += ITEMS[s.itemId].mass;
     return m;
   }
 
@@ -197,7 +198,7 @@ export class Inventory {
               for (let dx = 0; dx < w && free; dx++)
                 if (this.occupied(x + dx, y + dy)) free = false;
             if (free) {
-              this.slots.push(rot ? { itemId, count: 1, x, y, rot: true } : { itemId, count: 1, x, y });
+              this.slots.push(rot ? { itemId, x, y, rot: true } : { itemId, x, y });
               placed = true;
             }
           }
@@ -213,18 +214,15 @@ export class Inventory {
   removeItem(itemId: string, count = 1): number {
     let removed = 0;
     for (let i = this.slots.length - 1; i >= 0 && removed < count; i--) {
-      const s = this.slots[i];
-      if (s.itemId !== itemId) continue;
-      const take = Math.min(s.count, count - removed);
-      s.count -= take; removed += take;
-      if (s.count === 0) this.slots.splice(i, 1);
+      if (this.slots[i].itemId !== itemId) continue;
+      this.slots.splice(i, 1); removed++;
     }
     return removed;
   }
 
   countOf(itemId: string): number {
     let n = 0;
-    for (const s of this.slots) if (s.itemId === itemId) n += s.count;
+    for (const s of this.slots) if (s.itemId === itemId) n++;
     return n;
   }
 

@@ -46,13 +46,13 @@ export function hitFlash() {
 let hbKey = "";
 export function renderHotbar(inv: Inventory) {
   const selId = inv.selectedSlot()?.itemId ?? "";
-  const key = inv.slots.map(s => s.itemId + ":" + s.count).join(",") + "|" + selId;
+  const key = inv.slots.map(s => s.itemId).join(",") + "|" + selId;
   if (key === hbKey) return;
   hbKey = key;
   const uniq: { itemId: string; count: number }[] = [];
   for (const s of inv.slots) {
     const u = uniq.find(q => q.itemId === s.itemId);
-    if (u) u.count += s.count; else uniq.push({ itemId: s.itemId, count: s.count });
+    if (u) u.count += 1; else uniq.push({ itemId: s.itemId, count: 1 });
   }
   const el = $("hotbar");
   el.innerHTML = "";

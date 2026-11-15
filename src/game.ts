@@ -19,7 +19,7 @@ import * as hud from "./hud";
 const isDoorHalf = (i: number) => i === DOOR_CLOSED || i === DOOR_UPPER || i === DOOR_INNER || i === DOOR_INNER_UPPER;
 
 export interface DroppedItem {
-  id: number; x: number; y: number; z: number; itemId: string; count: number;
+  id: number; x: number; y: number; z: number; itemId: string;
   buried?: boolean; buriedAt?: [number, number, number]; srcIndex?: number; fall?: number;
   repickAt?: number; // game time before which auto-pickup is suppressed (manual drops)
 }
@@ -148,7 +148,7 @@ export class Game {
     this.world.gen.canisters.forEach((c, i) => {
       if (!c.buried) return;
       const gy = Math.round(heightAt(this.seed, c.x, c.z));
-      this.entities.push({ id: this.entitySeq++, x: c.x + 0.5, y: gy, z: c.z + 0.5, itemId: "canister_full", count: 1, buried: c.buried, buriedAt: c.buried ? [c.x, gy, c.z] : undefined, srcIndex: i });
+      this.entities.push({ id: this.entitySeq++, x: c.x + 0.5, y: gy, z: c.z + 0.5, itemId: "canister_full", buried: c.buried, buriedAt: c.buried ? [c.x, gy, c.z] : undefined, srcIndex: i });
     });
     this.spawnStarterChest();
   }
@@ -159,9 +159,9 @@ export class Game {
     if (this.world.get(x, y, z) !== AIR) return;
     this.world.set(x, y, z, CHEST);
     this.chests.set(Game.chestKey([[x, y, z]]), [
-      { itemId: "canister_full", count: 1, x: 0, y: 0 },
-      { itemId: "canister_full", count: 1, x: 1, y: 0 },
-      { itemId: "canister_full", count: 1, x: 2, y: 0 },
+      { itemId: "canister_full", x: 0, y: 0 },
+      { itemId: "canister_full", x: 1, y: 0 },
+      { itemId: "canister_full", x: 2, y: 0 },
     ]);
   }
 
@@ -199,7 +199,7 @@ export class Game {
     return n <= 3 ? [3 * n, 3] : [9, 3 + (n - 3)];
   }
 
-  /** Put an existing slot (stack count and all) into a free spot of `target`; re-orients if needed. */
+  /** Put an existing slot (exactly one item) into a free spot of `target`; re-orients if needed. */
   private static placeSlotFree(target: Inventory, s: Slot): boolean {
     const d = ITEMS[s.itemId];
     const rots = d.w === d.h ? [!!s.rot] : [!!s.rot, !s.rot];
@@ -262,8 +262,11 @@ export class Game {
     // opened before rolls its loot now, and every later opening is bare
     if (!known && cells.some(([cx, , cz]) => this.inTown(cx, cz))) {
       for (const it of this.townLoot(cells[0][0], cells[0][2])) {
-        const s: Slot = { itemId: it.itemId, count: it.count, x: 0, y: 0 };
-        if (!Game.placeSlotFree(ci, s)) this.dropEntity(it.itemId, it.count, 2);
+        // every instance gets its own slot — chest stores never stack
+        for (let i = 0; i < it.count; i++) {
+          const s: Slot = { itemId: it.itemId, x: 0, y: 0 };
+          if (!Game.placeSlotFree(ci, s)) this.dropEntity(it.itemId, 1, 2);
+        }
       }
       hud.toast("Someone's stores — untouched since the town emptied.");
       this.questBump("supplies");
@@ -282,7 +285,7 @@ export class Game {
   private linkChests(bx: number, by: number, bz: number, old: Slot[]) {
     const cells = this.chestCluster(bx, by, bz);
     const ci = this.emptyChestGrid(cells.length);
-    for (const sl of old) if (!Game.placeSlotFree(ci, sl)) this.dropEntity(sl.itemId, sl.count, 2);
+    for (const sl of old) if (!Game.placeSlotFree(ci, sl)) this.dropEntity(sl.itemId, 1, 2);
     if (ci.slots.length) this.chests.set(Game.chestKey(cells), ci.slots);
     if (cells.length > 1) hud.toast(`Chests linked — one ${ci.w}×${ci.h} inventory.`);
   }
@@ -292,7 +295,7 @@ export class Game {
     if (this.world.get(c.x, c.y, c.z) !== CHEST) {
       if (isSolid(this.world.get(c.x, c.y, c.z))) {
         // something was built in its place: the goods spill onto the sand
-        for (const it of c.items) this.dropEntity(it.itemId, it.count, 2);
+        for (const it of c.items) for (let i = 0; i < it.count; i++) this.dropEntity(it.itemId, 1, 2);
         return;
       }
       this.world.set(c.x, c.y, c.z, CHEST);
@@ -304,7 +307,7 @@ export class Game {
     ci.slots = this.chests.get(k)!;
     for (const it of c.items)
       for (let i = 0; i < it.count; i++) {
-        const s: Slot = { itemId: it.itemId, count: 1, x: 0, y: 0 };
+        const s: Slot = { itemId: it.itemId, x: 0, y: 0 };
         if (!Game.placeSlotFree(ci, s)) this.dropEntity(it.itemId, 1, 2);
       }
   }
@@ -321,13 +324,15 @@ export class Game {
     this.survival.health = run.survival.health;
     this.survival.water = run.survival.water;
     this.survival.body = run.survival.body;
-    this.inv.slots = run.inventory.slots.map((s) => ({ ...s }));
-    // Old saves may hold stacked slots; split them so every instance has its own footprint.
-    const legacyStacks = this.inv.slots.filter((s) => s.count > 1);
-    if (legacyStacks.length) {
-      this.inv.slots = this.inv.slots.filter((s) => s.count === 1);
-      for (const s of legacyStacks) this.giveOrDrop(s.itemId, s.count);
-    }
+    // Old saves may hold stacked slots; keep one instance per slot in place and
+    // give the extra copies back so nothing occupies a stack.
+    const legacyExtras: { itemId: string }[] = [];
+    this.inv.slots = run.inventory.slots.map((s) => {
+      const n = s.count ?? 1;
+      for (let i = 1; i < n; i++) legacyExtras.push({ itemId: s.itemId });
+      return { itemId: s.itemId, x: s.x, y: s.y, rot: s.rot };
+    });
+    for (const s of legacyExtras) this.giveOrDrop(s.itemId, 1);
     this.inv.selected = run.inventory.selected;
     if (run.inventory.w !== this.inv.w || run.inventory.h !== this.inv.h) {
       this.inv.w = run.inventory.w; this.inv.h = run.inventory.h;
@@ -336,7 +341,7 @@ export class Game {
     // Armour Slots: restore gear without touching grid sizes (the saved w/h/bonusLimit already encode them)
     for (const slot of ["backpack", "head", "body"] as const) {
       const id = run.equip?.[slot];
-      if (id) this.equip[slot] = { itemId: id, count: 1, x: 0, y: 0 };
+      if (id) this.equip[slot] = { itemId: id, x: 0, y: 0 };
     }
     this.beaconMarks = run.beaconMarks ?? [];
     this.trees = new Map(run.trees ?? []);
@@ -347,12 +352,28 @@ export class Game {
     this.world.gen.canisters.forEach((c) => {
       if (c.buried && !collected.has(idx)) {
         const gy = Math.round(heightAt(this.seed, c.x, c.z));
-        fresh.push({ id: this.entitySeq++, x: c.x + 0.5, y: gy, z: c.z + 0.5, itemId: "canister_full", count: 1, buried: c.buried, buriedAt: c.buried ? [c.x, gy, c.z] : undefined, srcIndex: idx });
+        fresh.push({ id: this.entitySeq++, x: c.x + 0.5, y: gy, z: c.z + 0.5, itemId: "canister_full", buried: c.buried, buriedAt: c.buried ? [c.x, gy, c.z] : undefined, srcIndex: idx });
       }
       idx++;
     });
-    for (const e of run.entities) fresh.push({ id: this.entitySeq++, ...e });
+    for (const e of run.entities) {
+      // old saves may hold stacked drops; split them — one item per entity
+      const n = e.count ?? 1;
+      for (let i = 0; i < n; i++) fresh.push({ id: this.entitySeq++, x: e.x, y: e.y, z: e.z, itemId: e.itemId });
+    }
     this.entities = fresh;
+    // chest grids: split any legacy stacked slots into individual items
+    this.chests = new Map((run.chests ?? []).map((c) => {
+      const ci = this.emptyChestGrid(c.cells.split("|").length);
+      for (const s of c.slots) {
+        ci.slots.push({ itemId: s.itemId, x: s.x, y: s.y, rot: s.rot });
+        for (let i = 1; i < (s.count ?? 1); i++) {
+          const extra: Slot = { itemId: s.itemId, x: 0, y: 0 };
+          if (!Game.placeSlotFree(ci, extra)) this.giveOrDrop(s.itemId, 1);
+        }
+      }
+      return [c.cells, ci.slots];
+    }));
     const legacyChests: { x: number; y: number; z: number; items: { itemId: string; count: number }[] }[] = [];
     for (const c of run.caches) {
       const kind = c.kind ?? "death";
@@ -365,7 +386,6 @@ export class Game {
     this.campCharges = new Map(Object.entries(run.campfires ?? {}).map(([k, v]) => [k, v]));
     this.crops = new Map(run.crops ?? []);
     if (run.lastSleep) this.lastSleep = run.lastSleep;
-    this.chests = new Map((run.chests ?? []).map((c) => [c.cells, c.slots.map((s) => ({ ...s }))]));
     for (const c of legacyChests) this.adoptLegacyChest(c);
     this.pods = (run.pods ?? []).map((p) => ({
       ...p,
@@ -397,7 +417,7 @@ export class Game {
       equip: { backpack: this.equip.backpack?.itemId, head: this.equip.head?.itemId, body: this.equip.body?.itemId },
       beaconMarks: this.beaconMarks,
       collected: this.collectedCanisterIndices(),
-      entities: this.entities.filter((e) => !e.buried).map((e) => ({ x: e.x, y: e.y, z: e.z, itemId: e.itemId, count: e.count })),
+      entities: this.entities.filter((e) => !e.buried).map((e) => ({ x: e.x, y: e.y, z: e.z, itemId: e.itemId })),
       pods: this.pods,
       won: this.won || undefined,
       caches: this.caches.map((c) => ({ x: c.x, y: c.y, z: c.z, kind: c.kind, items: c.items.map((i) => ({ ...i })) })),
@@ -989,9 +1009,14 @@ export class Game {
       const jump = this.keys.has("Space") || this.mobileJump;
       this.player.sprinting = this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || this.sprintOn;
       this.player.update(dt, mx, mz, jump, this.speedMul, overencumbered);
+      const fr = (this.timeSec % DAY_SECONDS) / DAY_SECONDS;
+      const sa = (fr - 0.25) * Math.PI * 2;
+      const sunDir = kf.sunElev > 0
+        ? (() => { const inv = 1 / Math.hypot(Math.cos(sa), kf.sunElev, 0.4); return { x: Math.cos(sa) * inv, y: kf.sunElev * inv, z: 0.4 * inv }; })()
+        : null;
       this.survival.update(dt, this.world, this.player.pos, {
         sprinting: this.player.sprinting && (mx !== 0 || mz !== 0),
-        overencumbered, biome, tSec: this.timeSec, sunElev: kf.sunElev, inWater: this.player.inWater,
+        overencumbered, biome, tSec: this.timeSec, sunElev: kf.sunElev, sunDir, inWater: this.player.inWater,
         warmth: this.fireWarmth(this.player.pos),
       });
       this.updateBreaking(dt);
@@ -1294,7 +1319,7 @@ export class Game {
       }
       let spilled = false;
       for (const sl of old) {
-        if (!groups.some(([, gi]) => Game.placeSlotFree(gi, sl))) { this.dropEntity(sl.itemId, sl.count, 2); spilled = true; }
+        if (!groups.some(([, gi]) => Game.placeSlotFree(gi, sl))) { this.dropEntity(sl.itemId, 1, 2); spilled = true; }
       }
       for (const [k, gi] of groups) if (gi.slots.length) this.chests.set(k, gi.slots);
       this.giveOrDrop("chest", 1);
@@ -1489,8 +1514,7 @@ export class Game {
     const slot = d.equip;
     const prev = this.equip[slot];
     // swapping out old gear puts it back in the pack — refuse if it would not fit
-    if (prev && this.inv.addItem(prev.itemId, prev.count) > 0) {
-      this.inv.removeItem(prev.itemId, 1); // undo the partial add
+    if (prev && this.inv.addItem(prev.itemId, 1) > 0) {
       hud.toast("No room in your pack for the gear you are taking off.");
       this.audio.error();
       return;
@@ -1512,7 +1536,7 @@ export class Game {
     }
     this.equip[slot] = null;
     this.applyEquip(); // grid may shrink to 3×4 before the item lands back in it
-    this.inv.addItem(it.itemId, it.count);
+    this.inv.addItem(it.itemId, 1);
     this.audio.place();
     hud.toast(`${ITEMS[it.itemId].name} taken off.`);
   }
@@ -1556,10 +1580,14 @@ export class Game {
       [fx * 1.8, fz * 1.8], [-fx * 1.8, -fz * 1.8], [fz * 1.8, -fx * 1.8], [-fz * 1.8, fx * 1.8], [0, 0],
     ];
     const [dx, dz] = cands.find(([ax, az]) => clear(ax, az)) ?? [0, 0];
-    this.entities.push({
-      id: this.entitySeq++, x: p.x + dx, y: p.y + 0.35, z: p.z + dz, itemId, count,
-      repickAt: dx === 0 && dz === 0 ? this.timeSec + Math.max(cooldown, 2.5) : this.timeSec + cooldown,
-    });
+    for (let i = 0; i < count; i++) {
+      // spread multiple drops a little so they do not render as one lump
+      const jx = i === 0 ? 0 : 0.3 * Math.sin(i * 2.4), jz = i === 0 ? 0 : 0.3 * Math.cos(i * 2.4);
+      this.entities.push({
+        id: this.entitySeq++, x: p.x + dx + jx, y: p.y + 0.35, z: p.z + dz + jz, itemId,
+        repickAt: dx === 0 && dz === 0 ? this.timeSec + Math.max(cooldown, 2.5) : this.timeSec + cooldown,
+      });
+    }
   }
 
   private place() {
@@ -1625,22 +1653,26 @@ export class Game {
     if (def.block === MELON_1 || def.block === WHEAT_1) { this.crops.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); }
     if (def.block === SAPLING) { this.trees.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); hud.toast("Seed in the soil. Keep water within 6 blocks and it climbs, stage by stage."); }
     if (def.block === ENGINECORE) {
-      const q = currentQuest(this.quests);
-      if (q && q.kind === "finish") {
-        const near = [...this.beaconMarks, { x: -4, y: 31, z: -1 }].some((b) =>
-          this.world.get(b.x, b.y, b.z) === BEACON && (b.x + 0.5 - bx) ** 2 + (b.z + 0.5 - bz) ** 2 < 100);
-        if (near) this.questBump("finish");
-        else hud.toast("Too far from a Save Beacon — the relay needs the Core within 10 m.");
-      }
+      // the relay completes the moment the Core sits right next to a Save Beacon
+      if (this.beaconAdjacent(bx, by, bz)) {
+        const q = currentQuest(this.quests);
+        if (q && q.kind === "finish" && !this.tut) this.questBump("finish");
+        else this.win();
+      } else hud.toast("The relay needs the Core right next to a Save Beacon.");
     }
     if (def.block === LAMP) this.renderer.addPointLight(bx, by, bz, "lamp");
     else if (def.block === CAMPFIRE) this.renderer.addPointLight(bx, by, bz, "fire");
     if (def.block === CHEST) this.linkChests(bx, by, bz, chestOld);
-    slot.count -= 1;
-    if (slot.count <= 0) this.inv.slots.splice(this.inv.selected, 1);
+    this.inv.slots.splice(this.inv.selected, 1);
     this.inv.selected = Math.min(this.inv.selected, Math.max(0, this.inv.slots.length - 1));
     this.renderHeld();
     this.audio.place();
+  }
+
+  /** Is any face of this cell touching a Save Beacon block? */
+  private beaconAdjacent(bx: number, by: number, bz: number): boolean {
+    return [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
+      .some(([dx, dy, dz]) => this.world.get(bx + dx, by + dy, bz + dz) === BEACON);
   }
 
   private act() {
@@ -2011,13 +2043,12 @@ export class Game {
       if (e.buried && e.buriedAt && this.world.get(e.buriedAt[0], e.buriedAt[1], e.buriedAt[2]) !== AIR) continue;
       if (e.repickAt !== undefined) { if (this.timeSec < e.repickAt) continue; e.repickAt = undefined; }
       if (p.distanceTo(new THREE.Vector3(e.x, e.y, e.z)) < 1.3) {
-        const left = this.inv.addItem(e.itemId, e.count);
-        if (left === 0) {
+        if (this.inv.addItem(e.itemId, 1) === 0) {
           if (e.srcIndex !== undefined) this.collected.add(e.srcIndex);
           this.entities.splice(i, 1);
           this.renderer.removeEntityMesh(e.id);
           this.audio.pickup();
-        } else e.count = left;
+        }
       }
     }
   }
@@ -2048,7 +2079,7 @@ export class Game {
       kind: "death",
       // everything you carried AND everything you wore waits in the cache
       items: [
-        ...this.inv.slots.map((s) => ({ itemId: s.itemId, count: s.count })),
+        ...this.inv.slots.map((s) => ({ itemId: s.itemId, count: 1 })),
         ...(["backpack", "head", "body"] as const)
           .map((sl) => this.equip[sl])
           .filter((s): s is Slot => !!s)
@@ -2162,15 +2193,14 @@ export class Game {
       tempEl.classList.add("filled");
       tempEl.style.background = d.color;
       tempEl.style.backgroundImage = `url(${itemTiles(this.temp.itemId)[0] ?? ""})`;
-      tempEl.textContent = this.temp.count > 1 ? `${this.temp.count}` : "";
       tempEl.onmousedown = (e) => {
-      if (Date.now() - this.lastTouchTs < 700) { this.tapTemp(); return; }
-      this.startTempDrag(e);
-    };
-      dropTemp.textContent = `Drop ${this.temp.count > 1 ? this.temp.count + "× " : ""}${d.name}`;
+        if (Date.now() - this.lastTouchTs < 700) { this.tapTemp(); return; }
+        this.startTempDrag(e);
+      };
+      dropTemp.textContent = `Drop ${d.name}`;
       dropTemp.onclick = () => {
         if (!this.temp) return;
-        this.dropEntity(this.temp.itemId, this.temp.count, 1);
+        this.dropEntity(this.temp.itemId, 1, 1);
         this.temp = null;
         this.audio.place();
         this.renderInv();
@@ -2179,7 +2209,6 @@ export class Game {
       tempEl.classList.remove("filled");
       tempEl.style.background = "";
       tempEl.style.backgroundImage = "";
-      tempEl.textContent = "";
       tempEl.onmousedown = null;
       dropTemp.onclick = null;
     }
@@ -2215,7 +2244,7 @@ export class Game {
     const fInv = this.gridFocus === "chest" && this.chestInv ? this.chestInv : this.inv;
     const sel = fInv.selectedSlot();
     const shown = this.temp ?? sel;
-    const kg = this.inv.weight() + (this.temp ? ITEMS[this.temp.itemId].mass * this.temp.count : 0);
+    const kg = this.inv.weight() + (this.temp ? ITEMS[this.temp.itemId].mass : 0);
     const lim = this.inv.weightLimit();
     const dims = shown ? slotDims(shown) : null;
     side.textContent = shown
@@ -2290,12 +2319,6 @@ export class Game {
         const idx = s.rot ? (d.h - 1 - dx) * d.w + dy : dy * d.w + dx;
         cell.style.background = d.color;
         cell.style.backgroundImage = `url(${tiles[Math.min(idx, tiles.length - 1)] ?? ""})`;
-        if (s.count > 1 && dx === 0 && dy === 0) {
-          const ic = document.createElement("div");
-          ic.className = "icon";
-          ic.textContent = `${s.count}`;
-          cell.appendChild(ic);
-        }
         const si = inv.slots.indexOf(s);
         if (si === inv.selected) cell.classList.add("active");
         cell.onmouseenter = () => { document.getElementById("inv-side")!.textContent = `${d.name} — ${d.desc}`; };
@@ -2401,7 +2424,7 @@ export class Game {
     if (prev) {
       // dragging another item back swaps it into the vacated cell
       src.slots.push(prev);
-      if (!src.move(prev, s.x, s.y)) this.giveOrDrop(prev.itemId, prev.count);
+      if (!src.move(prev, s.x, s.y)) this.giveOrDrop(prev.itemId, 1);
     }
     const STEP = (Game.CELL + Game.GAP) * this.uiZoom();
     const GAP = Game.GAP * this.uiZoom();
@@ -2479,7 +2502,7 @@ export class Game {
     this.tempOrigin = src;
     if (prev) {
       src.slots.push(prev);
-      if (!src.move(prev, s.x, s.y)) this.giveOrDrop(prev.itemId, prev.count);
+      if (!src.move(prev, s.x, s.y)) this.giveOrDrop(prev.itemId, 1);
     }
     this.renderInv();
     this.renderHeld();

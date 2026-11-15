@@ -57,7 +57,7 @@ export const QUESTS: QuestDef[] = [
   },
   {
     id: "finish", kind: "finish", title: "Escape Vector",
-    desc: "Carry the Engine Core home and set it within reach of a Save Beacon.", goal: 1,
+    desc: "Carry the Engine Core home and set it right next to a Save Beacon.", goal: 1,
   },
 ];
 

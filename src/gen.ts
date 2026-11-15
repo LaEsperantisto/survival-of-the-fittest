@@ -370,8 +370,8 @@ function paintTown(set: (x: number, y: number, z: number, id: number) => void, t
     // every hut left behind a Supply Chest and a Bed; the good loot is decided
     // when the chest is first opened (seeded, game.ts)
     set(t.x + bx + 1, h, t.z + bz + 1, CHEST);
-    set(t.x + bx + 3, h, t.z + bz + 1, BED);
-    set(t.x + bx + 4, h, t.z + bz + 1, BED_EXT);
+    set(t.x + bx + 2, h, t.z + bz + 1, BED);
+    set(t.x + bx + 3, h, t.z + bz + 1, BED_EXT);
   }
   // a pocket of greenery the town once watered: a GRASS/DIRT patch 5-9 wide
   // with 3-6 mature Living Trees rooted in and around it
