@@ -1175,7 +1175,7 @@ export class Game {
     const r = this.survival.surge();
     if (r === "thirsty") { hud.toast("You need at least 20 water to sweat-surge."); this.audio.error(); return; }
     if (r === "cooling") { hud.toast("Your body is still cooling — wait a moment."); this.audio.error(); return; }
-    hud.toast("You force yourself to sweat — evaporation cools your skin. (-15 water)");
+    hud.toast("You force yourself to sweat — evaporation cools your skin. (-10 water)");
     this.audio.drink();
   }
 

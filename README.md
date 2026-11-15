@@ -29,8 +29,8 @@ The build is fully static — `dist/` can be dropped on GitHub Pages or any stat
 | Shift | Sprint (drinks faster) |
 | Space | Jump |
 | E | Interact (doors, canisters, benches, campfires, beacons, caches) |
-| Q | Drink a full canister (+25 Water) |
-| X | Sweat Surge — force your body cool: −15 Water, −2.5 °C body, 10 s cooldown (needs ≥20 Water) |
+| Q | Drink a full canister (+25 Water, −1.5 °C body) |
+| X | Sweat Surge — force your body cool: −10 Water, −1.5 °C body, 10 s cooldown (needs ≥20 Water) |
 | Left click | Mine / break (tool tier matters) |
 | Right click / place | Place selected block |
 | 1–9 / scroll | Hotbar |

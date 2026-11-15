@@ -223,7 +223,7 @@ const DESKTOP_KEYS: [string, string][] = [
   ["WASD", "move"], ["Shift", "sprint (sweats, costs water)"], ["Space", "jump one block"],
   ["Mouse", "look (click the world to capture the pointer)"], ["Left click, hold", "mine a block (right tool tier matters)"],
   ["Right click", "place the selected block"], ["E", "interact: doors, beacon save, bench, campfire, oasis / water-station refill, death caches"],
-  ["Q", "drink a full canister (+25 water)"], ["X", "sweat surge: spend 15 water to force your body cool (needs 20+ water, 10 s cooldown)"], ["I", "inventory"], ["1-9 / mouse wheel", "select item"],
+  ["Q", "drink a full canister (+25 water, cools you a little)"], ["X", "sweat surge: spend 10 water to force your body cool (needs 20+ water, 10 s cooldown)"], ["I", "inventory"], ["1-9 / mouse wheel", "select item"],
   ["Esc", "close open menu, or pause"], ["P", "pause / resume"], ["F1", "this screen"],
 ];
 const MOBILE_KEYS: [string, string][] = [

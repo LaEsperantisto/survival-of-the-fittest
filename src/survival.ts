@@ -132,16 +132,16 @@ export class Survival {
   surge(): "ok" | "thirsty" | "cooling" {
     if (this.surgeCooldown > 0) return "cooling";
     if (this.water < 20) return "thirsty";
-    this.water -= 15;
-    this.body = Math.max(30, this.body - 2.5);
+    this.water -= 10;
+    this.body = Math.max(30, this.body - 1.5);
     this.surgeCooldown = 10;
     return "ok";
   }
 
   drink() {
     this.water = Math.min(100, this.water + 25);
-    // cool water straight into the gut knocks body temp down, hard, fast
-    if (this.body > 34) this.body = Math.max(34, this.body - Math.min(3.5, this.body - 33.5));
+    // cool water straight into the gut knocks body temp down a little
+    if (this.body > 34) this.body = Math.max(34, this.body - Math.min(1.5, this.body - 33.5));
   }
 
   reset() { this.health = 100; this.water = 100; this.body = 36.6; this.causeOfDeath = null; }
