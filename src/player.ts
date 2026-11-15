@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { World } from "./world";
-import { isSolid, isWater } from "./blocks";
+import { isSolid, isWater, waterStrength } from "./blocks";
 
 const W = 0.6, H = 1.8, EYE = 1.62;
 
@@ -16,7 +16,12 @@ export class Player {
   constructor(private world: World) {}
 
   private waterAt(dy: number): boolean {
-    return isWater(this.world.get(Math.floor(this.pos.x), Math.floor(this.pos.y + dy), Math.floor(this.pos.z)));
+    const y = this.pos.y + dy;
+    const by = Math.floor(y);
+    const id = this.world.get(Math.floor(this.pos.x), by, Math.floor(this.pos.z));
+    if (!isWater(id)) return false;
+    // shallow flow only submerges up to its surface, level/8 of the cell
+    return y - by < waterStrength(id) / 8;
   }
 
   private collides(x: number, y: number, z: number): boolean {

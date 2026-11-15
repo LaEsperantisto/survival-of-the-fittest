@@ -9,7 +9,7 @@ export const SAFE_LO = 36.0, SAFE_HI = 37.5;   // safe body temperature zone
 export const HOT_LIMIT = 39.5, COLD_LIMIT = 31.5, WATER_LIMIT = 5;
 
 const AMBIENT_MEAN = 27, AMBIENT_AMP = 25;     // 24-min desert day: ~2 °C night, ~52 °C peak
-export const REGULATOR_ROOM_MAX = 100;         // open cells (sealed) one Heat Regulator can hold at neutral
+export const REGULATOR_ROOM_MAX = 150;         // open cells (sealed) one Heat Regulator can hold at neutral
 
 export class Survival {
   health = 100; water = 100; body = 36.6;
@@ -54,7 +54,7 @@ export class Survival {
 
     // One cell's air: column shelter + directional Sunlight + sealed-room regulators.
     // A sealed space's air drifts to the outside temperature — walls alone don't
-    // save you. Only Heat Regulators, whose capacity (100 cells each) stacks,
+    // save you. Only Heat Regulators, whose capacity (150 cells each) stacks,
     // hold a sealed room at body-neutral temperature.
     const cellAir = (x: number, y: number, z: number) => {
       const { R, openSky } = world.skyResistance(x, y, z);

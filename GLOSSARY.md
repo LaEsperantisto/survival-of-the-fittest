@@ -42,7 +42,7 @@ _Avoid_: metal door
 A door that never insulates: in temperature terms it is just air. It divides rooms visually and for movement, but never helps seal a Space. Every door inside the Ship's interior is one; only openings to the outside are Sealed Doors.
 
 **Heat Regulator**:
-A craftable device that holds a sealed Space at body-neutral temperature — 100 open cells of capacity each, and multiple Regulators covering one Space stack their capacity. It works by enclosure, not by region tag: if the space stops being sealed, the Regulators do nothing. Without enough Regulator capacity, a sealed Space is as hot or as cold as the outside. Drawing on an active Regulator restores the Body to neutral on the spot; an idle one does nothing.
+A craftable device that holds a sealed Space at body-neutral temperature — 150 open cells of capacity each, and multiple Regulators covering one Space stack their capacity. It works by enclosure, not by region tag: if the space stops being sealed, the Regulators do nothing. Without enough Regulator capacity, a sealed Space is as hot or as cold as the outside. Drawing on an active Regulator restores the Body to neutral on the spot; an idle one does nothing.
 _Avoid_: heater, AC, thermostat
 
 **Sealed Space**:

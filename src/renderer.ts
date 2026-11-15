@@ -5,7 +5,7 @@ import {
   WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING,
-  isSolid,
+  isSolid, isWater, waterStrength,
 } from "./blocks";
 import { World, ckey, faceVisible } from "./world";
 import { DAY_SECONDS } from "./blocks";
@@ -1072,6 +1072,35 @@ export class Renderer {
         };
         quad(x, z, x + 1, z + 1);
         quad(x + 1, z, x, z + 1);
+        continue;
+      }
+      if (id >= WATER7 && id <= WATER1) {
+        // Flowing water lies shallower the further it has run from its
+        // Source: level/8 of the cell. Top and step edges get faces; where a
+        // deeper neighbour covers the cell, its own side hides ours.
+        const h = (33 - id) / 8;
+        for (let fi = 0; fi < FACES.length; fi++) {
+          const f = FACES[fi];
+          const lx = x + f.dir[0], ly = y + f.dir[1], lz = z + f.dir[2];
+          const nb = world.get(cx * CS + lx, ly, cz * CS + lz);
+          let bottom = 0;
+          if (f.dir[1] === 0 && isWater(nb)) {
+            bottom = waterStrength(nb) / 8;
+            if (bottom >= h) continue;
+          } else if (isWater(nb)) continue;
+          else if (!faceVisible(world, cx * CS + lx, ly, cz * CS + lz, id)) continue; // flush against solid
+          const ft = FACE_T[id * 6 + fi];
+          const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
+          const base = tpos.length / 3;
+          const lv = faceLight(lx, ly, lz);
+          for (const cn of f.corners) {
+            tpos.push(x + cn[0], cn[1] ? y + h : y + bottom, z + cn[2]);
+            tcol.push(f.shade, f.shade, f.shade);
+            tlite.push(lv);
+            tuv.push((tx0 + 0.5 + cn[f.uv[0]] * (TILE_PX - 1)) / ATLAS_PX, (ty0 + 0.5 + cn[f.uv[1]] * (TILE_PX - 1)) / ATLAS_PX);
+          }
+          tidx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+        }
         continue;
       }
       const def = BLOCKS[id];
