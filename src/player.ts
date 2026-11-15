@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { World } from "./world";
-import { isSolid, WATER } from "./blocks";
+import { isSolid, isWater } from "./blocks";
 
 const W = 0.6, H = 1.8, EYE = 1.62;
 
@@ -16,7 +16,7 @@ export class Player {
   constructor(private world: World) {}
 
   private waterAt(dy: number): boolean {
-    return this.world.get(Math.floor(this.pos.x), Math.floor(this.pos.y + dy), Math.floor(this.pos.z)) === WATER;
+    return isWater(this.world.get(Math.floor(this.pos.x), Math.floor(this.pos.y + dy), Math.floor(this.pos.z)));
   }
 
   private collides(x: number, y: number, z: number): boolean {

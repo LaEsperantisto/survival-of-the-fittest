@@ -34,7 +34,7 @@ A rare, hard-to-craft transparent Insulating Block. The wreck's cockpit already 
 An opening in the Hull that insulates exactly like Hull Plating while closed.
 
 **Heat Regulator**:
-A craftable device that holds a sealed Space at body-neutral temperature — 100 open cells of capacity each, and multiple Regulators covering one Space stack their capacity. It works by enclosure, not by region tag: if the space stops being sealed, the Regulators do nothing. Without enough Regulator capacity, a sealed Space is as hot or as cold as the outside.
+A craftable device that holds a sealed Space at body-neutral temperature — 100 open cells of capacity each, and multiple Regulators covering one Space stack their capacity. It works by enclosure, not by region tag: if the space stops being sealed, the Regulators do nothing. Without enough Regulator capacity, a sealed Space is as hot or as cold as the outside. Drawing on an active Regulator restores the Body to neutral on the spot; an idle one does nothing.
 _Avoid_: heater, AC, thermostat
 
 **Sealed Space**:
@@ -176,7 +176,7 @@ Head-slot gear powering the player's HUD. Upgradeable to show more: heat fluctua
 The HUD's guide to the active quest: a compass heading, a distance, and a marker at the target. A Surveyor's Visor equipped in the Head slot — a craftable Visor upgrade — additionally marks every Cache and Supply Chest through walls.
 
 **Water**:
-Exists as source blocks (Oasis pools, Bucket-placed). A placed source flows — spreading over terrain and draining — until it meets a new source or runs out. Bucket-carrying lifts exactly one source.
+Exists as Source blocks (Oasis pools, Water Station tanks). A Source feeds Flow — water that spreads over terrain and falls — until it meets a new Source or runs out; when a Source breaks, its Flow drains away, so an Oasis can be emptied for good.
 _Avoid_: liquid sim, flood sim
 
 **Salvage Tools**:

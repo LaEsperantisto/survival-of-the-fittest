@@ -3,7 +3,8 @@
 export const AIR = 0, SAND = 1, SANDSTONE = 2, ROCK = 3, GRAVEL = 4, DIRT = 5, SALT = 6,
   DEADWOOD = 7, GLASS = 8, INSGLASS = 9, HULL = 10, DOOR_CLOSED = 11, DOOR_OPEN = 12,
   LAMP = 13, METAL = 14, BEACON = 15, BENCH = 16, CAMPFIRE = 17, WATER = 18, ADOBE = 19,
-  DOOR_UPPER = 20, ENGINECORE = 21, REGULATOR = 22, CHEST = 23, BENCH_EXT = 24, CACTUS = 25;
+  DOOR_UPPER = 20, ENGINECORE = 21, REGULATOR = 22, CHEST = 23, BENCH_EXT = 24, CACTUS = 25,
+  WATER7 = 26, WATER6 = 27, WATER5 = 28, WATER4 = 29, WATER3 = 30, WATER2 = 31, WATER1 = 32;
 
 export type ToolType = "pickaxe" | "shovel" | "axe" | "disassembler";
 
@@ -64,6 +65,16 @@ export const BLOCKS: BlockDef[] = [
   def({ id: BENCH_EXT, name: "Crafting Bench (frame)", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.0, tool: null, minTier: 0, placeable: false, color: [0.45, 0.36, 0.27] }),
   // Cactus: desert flora; breaking one yields its Prickly Pear fruit plus the block.
   def({ id: CACTUS, name: "Cactus", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 0.9, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.24, 0.5, 0.26] }),
+  // Flowing water (see world water sim): WATER is a Source; WATER7..WATER1 are flow
+  // levels 7..1 — id = 33 − level. Flow needs a feed: a Source or higher level beside
+  // it, or same-or-higher level above. No feed → it drains.
+  def({ id: WATER7, name: "Water (flowing)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0.13, 0.40, 0.80] }),
+  def({ id: WATER6, name: "Water (flowing)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0.12, 0.39, 0.78] }),
+  def({ id: WATER5, name: "Water (flowing)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0.11, 0.37, 0.76] }),
+  def({ id: WATER4, name: "Water (flowing)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0.10, 0.36, 0.74] }),
+  def({ id: WATER3, name: "Water (flowing)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0.09, 0.34, 0.71] }),
+  def({ id: WATER2, name: "Water (flowing)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0.08, 0.31, 0.68] }),
+  def({ id: WATER1, name: "Water (flowing)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0.07, 0.29, 0.64] }),
 ];
 
 export const CH = 96;           // world height (Y)
@@ -72,3 +83,7 @@ export const DAY_SECONDS = 24 * 60; // one in-game day = 24 real minutes
 
 export function isSolid(id: number): boolean { return BLOCKS[id].solid; }
 export function isOpaque(id: number): boolean { return BLOCKS[id].opaque; }
+// Water: WATER is a Source (strength 8); WATER7..WATER1 are flow levels 7..1 (id = 33 − level).
+export function isWater(id: number): boolean { return id === WATER || (id >= WATER7 && id <= WATER1); }
+export function waterStrength(id: number): number { return id === WATER ? 8 : isWater(id) ? 33 - id : 0; }
+export function flowId(level: number): number { return 33 - level; }

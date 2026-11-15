@@ -2,6 +2,7 @@ import * as THREE from "three";
 import {
   CS, CH, BLOCKS, AIR, SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, GLASS,
   INSGLASS, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, ENGINECORE, REGULATOR, CHEST, BENCH_EXT, CACTUS,
+  WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1,
   isSolid,
 } from "./blocks";
 import { World, ckey, faceVisible } from "./world";
@@ -24,7 +25,8 @@ const FACES: { dir: [number, number, number]; corners: number[][]; shade: number
 export const TILE_PX = 16, ATLAS_COLS = 16;
 
 export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, GLASS, INSGLASS,
-  HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, DOOR_OPEN, ENGINECORE, REGULATOR, CHEST, BENCH_EXT, CACTUS];
+  HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, DOOR_OPEN, ENGINECORE, REGULATOR, CHEST, BENCH_EXT, CACTUS,
+  WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1];
 
 let atlasCv: HTMLCanvasElement | null = null;
 
@@ -156,7 +158,7 @@ export function getAtlasCanvas(): HTMLCanvasElement {
         for (let y = 5; y <= 10; y++) for (let x = 6; x <= 9; x++) px(x, y, col(y < 8 ? 0.3 : 0.18, 1, 0.25, -0.05, -0.3));
         px(7, 6, col(0.45, 1, 0.3, 0.1, -0.25)); px(8, 5, col(0.4, 1, 0.25, 0.05, -0.25));
         break;
-      case WATER:
+      case WATER7: case WATER6: case WATER5: case WATER4: case WATER3: case WATER2: case WATER1: case WATER:
         fill(col(0, 0.72));
         for (const ry of [2, 6, 10, 14]) for (let x = 0; x < 16; x++) if (rng.next() > 0.45) px(x, ry + (x % 4 < 2 ? 0 : 1), col(0.15, 0.8));
         speckle(10, 0.08);

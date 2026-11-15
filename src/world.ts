@@ -1,4 +1,4 @@
-import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, REGULATOR, CS, CH, isOpaque } from "./blocks";
+import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, REGULATOR, CS, CH, isOpaque, isWater, waterStrength, flowId } from "./blocks";
 import { genChunk, Structures } from "./gen";
 
 export const ckey = (cx: number, cz: number) => cx + "," + cz;
@@ -15,6 +15,8 @@ export class World {
   /** door column "x,z" -> swing side; set when a player pushes the door open,
    *  absent means the renderer's deterministic default. Visual state only. */
   doorSwing = new Map<string, 1 | -1>();
+  /** cells whose water situation may have changed (Minecraft-style flow sim). */
+  private waterQ = new Set<string>();
   gen: Structures;
 
   constructor(public seed: number) {
@@ -87,7 +89,12 @@ export class World {
     const c = this.chunk(cx, cz);
     const i = bidx(x - cx * CS, z - cz * CS, y);
     if (c[i] === id) return;
+    const prev = c[i];
     c[i] = id;
+    if (isWater(id) || isWater(prev)) { // water appeared or vanished: re-check this cell and its neighbours
+      this.queueWater(x, y, z);
+      for (const [dx, dy, dz] of ROOM_DIRS) this.queueWater(x + dx, y + dy, z + dz);
+    }
     let d = this.deltas.get(ckey(cx, cz));
     if (!d) this.deltas.set(ckey(cx, cz), (d = new Map()));
     d.set(i, id);
@@ -100,6 +107,81 @@ export class World {
   }
 
   markDirty(cx: number, cz: number) { this.dirty.add(ckey(cx, cz)); }
+
+  private queueWater(x: number, y: number, z: number) {
+    if (y >= 0 && y < CH) this.waterQ.add(x + "," + y + "," + z);
+  }
+
+  /**
+   * Run queued Minecraft-style flow: Sources (WATER) spread 7 cells sideways and
+   * fall straight down; flow keeps the feed alive downstream and drains away when
+   * its feed vanishes. Bounded work per call — the queue persists across frames.
+   */
+  processWater(budget = 4000): number {
+    let ops = 0;
+    while (this.waterQ.size && ops < budget) {
+      const k = this.waterQ.values().next().value as string;
+      this.waterQ.delete(k);
+      const [x, y, z] = k.split(",").map(Number);
+      ops += this.drainFlow(x, y, z, budget - ops);
+      ops += this.floodFrom(x, y, z, budget - ops);
+    }
+    return ops;
+  }
+
+  private drainFlow(sx: number, sy: number, sz: number, budget: number): number {
+    let ops = 0;
+    const stack: [number, number, number][] = [[sx, sy, sz],
+      [sx + 1, sy, sz], [sx - 1, sy, sz], [sx, sy, sz + 1], [sx, sy, sz - 1]];
+    const seen = new Set<string>();
+    while (stack.length && ops++ < budget) {
+      const [x, y, z] = stack.pop()!;
+      const s = waterStrength(this.get(x, y, z));
+      if (!s || s === 8) continue; // air, solid, or Source: sources never drain on their own
+      const k = x + "," + y + "," + z;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      if (!this.waterSupported(x, y, z, s)) {
+        this.set(x, y, z, AIR); // re-queues the neighbours; flood() gets the last word
+        for (const [dx, dy, dz] of ROOM_DIRS) stack.push([x + dx, y + dy, z + dz]);
+      }
+    }
+    return ops;
+  }
+
+  private waterSupported(x: number, y: number, z: number, s: number): boolean {
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const)
+      if (waterStrength(this.get(x + dx, y, z + dz)) > s) return true; // fed sideways by a Source or stronger flow
+    return waterStrength(this.get(x, y + 1, z)) >= s;                   // falling in from above
+  }
+
+  private floodFrom(sx: number, sy: number, sz: number, budget: number): number {
+    let ops = 0;
+    const q: [number, number, number][] = [[sx, sy, sz],
+      [sx + 1, sy, sz], [sx - 1, sy, sz], [sx, sy, sz + 1], [sx, sy, sz - 1]];
+    while (q.length && ops++ < budget) {
+      const [x, y, z] = q.shift()!;
+      const s = waterStrength(this.get(x, y, z));
+      if (!s) continue;
+      if (y > 0) { // fall straight down: a Source sends level 7, flow keeps its level
+        const below = this.get(x, y - 1, z);
+        if ((below === AIR || isWater(below)) && waterStrength(below) < s) {
+          this.set(x, y - 1, z, flowId(s === 8 ? 7 : s));
+          q.push([x, y - 1, z]);
+        }
+      }
+      const out = s === 8 ? 7 : s - 1; // Sources spread 7; flow decays by 1 per cell
+      if (out < 1) continue;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const side = this.get(x + dx, y, z + dz);
+        if ((side === AIR || isWater(side)) && waterStrength(side) < out) {
+          this.set(x + dx, y, z + dz, flowId(out));
+          q.push([x + dx, y, z + dz]);
+        }
+      }
+    }
+    return ops;
+  }
 
   surface(x: number, z: number): number {
     for (let y = CH - 1; y >= 0; y--) {

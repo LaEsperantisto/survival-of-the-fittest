@@ -5,7 +5,7 @@ import { Survival, REGULATOR_ROOM_MAX } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, slotDims, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CACTUS, CS, CH, DAY_SECONDS, isSolid } from "./blocks";
+import { BLOCKS, AIR, WATER, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CACTUS, REGULATOR, CS, CH, DAY_SECONDS, isSolid, isWater } from "./blocks";
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr } from "./noise";
 import { heightAt, biomeAt } from "./gen";
@@ -857,6 +857,7 @@ export class Game {
     this.questFrame();
     this.guideFrame(dt);
     this.mobFrame(dt);
+    this.world.processWater();
     this.audio.setDay(kf.sunElev > 0);
 
     this.autosaveAcc += dt;
@@ -881,7 +882,11 @@ export class Game {
     let water: { x: number; y: number; z: number } | null = null;
     for (let i = 0; i < 80; i++) {
       const id = this.world.get(x, y, z);
-      if (id === WATER && !water) water = { x, y, z };
+      if (isWater(id)) {
+        if (!water) water = { x, y, z };
+        // Flow is see-through; a Source is aimable, so pools can be emptied for good
+        if (id === WATER) return { hit: { x, y, z }, water, face: new THREE.Vector3(prev.x - x, prev.y - y, prev.z - z) };
+      }
       else if (id !== AIR && id !== WATER) return { hit: { x, y, z }, water, face: new THREE.Vector3(prev.x - x, prev.y - y, prev.z - z) };
       prev.set(x, y, z);
       if (tMax.x < tMax.y && tMax.x < tMax.z) { x += step.x; tMax.x += tDelta.x; }
@@ -904,6 +909,7 @@ export class Game {
       if (id === BEACON) return "E: Save game (respawn point)";
       if (id === BENCH || id === BENCH_EXT) return "E: Craft";
       if (id === CAMPFIRE) return "E: Smelt";
+      if (id === REGULATOR) return "E: Draw neutral air (37 °C)";
     }
     if (t.water) return "E: Refill canister";
     return null;
@@ -1401,6 +1407,23 @@ export class Game {
       }
       if (id === BENCH || id === BENCH_EXT) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("bench"); return; }
       if (id === CAMPFIRE) { this.openStation = [x, y, z]; this.ui = "smelt"; this.unlockPointer(); this.renderCraft("smelt"); return; }
+      if (id === REGULATOR) {
+        // An activated Regulator (sealed room, capacity not exceeded) settles the body at 37 °C.
+        let room = null as null | ReturnType<World["roomInfo"]>;
+        for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const) {
+          const r = this.world.roomInfo(x + dx, y + dy, z + dz);
+          if (r.size > 0) { room = r; break; }
+        }
+        if (room && room.sealed && room.regulators * REGULATOR_ROOM_MAX >= room.size) {
+          this.survival.body = 37;
+          this.audio.drink();
+          hud.toast("The Regulator's neutral air settles over you. (37 °C)");
+        } else {
+          this.audio.error();
+          hud.toast("That Regulator is idle — its space is unsealed or too big for it.");
+        }
+        return;
+      }
     }
     if (t.water) {
       if (this.inv.has("canister_empty")) {
