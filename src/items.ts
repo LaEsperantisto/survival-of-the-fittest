@@ -202,8 +202,4 @@ export class Inventory {
   /** Held item = first tool, else first placeable, else first. Managed by selection index. */
   selected = 0;
   selectedSlot(): Slot | null { return this.slots[this.selected] ?? null; }
-  cycle(dir: number) {
-    if (this.slots.length === 0) { this.selected = 0; return; }
-    this.selected = ((this.selected + dir) % this.slots.length + this.slots.length) % this.slots.length;
-  }
 }

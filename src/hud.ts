@@ -1,6 +1,7 @@
 import { Survival, BODY_MIN, BODY_MAX, SAFE_LO, SAFE_HI, HOT_LIMIT, COLD_LIMIT, WATER_LIMIT } from "./survival";
 import { DAY_SECONDS } from "./blocks";
 import { Inventory, ITEMS } from "./items";
+import { itemArtUrl } from "./icons";
 
 const $ = (id: string) => document.getElementById(id)!;
 
@@ -23,6 +24,56 @@ export function setPrompt(msg: string | null) {
 
 export function setSubmerged(on: boolean) {
   $("vision-water").style.opacity = on ? "1" : "0";
+}
+
+/** Name of the block the crosshair is pointing at (null hides it). */
+export function setBlockName(name: string | null) {
+  const el = $("blockname");
+  if (!name) { el.classList.add("hidden"); return; }
+  el.textContent = name;
+  el.classList.remove("hidden");
+}
+
+/** Brief red screen pulse when the player takes damage. */
+export function hitFlash() {
+  const el = $("vision-hit");
+  el.classList.remove("flash");
+  void el.offsetWidth;
+  el.classList.add("flash");
+}
+
+/** Bottom hotbar: one slot per distinct carried item type, in pack order. */
+let hbKey = "";
+export function renderHotbar(inv: Inventory) {
+  const selId = inv.selectedSlot()?.itemId ?? "";
+  const key = inv.slots.map(s => s.itemId + ":" + s.count).join(",") + "|" + selId;
+  if (key === hbKey) return;
+  hbKey = key;
+  const uniq: { itemId: string; count: number }[] = [];
+  for (const s of inv.slots) {
+    const u = uniq.find(q => q.itemId === s.itemId);
+    if (u) u.count += s.count; else uniq.push({ itemId: s.itemId, count: s.count });
+  }
+  const el = $("hotbar");
+  el.innerHTML = "";
+  uniq.slice(0, 9).forEach((u, i) => {
+    const d = document.createElement("div");
+    d.className = "hb-slot" + (u.itemId === selId ? " sel" : "");
+    d.dataset.hb = String(i);
+    const img = document.createElement("img");
+    img.src = itemArtUrl(u.itemId);
+    img.alt = ITEMS[u.itemId].name;
+    d.appendChild(img);
+    const k = document.createElement("span");
+    k.className = "hb-key"; k.textContent = String(i + 1);
+    d.appendChild(k);
+    if (u.count > 1) {
+      const c = document.createElement("span");
+      c.className = "hb-count"; c.textContent = String(u.count);
+      d.appendChild(c);
+    }
+    el.appendChild(d);
+  });
 }
 
 /** safe-band markers, positioned once; plus small marks where Health starts draining */
@@ -75,6 +126,10 @@ export function updateHud(s: Survival, inv: Inventory, tSec: number, days: numbe
 
   const slot = inv.selectedSlot();
   $("held").textContent = slot ? ITEMS[slot.itemId].name : "—";
+  renderHotbar(inv);
+
+  $("warn-hot").classList.toggle("hidden", s.body <= SAFE_HI);
+  $("warn-cold").classList.toggle("hidden", s.body >= SAFE_LO);
 
   const kg = inv.weight(), lim = inv.weightLimit();
   const wEl = $("weight");

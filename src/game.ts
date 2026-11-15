@@ -4,13 +4,14 @@ import { Player } from "./player";
 import { Survival, REGULATOR_ROOM_MAX } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
-import { Inventory, ITEMS, slotDims, type Slot } from "./items";
+import { Inventory, ITEMS, slotDims, type ItemDef, type Slot } from "./items";
 import { BLOCKS, AIR, WATER, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CACTUS, REGULATOR, CS, CH, DAY_SECONDS, isSolid, isWater } from "./blocks";
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr } from "./noise";
 import { heightAt, biomeAt } from "./gen";
 import { RECIPES, SMELT, canCraft, doCraft } from "./crafting";
 import { currentQuest, loadQuestState, questEvent, type QuestDef, type QuestState } from "./quests";
+import { Tutorial, INTRO_CINE, type CineSeg } from "./tutorial";
 import { WorldMeta, RunSave, saveRun, exportRun, bestScore, submitBest, Settings } from "./save";
 import { itemTiles, itemArtUrl } from "./icons";
 import * as hud from "./hud";
@@ -55,8 +56,11 @@ export class Game {
   collected = new Set<number>();
   running = false;
   paused = false;
-  f1Paused = false;
   escAt = 0;
+  private relockAt = 0;
+  private prevHp = 100;
+  private lastHitFlash = -10;
+  private lastDmgAt = -10;
   ui: null | "inv" | "bench" | "smelt" | "cache" = null;
   openCacheId: number | null = null;
   openStation: [number, number, number] | null = null;
@@ -84,6 +88,13 @@ export class Game {
   private pods: { x: number; z: number; t: number; itemId: string; n: number; ringEid: number; beamEid: number }[] = []; // inbound Reward Caches
   private waypointEid = 0;
   private waypointKey = "";
+  // guided tour (fresh worlds): the step machine, its quest-guide override,
+  // and the opening cinematic camera
+  tut: Tutorial | null = null;
+  tutGuide: { name: string; x: number; y: number; z: number } | null = null;
+  private cine: { t: number } | null = null;
+  private cineSegs: CineSeg[] = [];
+  private cineOnEnd: (() => void) | null = null;
   private visorBeams = new Map<string, number>(); // cache/cluster key -> beam mesh id
   private lockAt = 0;
   private guideAcc = 1;
@@ -350,6 +361,65 @@ export class Game {
     const day = Math.floor(this.timeSec / DAY_SECONDS);
     this.timeSec = (day + frac) * DAY_SECONDS;
   }
+  // ---------- guided tour (fresh worlds) ----------
+  startTutorial() {
+    this.survival.invincible = true;
+    this.setClock(0.42); // mid-morning light, air already warming
+    document.getElementById("quest")!.classList.add("hidden");
+    this.tut = new Tutorial(this);
+    this.startCine(INTRO_CINE, () => this.tut?.onCineEnd());
+  }
+  endTutorial() {
+    this.tut = null;
+    this.tutGuide = null;
+    this.survival.invincible = false;
+    document.getElementById("quest")!.classList.remove("hidden");
+    this.renderQuest();
+    hud.toast("Tour complete. Now survive.");
+    this.saveNow();
+  }
+  private startCine(segs: CineSeg[], onEnd: () => void) {
+    this.cineSegs = segs;
+    this.cine = { t: 0 };
+    this.cineOnEnd = onEnd;
+  }
+  // cinematic camera: straight dolly shots, hard cuts between them
+  private cineFrame(dt: number) {
+    const c = this.cine!;
+    c.t += dt;
+    const segs = this.cineSegs;
+    const seg = segs.find((s) => c.t < s.t1) ?? segs[segs.length - 1];
+    if (seg.openDoor && c.t >= seg.openDoor.t) {
+      const { x, y, z } = seg.openDoor;
+      if (this.world.get(x, y, z) !== DOOR_OPEN) {
+        this.world.set(x, y, z, DOOR_OPEN);
+        for (const dy of [-1, 1]) if (isDoorHalf(this.world.get(x, y + dy, z))) this.world.set(x, y + dy, z, DOOR_OPEN);
+        this.audio.door();
+      }
+    }
+    const u = Math.min(1, Math.max(0, (c.t - seg.t0) / (seg.t1 - seg.t0)));
+    const e = u * u * (3 - 2 * u);
+    const cam = this.renderer.camera;
+    cam.position.set(
+      seg.from[0] + (seg.to[0] - seg.from[0]) * e,
+      seg.from[1] + (seg.to[1] - seg.from[1]) * e,
+      seg.from[2] + (seg.to[2] - seg.from[2]) * e,
+    );
+    cam.lookAt(seg.look[0], seg.look[1], seg.look[2]);
+    if (c.t >= segs[segs.length - 1].t1) {
+      this.cine = null;
+      // hand control to the player without a jarring snap
+      const last = segs[segs.length - 1];
+      this.player.yaw = Math.atan2(-(last.look[0] - last.to[0]), -(last.look[2] - last.to[2]));
+      this.player.pitch = 0;
+      const cam2 = this.renderer.camera;
+      cam2.position.copy(this.player.eye());
+      cam2.rotation.order = "YXZ";
+      cam2.rotation.set(0, this.player.yaw, 0);
+      this.cineOnEnd?.();
+      this.cineOnEnd = null;
+    }
+  }
 
   saveNow(manual = false): boolean {
     if (this.isGuest) {
@@ -406,6 +476,7 @@ export class Game {
   // ---------- quests ----------
 
   private questBump(kind: QuestDef["kind"], n = 1) {
+    if (this.tut) return; // the tour owns the player's attention; the chain starts after it
     const done = questEvent(this.quests, kind, n);
     if (!done) { if (kind === "mine") this.renderQuest(); return; }
     hud.toast(`Quest complete: ${done.title}`);
@@ -458,7 +529,7 @@ export class Game {
     this.guideAcc = 0;
     const p = this.player.pos;
 
-    const t = this.waypointTarget();
+    const t = this.tut ? this.tutGuide : this.waypointTarget();
     if (t) {
       hud.updateWaypoint(t.name, t.x, t.z, p.x, p.z, this.player.yaw);
       const key = `${t.name}|${Math.floor(t.x)},${Math.floor(t.z)}`;
@@ -589,7 +660,7 @@ export class Game {
       if (ke.repeat) return;
       this.keys.add(ke.code);
       if (ke.code === "KeyE") this.act();
-      if (ke.code === "KeyQ") this.drink();
+      if (ke.code === "KeyQ") this.useItem();
       if (ke.code === "KeyX") this.surge();
       if (ke.code === "KeyI") this.toggleInv();
       if (ke.code === "KeyR" && this.ui === "inv") {
@@ -603,15 +674,45 @@ export class Game {
         }
         this.renderInv();
       }
-      if (ke.code === "Escape") this.escape();
+      if (ke.code === "Escape") {
+        if (this.tut && !this.ui) { this.tut.finish(); return; }
+        this.escape();
+      }
       if (ke.code === "KeyP") this.escape(true);
       if (ke.code.startsWith("Digit")) {
         const n = Number(ke.code.slice(5));
-        if (n >= 1 && n <= 9 && this.inv.slots[n - 1]) { this.inv.selected = n - 1; this.renderHeld(); }
+        const hb = this.hotbarItems();
+        if (n >= 1 && n <= hb.length) {
+          const id = hb[n - 1];
+          // pressing the number of the already-held item releases it
+          if (this.inv.selectedSlot()?.itemId === id) this.inv.selected = -1;
+          else this.selectItem(id);
+          this.renderHeld();
+        }
       }
     });
     on("keyup", (e) => this.keys.delete((e as KeyboardEvent).code));
     document.getElementById("surge-btn")!.onclick = () => this.surge();
+    document.getElementById("hotbar")!.addEventListener("pointerdown", (e) => {
+      const b = (e.target as HTMLElement).closest("[data-hb]");
+      if (!b) return;
+      const id = this.hotbarItems()[Number((b as HTMLElement).dataset.hb)];
+      if (id) {
+        if (this.inv.selectedSlot()?.itemId === id) this.inv.selected = -1; // tap held item = release it
+        else this.selectItem(id);
+        this.renderHeld();
+      }
+    });
+    if (this.mobile) {
+      // on touch, tapping panel chrome outside any slot deselects the held selection
+      document.getElementById("ui-inventory")!.addEventListener("touchstart", (e) => {
+        if (this.ui !== "inv" || this.inv.selected === -1) return;
+        const t = e.target as HTMLElement;
+        if (t.closest(".invcell, .equip-cell, #inv-temp, button")) return;
+        this.inv.selected = -1;
+        this.renderInv();
+      });
+    }
 
     const canvas = this.renderer.canvasEl();
     if (!this.mobile) {
@@ -619,7 +720,7 @@ export class Game {
       on("mousedown", (e) => {
         const me = e as MouseEvent;
         if (me.button === 0) { this.mouseDown = true; this.breakMsg = false; }
-        else if (me.button === 2) this.place(); // pointer lock suppresses contextmenu: place on the click itself
+        else if (me.button === 2 && !this.cine) this.place(); // pointer lock suppresses contextmenu: place on the click itself
       });
       on("mouseup", () => { this.mouseDown = false; this.breaking = null; });
       on("mousemove", (e) => {
@@ -629,7 +730,7 @@ export class Game {
         this.player.pitch -= (this.settings.invertY ? -1 : 1) * me.movementY * 0.0022 * this.settings.sens;
         this.player.pitch = THREE.MathUtils.clamp(this.player.pitch, -1.55, 1.55);
       });
-      on("wheel", (e) => { this.inv.cycle((e as WheelEvent).deltaY > 0 ? 1 : -1); this.renderHeld(); });
+      on("wheel", (e) => this.cycleItem((e as WheelEvent).deltaY > 0 ? 1 : -1));
       on("contextmenu", (e) => e.preventDefault());
     } else {
       // One designated finger drives the camera; any additional touch (including
@@ -687,9 +788,9 @@ export class Game {
       mb("m-break", () => this.mouseDown = true, () => { this.mouseDown = false; this.breaking = null; });
       mb("m-place", () => this.place());
       mb("m-act", () => this.act());
-      mb("m-drink", () => this.drink());
+      mb("m-use", () => this.useItem());
       mb("m-surge", () => this.surge());
-      mb("m-next", () => { this.inv.cycle(1); this.renderHeld(); });
+      mb("m-next", () => this.cycleItem(1));
       mb("m-inv", () => this.toggleInv());
       mb("m-pause", () => this.escape());
     }
@@ -698,17 +799,17 @@ export class Game {
     // so losing the lock without UI open *is* the first Escape press: pause.
     on("pointerlockchange", () => {
       if (document.pointerLockElement) { this.lockAt = performance.now(); return; }
-      // Lock acquired and lost again within a breath is menu-close flapping
-      // (re-request racing the browser), not an Escape press: don't pause.
-      if (this.running && !this.paused && !this.ui && !this.f1Paused
-        && performance.now() - this.escAt > 400 && performance.now() - this.lockAt > 900) {
+      // A lock acquired and dropped right after we (re)requested it is menu-close
+      // flapping, not an Escape press — only a press after real quiet opens pause.
+      if (this.running && !this.paused && !this.ui
+        && performance.now() - this.escAt > 400 && performance.now() - Math.max(this.lockAt, this.relockAt) > 900) {
         this.paused = true;
         document.getElementById("screen-pause")!.classList.remove("hidden");
       }
     }, document);
     // Switching tabs pauses the game too - but only when no other menu is open.
     on("visibilitychange", () => {
-      if (!document.hidden || !this.running || this.paused || this.ui || this.f1Paused) return;
+      if (!document.hidden || !this.running || this.paused || this.ui) return;
       const vis = (id: string) => !document.getElementById(id)!.classList.contains("hidden");
       if (vis("screen-settings") || vis("screen-instructions") || vis("screen-death") || vis("screen-win")) return;
       this.paused = true;
@@ -719,12 +820,13 @@ export class Game {
   // Pause-menu submenus (Settings, Catalog): closing them returns to the pause
   // menu with the mouse still free — the pointer is only re-grabbed on the way
   // out of the pause menu itself.
-  pauseSubmenu: "settings" | "catalog" | null = null;
+  pauseSubmenu: "settings" | "catalog" | "instructions" | null = null;
 
   closePauseSubmenu() {
     if (!this.pauseSubmenu) return;
-    document.getElementById(this.pauseSubmenu === "settings" ? "screen-settings" : "screen-catalog")!
-      .classList.add("hidden");
+    const id = this.pauseSubmenu === "settings" ? "screen-settings"
+      : this.pauseSubmenu === "catalog" ? "screen-catalog" : "screen-instructions";
+    document.getElementById(id)!.classList.add("hidden");
     this.pauseSubmenu = null;
     if (this.paused) document.getElementById("screen-pause")!.classList.remove("hidden");
   }
@@ -736,18 +838,10 @@ export class Game {
     if (this.pauseSubmenu) { this.closePauseSubmenu(); return; }
     if (this.ui) { this.closeUI(); return; }
     const hidden = (id: string) => document.getElementById(id)!.classList.contains("hidden");
-    // Settings / death / win own their own dismissal buttons; Esc must not pause behind them.
-    if (!hidden("screen-settings") || !hidden("screen-death") || !hidden("screen-win")) return;
-    if (!hidden("screen-instructions")) {
-      document.getElementById("screen-instructions")!.classList.add("hidden");
-      if (this.f1Paused) { this.paused = false; this.f1Paused = false; this.relock(); }
-      else if (this.paused) {
-        this.paused = false;
-        document.getElementById("screen-pause")!.classList.add("hidden");
-        this.relock();
-      }
-      return;
-    }
+    // Settings / death / win / instructions own their own dismissal buttons;
+    // Esc must not pause behind them.
+    if (!hidden("screen-settings") || !hidden("screen-death") || !hidden("screen-win")
+      || !hidden("screen-instructions")) return;
     // the only Esc that leaves fullscreen: one pressed while the pause menu is up
     if (!fromP && this.paused && document.fullscreenElement) {
       void document.exitFullscreen().catch(() => {});
@@ -774,7 +868,12 @@ export class Game {
 
   private unlockPointer() { if (document.pointerLockElement) document.exitPointerLock(); }
 
-  relock() { if (!this.paused && !this.ui && !document.pointerLockElement) this.requestLock(); }
+  relock() {
+    if (!this.paused && !this.ui && !document.pointerLockElement) {
+      this.relockAt = performance.now();
+      this.requestLock();
+    }
+  }
 
   // ---------- frame ----------
 
@@ -791,7 +890,7 @@ export class Game {
     const biome = biomeAt(Math.floor(this.player.pos.x), Math.floor(this.player.pos.z), this.seed);
     const overencumbered = this.inv.weight() > this.inv.weightLimit();
 
-    if (!this.ui) {
+    if (!this.ui && !this.cine) {
       let mx = this.stick.x, mz = -this.stick.y;
       if (this.keys.has("KeyW")) mz += 1;
       if (this.keys.has("KeyS")) mz -= 1;
@@ -809,14 +908,19 @@ export class Game {
     }
     this.audio.heartbeat(dt, this.survival.health);
 
-    const cam = this.renderer.camera;
-    cam.position.copy(this.player.eye());
-    cam.rotation.order = "YXZ";
-    cam.rotation.set(this.player.pitch, this.player.yaw, 0);
+    if (this.cine) this.cineFrame(dt);
+    else {
+      const cam = this.renderer.camera;
+      cam.position.copy(this.player.eye());
+      cam.rotation.order = "YXZ";
+      cam.rotation.set(this.player.pitch, this.player.yaw, 0);
+    }
 
     const target = this.raycastTarget();
-    this.renderer.setHighlight(this.ui ? null : (target?.hit ?? null));
-    hud.setPrompt(this.ui ? null : this.promptFor(target));
+    this.renderer.setHighlight((this.ui || this.cine) ? null : (target?.hit ?? null));
+    hud.setPrompt((this.ui || this.cine) ? null : this.promptFor(target));
+    hud.setBlockName((this.ui || this.cine) || !target?.hit ? null
+      : BLOCKS[this.world.get(target.hit.x, target.hit.y, target.hit.z)].name);
     hud.setSubmerged(this.player.headUnder);
 
     for (const e of this.entities) {
@@ -856,6 +960,7 @@ export class Game {
     this.podFrame(dt);
     this.questFrame();
     this.guideFrame(dt);
+    this.tut?.tick(dt);
     this.mobFrame(dt);
     this.world.processWater();
     this.audio.setDay(kf.sunElev > 0);
@@ -863,6 +968,17 @@ export class Game {
     this.autosaveAcc += dt;
     if (this.autosaveAcc > 30) { this.autosaveAcc = 0; this.saveNow(); }
 
+    const dhp = this.prevHp - this.survival.health;
+    if (dhp > 0) {
+      const onset = this.timeSec - this.lastDmgAt > 2.5;
+      this.lastDmgAt = this.timeSec;
+      if (dhp >= 2 || this.timeSec - this.lastHitFlash > 1.1) {
+        this.lastHitFlash = this.timeSec;
+        hud.hitFlash();
+        if (dhp >= 2 || onset) this.audio.hurt(); // one-shot hits always; drains sound at onset only
+      }
+    }
+    this.prevHp = this.survival.health;
     if (this.survival.health <= 0 && this.running) this.die();
     this.renderer.render();
   }
@@ -876,7 +992,7 @@ export class Game {
     let x = Math.floor(o.x), y = Math.floor(o.y), z = Math.floor(o.z);
     const step = new THREE.Vector3(Math.sign(dir.x), Math.sign(dir.y), Math.sign(dir.z));
     const tDelta = new THREE.Vector3(dir.x !== 0 ? Math.abs(1 / dir.x) : Infinity, dir.y !== 0 ? Math.abs(1 / dir.y) : Infinity, dir.z !== 0 ? Math.abs(1 / dir.z) : Infinity);
-    const dist = (v: number, s: number) => s > 0 ? Math.ceil(v) - v : s < 0 ? v - Math.floor(v) : Infinity;
+    const dist = (v: number, s: number) => s > 0 ? (Math.ceil(v) - v || 1) : s < 0 ? (v - Math.floor(v) || 1) : Infinity;
     const tMax = new THREE.Vector3(dist(o.x, step.x) * tDelta.x, dist(o.y, step.y) * tDelta.y, dist(o.z, step.z) * tDelta.z);
     let prev = new THREE.Vector3(x, y, z);
     let water: { x: number; y: number; z: number } | null = null;
@@ -990,6 +1106,7 @@ export class Game {
   }
 
   private breakBlock(x: number, y: number, z: number) {
+    this.tut?.notify("mine");
     const id = this.world.get(x, y, z);
     this.questBump("mine");
     if (isDoorHalf(id) || id === DOOR_OPEN) {
@@ -1148,6 +1265,16 @@ export class Game {
     return best;
   }
 
+  /** True when every whole block column cell between (x,z; y0..y1) is passable. */
+  private columnClear(x: number, z: number, y0: number, y1: number): boolean {
+    const bx = Math.floor(x), bz = Math.floor(z);
+    for (let y = Math.floor(y0); y <= Math.floor(y1); y++) {
+      const id = this.world.get(bx, y, bz);
+      if (id !== AIR && id !== WATER) return false;
+    }
+    return true;
+  }
+
   private mobFrame(dt: number) {
     this.attackCd -= dt;
     this.mobSpawnAcc += dt;
@@ -1159,14 +1286,16 @@ export class Game {
       const dist = Math.hypot(dx, dz);
       if (dist > 110) { this.renderer.removeSceneObject(m.vis.group); this.mobs = this.mobs.filter((x) => x !== m); continue; }
       let vx = 0, vz = 0;
-      if (def.aggroR > 0 && dist < def.aggroR && dist > 0.01) {
+      // a snake can only reach you through open column between its head and your
+      // feet: one lurking under the floor you stand on stays lurking
+      const canReach = this.columnClear(m.x, m.z, m.y + 0.2, p.y + 1.4);
+      if (def.aggroR > 0 && dist < def.aggroR && dist > 0.01 && canReach) {
         vx = (dx / dist) * def.speed; vz = (dz / dist) * def.speed;
         m.yaw = Math.atan2(vx, vz);
         if (dist < 1.2 + def.hitR && m.biteCd <= 0) {
           m.biteCd = def.biteCd;
           const armor = this.equip.body ? 0.6 : 1; // Reptile Armour: scales shrug off 40%
           this.survival.hurt(def.biteDmg * armor, `${def.name.toLowerCase()} bite`);
-          this.audio.hurt();
           hud.toast(armor < 1 ? `A ${def.name.toLowerCase()} bites you — the Reptile Armour soaks some of it.` : `A ${def.name.toLowerCase()} bites you!`);
         }
       } else if (def.fleeR > 0 && dist < def.fleeR && dist > 0.01) {
@@ -1355,7 +1484,7 @@ export class Game {
   }
 
   private act() {
-    if (this.ui || this.paused) return;
+    if (this.ui || this.paused || this.cine) return;
     const t = this.raycastTarget();
     if (t?.hit && this.world.get(t.hit.x, t.hit.y, t.hit.z) === CHEST) { this.openChest(t.hit.x, t.hit.y, t.hit.z); return; }
     const cache = this.nearestCache();
@@ -1394,11 +1523,13 @@ export class Game {
           else this.world.doorSwing.delete(k);
           this.world.set(x, y, z, DOOR_OPEN);
           for (const dy of [-1, 1]) if (isDoorHalf(this.world.get(x, y + dy, z))) this.world.set(x, y + dy, z, DOOR_OPEN);
+          this.tut?.notify("door");
         }
         this.audio.door();
         return;
       }
       if (id === BEACON) {
+        this.tut?.notify("save");
         if (!this.beaconMarks.some((b) => b.x === x && b.y === y && b.z === z)) this.beaconMarks.push({ x, y, z });
         this.audio.savePing();
         if (this.saveNow()) hud.toast("Saved. Death will respawn you at this beacon.");
@@ -1430,11 +1561,35 @@ export class Game {
         this.inv.removeItem("canister_empty", 1);
         this.giveOrDrop("canister_full", 1);
         this.audio.drink();
+        this.tut?.notify("refill");
         hud.toast(this.world.gen.nearOasis(Math.floor(this.player.pos.x), Math.floor(this.player.pos.z))
           ? "Canister refilled at the oasis."
           : "Canister refilled from the ship's water tank.");
       } else hud.toast("You need an empty Water Canister.");
     }
+  }
+
+  /** Q: consume whatever is currently held in the hands. */
+  private useItem() {
+    if (this.ui || this.paused) return;
+    const sel = this.inv.selectedSlot();
+    if (!sel) { hud.toast("Select an item first."); this.audio.error(); return; }
+    const d = ITEMS[sel.itemId];
+    if (sel.itemId === "canister_full") { this.drink(); return; }
+    if (d.eat) { this.eat(sel, d); return; }
+    hud.toast(`You can't use ${d.name}.`);
+    this.audio.error();
+  }
+
+  private eat(sel: Slot, d: ItemDef) {
+    this.inv.removeItem(sel.itemId, 1);
+    const bits: string[] = [];
+    if (d.eat!.water) { this.survival.water = Math.min(100, this.survival.water + d.eat!.water); bits.push(`+${d.eat!.water} Water`); }
+    if (d.eat!.health) { this.survival.health = Math.min(100, this.survival.health + d.eat!.health); bits.push(`+${d.eat!.health} Health`); }
+    this.audio.drink();
+    hud.toast(`Ate ${d.name}: ${bits.join(", ")}`);
+    this.renderHeld();
+    this.renderInv();
   }
 
   private drink() {
@@ -1446,6 +1601,7 @@ export class Game {
     if (this.survival.body < before - 0.4) hud.toast("Cold water slides down your throat — your body cools.");
     this.inv.addItem("canister_empty", 1);
     this.audio.drink();
+    this.tut?.notify("drink");
     this.renderHeld();
   }
 
@@ -1454,6 +1610,7 @@ export class Game {
     const r = this.survival.surge();
     if (r === "thirsty") { hud.toast("You need at least 20 water to sweat-surge."); this.audio.error(); return; }
     if (r === "cooling") { hud.toast("Your body is still cooling — wait a moment."); this.audio.error(); return; }
+    this.tut?.notify("surge");
     hud.toast("You force yourself to sweat — evaporation cools your skin. (-10 water)");
     this.audio.drink();
   }
@@ -1592,9 +1749,36 @@ export class Game {
 
   private renderHeld() { hud.updateHud(this.survival, this.inv, this.timeSec, this.dayNumber(), this.settings.units, performance.now()); }
 
+  /** Distinct carried item types in pack order — the hotbar's rows. */
+  private hotbarItems(): string[] {
+    const u: string[] = [];
+    for (const s of this.inv.slots) if (!u.includes(s.itemId)) u.push(s.itemId);
+    return u;
+  }
+  private selectItem(itemId: string) {
+    this.inv.selected = this.inv.slots.findIndex(s => s.itemId === itemId);
+  }
+  /** Tutorial hook: pull an item into the hands (select + render). */
+  selectHeld(itemId: string) {
+    const i = this.inv.slots.findIndex(s => s.itemId === itemId);
+    if (i >= 0) { this.inv.selected = i; this.renderHeld(); }
+  }
+  private cycleItem(dir: number) {
+    const hb = this.hotbarItems();
+    if (!hb.length) { this.inv.selected = 0; this.renderHeld(); return; }
+    const cur = hb.indexOf(this.inv.selectedSlot()?.itemId ?? "");
+    this.selectItem(hb[((cur + dir) % hb.length + hb.length) % hb.length]);
+    this.renderHeld();
+  }
+
   // inventory grid metrics (keep in sync with .invcell size in styles.css)
   private static readonly CELL = 64;
   private static readonly GAP = 6;
+  /** current CSS zoom of panels (Settings > UI size) */
+  private uiZoom(): number {
+    const v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-scale"));
+    return Number.isFinite(v) && v > 0 ? v : 1;
+  }
   // item currently lifted out of the grid ("temporary storage")
   temp: Slot | null = null;
 
@@ -1691,21 +1875,6 @@ export class Game {
         eqBtn.onclick = () => this.equipItem();
         side.appendChild(eqBtn);
       }
-      if (d.eat && fInv === this.inv) {
-        const eatBtn = document.createElement("button");
-        eatBtn.textContent = "Eat";
-        eatBtn.onclick = () => {
-          const name = ITEMS[sel.itemId].name;
-          this.inv.removeItem(sel.itemId, 1);
-          const bits: string[] = [];
-          if (d.eat!.water) { this.survival.water = Math.min(100, this.survival.water + d.eat!.water); bits.push(`+${d.eat!.water} Water`); }
-          if (d.eat!.health) { this.survival.health = Math.min(100, this.survival.health + d.eat!.health); bits.push(`+${d.eat!.health} Health`); }
-          this.audio.drink();
-          hud.toast(`Ate ${name}: ${bits.join(", ")}`);
-          this.renderInv();
-        };
-        side.appendChild(eatBtn);
-      }
     }
     if (sel) {
       if (fInv === this.chestInv) {
@@ -1799,6 +1968,9 @@ export class Game {
     if (hit) {
       inv.selected = inv.slots.indexOf(hit);
       this.renderInv();
+    } else if (inv.selected !== -1) {
+      inv.selected = -1; // tapping empty pack space releases the selection
+      this.renderInv();
     }
   }
 
@@ -1836,12 +2008,13 @@ export class Game {
       src.slots.push(prev);
       if (!src.move(prev, s.x, s.y)) this.giveOrDrop(prev.itemId, prev.count);
     }
-    const STEP = Game.CELL + Game.GAP;
+    const STEP = (Game.CELL + Game.GAP) * this.uiZoom();
+    const GAP = Game.GAP * this.uiZoom();
     const d = slotDims(s);
     const ghost = document.createElement("div");
     ghost.className = "inv-ghost";
-    ghost.style.width = d.w * STEP - Game.GAP + "px";
-    ghost.style.height = d.h * STEP - Game.GAP + "px";
+    ghost.style.width = d.w * STEP - GAP + "px";
+    ghost.style.height = d.h * STEP - GAP + "px";
     ghost.style.background = ITEMS[s.itemId].color;
     ghost.style.backgroundImage = `url(${itemArtUrl(s.itemId, s.rot ? 1 : 0)})`;
     document.body.appendChild(ghost);
@@ -1927,12 +2100,13 @@ export class Game {
     if (e.button !== 0 || !this.temp) return;
     e.preventDefault();
     const s = this.temp;
-    const STEP = Game.CELL + Game.GAP;
+    const STEP = (Game.CELL + Game.GAP) * this.uiZoom();
+    const GAP = Game.GAP * this.uiZoom();
     const d = slotDims(s);
     const ghost = document.createElement("div");
     ghost.className = "inv-ghost";
-    ghost.style.width = d.w * STEP - Game.GAP + "px";
-    ghost.style.height = d.h * STEP - Game.GAP + "px";
+    ghost.style.width = d.w * STEP - GAP + "px";
+    ghost.style.height = d.h * STEP - GAP + "px";
     ghost.style.background = ITEMS[s.itemId].color;
     ghost.style.backgroundImage = `url(${itemArtUrl(s.itemId, s.rot ? 1 : 0)})`;
     document.body.appendChild(ghost);
@@ -1944,7 +2118,7 @@ export class Game {
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
       ghost.remove();
-      const hw = (d.w * STEP - Game.GAP) / 2, hh = (d.h * STEP - Game.GAP) / 2;
+      const hw = (d.w * STEP - GAP) / 2, hh = (d.h * STEP - GAP) / 2;
       let target: Inventory | null = null, ax = 0, ay = 0;
       for (const [el, inv] of this.gridsEls()) {
         const r = el.getBoundingClientRect();
@@ -1994,6 +2168,7 @@ export class Game {
           const left = doCraft(this.inv, r);
           if (left === null) { this.audio.error(); return; }
           if (left > 0) this.giveOrDrop(r.out, left);
+          this.tut?.notify("craft");
           if (ITEMS[r.out]?.tool) this.questBump("tool");
           this.audio.place();
           this.renderCraft("bench");

@@ -29,15 +29,16 @@ The build is fully static — `dist/` can be dropped on GitHub Pages or any stat
 | Shift | Sprint (drinks faster) |
 | Space | Jump |
 | E | Interact (doors, canisters, benches, campfires, beacons, caches, Heat Regulators) |
-| Q | Drink a full canister (+25 Water, −1.5 °C body) |
+| Q | Use the held item: full canister drinks (+25 Water, −1.5 °C body), food eats |
 | X | Sweat Surge — force your body cool: −10 Water, −1.5 °C body, 10 s cooldown (needs ≥20 Water) |
 | Left click (hold) | Mine / break (tool tier matters) — aimed at a mob, attack it |
 | Right click / place | Place selected block |
-| 1–9 / scroll | Hotbar |
+| 1–9 / scroll / click hotbar | Select item — pressing/clicking the already-held one empties your hands |
 | I | Inventory |
 | P | Pause / resume |
-| Esc | Close open menu, or pause (save / export world / quit) |
-| F1 | Instructions |
+| Esc | Close open menu, skip the guided tour, or pause (save / export world / quit) |
+
+Opening a brand-new world starts a guided in-world tour: a short flyover of the wreck, then hands-on steps through the hatch, the heat, water, crafting, mining and Save Beacons (Esc skips it). The full instructions live under Pause → Instructions (or the title screen). On touch, tapping empty inventory space or panel chrome deselects the held item.
 
 Crafting and smelting open through E at a Crafting Bench or Campfire. The active quest shows a waypoint in the HUD — a compass arrow, distance, and a marker beam at the target; a craftable Surveyor's Visor equipped in the Head slot beams every Death Cache, Reward Cache and Supply Chest through walls too. The Catalog (pause menu or title screen) lists every item, block, and recipe.
 
@@ -51,4 +52,4 @@ In the inventory: tap an item to select it, then tap another cell to move it the
 
 ## Tech
 
-TypeScript + Vite + Three.js with a hand-rolled chunked voxel renderer (greedy-ish per-chunk meshing, dirty-chunk rebuilds, fog-tuned render distance). Audio is fully procedural WebAudio — wind bed, generative day/night ambient score (Music toggle in Settings), and event SFX; zero asset files. No workers, no SharedArrayBuffer, no server. World state is delta-saved per slot in localStorage, with JSON export/import for sharing worlds and transferring saves between machines. Design history lives in `docs/adr/`; vocabulary in `GLOSSARY.md`.
+TypeScript + Vite + Three.js with a hand-rolled chunked voxel renderer (greedy-ish per-chunk meshing, dirty-chunk rebuilds, fog-tuned render distance). Audio is fully procedural WebAudio — wind bed, and a generative score that rotates through four genres (drone, arpeggio "wanderer", long-line "nightwind", hand-drum "caravan") with a fresh random key and mode every 90–240 s, day/night changing the pools (Music toggle in Settings); event SFX; zero asset files. No workers, no SharedArrayBuffer, no server. World state is delta-saved per slot in localStorage, with JSON export/import for sharing worlds and transferring saves between machines. Design history lives in `docs/adr/`; vocabulary in `GLOSSARY.md`.

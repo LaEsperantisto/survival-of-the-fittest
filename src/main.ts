@@ -73,6 +73,7 @@ function startGame(meta: WorldMeta, run: RunSave | null) {
   game = new Game(meta, run, $("game-wrap"), settings, audio);
   (globalThis as Record<string, unknown>).game = game;
   game.start();
+  if (run === null) game.startTutorial(); // first visit: the desert teaches in-world
 }
 
 function toTitle() {
@@ -100,7 +101,6 @@ function closeOverlays() {
     show("ui-cache", false);
     show("screen-pause", false);
     game.paused = false;
-    game.f1Paused = false;
     game.relock();
   } else renderTitle();
 }
@@ -143,6 +143,8 @@ function renderSettings() {
     (v) => { settings.quality = v; commit(); });
   seg("Temperature units", [["Celsius", "C"], ["Fahrenheit", "F"]] as [string, Settings["units"]][], settings.units,
     (v) => { settings.units = v; commit(); });
+  seg("UI size", [["Small", 0.8], ["Normal", 1], ["Large", 1.25], ["Huge", 1.6]], settings.uiScale,
+    (v) => { settings.uiScale = v; commit(); });
   if (document.fullscreenEnabled) {
     seg("Fullscreen", [["Off", false], ["On", true]], settings.fullscreen, (on) => {
       settings.fullscreen = on; commit();
@@ -158,8 +160,11 @@ function renderSettings() {
   }
 }
 
+function applyUiScale(v: number) { document.documentElement.style.setProperty("--ui-scale", String(v)); }
+
 function commit() {
   setSettings(settings);
+  applyUiScale(settings.uiScale);
   if (game) game.applySettings(settings);
 }
 
@@ -224,17 +229,20 @@ const DESKTOP_KEYS: [string, string][] = [
   ["Mouse", "look (click the world to capture the pointer)"], ["Left click, hold", "mine a block or hit a mob (right tool tier matters)"],
   ["Metal Sword", "Crafting Bench: 2 Metal Rods + 1 Dead Wood — far harder hits, longer reach (snake dies in 2 swings, rat in 1)"],
   ["Right click", "place the selected block"], ["E", "interact: doors, beacon save, bench, campfire, Heat Regulator (set body to 37 °C), oasis / water-station refill, death caches"],
-  ["Q", "drink a full canister (+25 water, cools you a little)"], ["X", "sweat surge: spend 10 water to force your body cool (needs 20+ water, 10 s cooldown)"], ["I", "inventory — Equip gear, Eat food"], ["1-9 / mouse wheel", "select item"],
-  ["Esc", "close open menu, or pause"], ["P", "pause / resume"], ["F1", "this screen"],
+  ["Q", "use the held item: drink a full canister (+25 water, cools you a little), or eat food"], ["X", "sweat surge: spend 10 water to force your body cool (needs 20+ water, 10 s cooldown)"], ["I", "inventory — Equip gear"],
+  ["1-9 / mouse wheel / click hotbar", "select item — press the number or click the already-held item to empty your hands"],
+  ["Esc", "close open menu, or pause"], ["P", "pause / resume"],
 ];
 const MOBILE_KEYS: [string, string][] = [
   ["Left stick", "move"], ["Drag the right half of the screen", "look"],
   ["JUMP / BREAK / PLACE / ACT / DRINK / SURGE / ITEM / BAG", "buttons on the right"],
   ["BREAK, aimed at a mob", "fight it — hold the Metal Sword for far harder hits and longer reach"],
-  ["Tap an item, then another cell", "move it there (occupants swap); tap an Armour Slot to wear the selected gear"],
+  ["Tap an item, then another cell", "move it there (occupants swap); tap an Armour Slot to wear the selected gear; tap empty space to deselect"],
+  ["Bottom hotbar", "tap a slot to select that item; the ITEM button cycles through it"],
 ];
 
 function renderInstructions() {
+  if (game) game.pauseSubmenu = game.paused ? "instructions" : null;
   openOverlay("screen-instructions");
   const body = $("instr-body");
   body.innerHTML = "";
@@ -246,7 +254,7 @@ function renderInstructions() {
   }
   const extra = document.createElement("div");
   extra.className = "needs";
-  extra.textContent = "Keep the three bars inside their white safe bands. The Ship Interior is always sealed: your body heat drifts back to 36.6 °C there. Outside, midday cooks you and night freezes you — shade, walls and doors change what you are exposed to. Death costs everything you carry: it waits in a Death Cache where you fell. Respawning only works at a Save Beacon you activated with E. Beacons are the only save points. The desert is alive: Desert Snakes bite anything that steps too close, and Kangaroo Rats bolt — hunt one, cook the meat at a Campfire, eat it to heal. Break Cacti for Prickly Pears to drink. Snake skins stitch into Reptile Armour. Backpack, Visor and Armour go in the three Armour Slots inside the inventory: select the gear, then click or tap the empty slot to wear it.";
+  extra.textContent = "Keep the three bars inside their white safe bands; a pulsing ☀ beside the TEMP bar means you are overheating, ❄ means freezing. The Ship Interior is always sealed: your body heat drifts back to 36.6 °C there. Outside, midday cooks you and night freezes you — shade, walls and doors change what you are exposed to. Death costs everything you carry: it waits in a Death Cache where you fell. Respawning only works at a Save Beacon you activated with E. Beacons are the only save points. The desert is alive: Desert Snakes bite anything that steps too close, and Kangaroo Rats bolt — hunt one, cook the meat at a Campfire, eat it to heal. Break Cacti for Prickly Pears to drink. Snake skins stitch into Reptile Armour. Backpack, Visor and Armour go in the three Armour Slots inside the inventory: select the gear, then click or tap the empty slot to wear it.";
   body.appendChild(extra);
 }
 
@@ -281,6 +289,7 @@ $("btn-import").onclick = () => $("import-file").click();
 $("btn-settings").onclick = renderSettings;
 $("btn-pause-settings").onclick = renderSettings;
 $("btn-instructions").onclick = renderInstructions;
+$("btn-pause-instructions").onclick = renderInstructions;
 $("btn-catalog").onclick = renderCatalog;
 $("btn-catalog-title").onclick = renderCatalog;
 
@@ -342,16 +351,7 @@ document.addEventListener("keydown", (e) => {
     void document.exitFullscreen().catch(() => {});
     return;
   }
-  if (e.code === "F1") {
-    e.preventDefault();
-    if ($("screen-instructions").classList.contains("hidden")) {
-      renderInstructions();
-      if (game && !game.paused) { game.paused = true; game.f1Paused = true; }
-      if (document.pointerLockElement) document.exitPointerLock();
-    } else {
-      closeOverlays();
-    }
-  }
 });
 
+applyUiScale(settings.uiScale);
 renderTitle();

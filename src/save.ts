@@ -9,12 +9,12 @@ const K_INDEX = "sotf:index", K_SET = "sotf:settings", K_BEST = "sotf:best";
 export interface Settings {
   sens: number; invertY: boolean; fov: number; renderDist: number;
   quality: "low" | "med" | "high"; volume: number; units: "C" | "F";
-  fullscreen: boolean; music: boolean;
+  fullscreen: boolean; music: boolean; uiScale: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   sens: 1, invertY: false, fov: 70, renderDist: 6, quality: "med", volume: 0.67, units: "C",
-  fullscreen: false, music: true,
+  fullscreen: false, music: true, uiScale: 1,
 };
 
 export function getSettings(): Settings {
