@@ -1,6 +1,7 @@
 import {
-  AIR, SAND, SANDSTONE, ROCK, GRAVEL, SALT, DEADWOOD, HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON,
-  WATER, ADOBE, INSGLASS, BENCH, BENCH_EXT, ENGINECORE, CS, CH, REGULATOR, CACTUS,
+  AIR, SAND, SANDSTONE, ROCK, GRAVEL, SALT, DEADWOOD, HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL_PLATING, BEACON,
+  WATER, ADOBE, INSGLASS, BENCH, BENCH_EXT, ENGINECORE, CS, CH, REGULATOR, CACTUS, CACTUS_FRUIT,
+  DOOR_INNER, DOOR_INNER_UPPER, CHEST, BED, BED_EXT, MELON_2, WHEAT_2, FARMLAND,
 } from "./blocks";
 import { fbm2, ridge2, value2, hash2, Rng } from "./noise";
 
@@ -14,10 +15,15 @@ export interface Oasis { x: number; z: number; r: number; }
 export interface Town { x: number; z: number; }
 export interface CanisterSpawn { x: number; z: number; buried: boolean; }
 
+/** Towns sit on this lattice: one sparse, jittered settlement per cell, forever —
+ *  the desert never runs out of towns. */
+export const TOWN_L = 320;
+
 export class Structures {
   oases: Oasis[] = [];
-  towns: Town[] = [];
   secondShip = { x: 0, z: 0 };
+  /** A guaranteed Town at a second-wreck's distance, so the goal chain can't dead-end. */
+  homeTown: Town = { x: 0, z: 0 };
   canisters: CanisterSpawn[] = [];
 
   constructor(public seed: number) {
@@ -26,13 +32,14 @@ export class Structures {
       const a = r.range(0, Math.PI * 2), d = r.range(160, 900);
       this.oases.push({ x: Math.round(Math.cos(a) * d), z: Math.round(Math.sin(a) * d), r: r.int(3, 5) });
     }
-    for (let i = 0; i < 4; i++) {
-      const a = r.range(0, Math.PI * 2), d = r.range(300, 1000);
-      this.towns.push({ x: Math.round(Math.cos(a) * d), z: Math.round(Math.sin(a) * d) });
-    }
     {
       const a = r.range(0, Math.PI * 2), d = r.range(450, 700);
       this.secondShip = { x: Math.round(Math.cos(a) * d), z: Math.round(Math.sin(a) * d) };
+    }
+    {
+      const ta = Math.atan2(this.secondShip.z, this.secondShip.x) + 0.9;
+      const td = Math.hypot(this.secondShip.x, this.secondShip.z) * r.range(0.8, 1.15);
+      this.homeTown = { x: Math.round(Math.cos(ta) * td), z: Math.round(Math.sin(ta) * td) };
     }
     for (let i = 0; i < 13; i++) {
       const a = r.range(0, Math.PI * 2), d = r.range(30, 600);
@@ -43,6 +50,54 @@ export class Structures {
   nearOasis(x: number, z: number): Oasis | null {
     for (const o of this.oases) if (Math.abs(o.x - x) <= o.r + 1 && Math.abs(o.z - z) <= o.r + 1) return o;
     return null;
+  }
+
+  /** Jittered center of the Town on lattice cell (tx,tz) — deterministic. */
+  townCenter(tx: number, tz: number): Town {
+    if (tx === this.gtx && tz === this.gtz) return this.homeTown;
+    const jx = (hash2(tx, tz, this.seed + 53) - 0.5) * 110;
+    const jz = (hash2(tx, tz, this.seed + 55) - 0.5) * 110;
+    return { x: Math.round(tx * TOWN_L + jx), z: Math.round(tz * TOWN_L + jz) };
+  }
+
+  private get gtx() { return Math.round(this.homeTown.x / TOWN_L); }
+  private get gtz() { return Math.round(this.homeTown.z / TOWN_L); }
+
+  /** Is there a Town on lattice cell (tx,tz)? Never near the crash, never in a pool. */
+  townAt(tx: number, tz: number): boolean {
+    if (Math.abs(tx) < 2 && Math.abs(tz) < 2) return false;
+    if (tx === this.gtx && tz === this.gtz) return true;
+    if (hash2(tx, tz, this.seed + 51) >= 0.4) return false;
+    const c = this.townCenter(tx, tz);
+    for (const o of this.oases)
+      if (Math.hypot(o.x - c.x, o.z - c.z) < o.r + 14) return false;
+    if (Math.hypot(this.secondShip.x - c.x, this.secondShip.z - c.z) < 30) return false;
+    return true;
+  }
+
+  /** The nearest Town within `rad` of (x,z), or null. */
+  townNear(x: number, z: number, rad: number): Town | null {
+    let best: Town | null = null, bd = rad;
+    const t0 = Math.floor((x - rad) / TOWN_L), t1 = Math.floor((x + rad) / TOWN_L);
+    const s0 = Math.floor((z - rad) / TOWN_L), s1 = Math.floor((z + rad) / TOWN_L);
+    for (let tx = t0; tx <= t1; tx++) for (let tz = s0; tz <= s1; tz++) {
+      if (!this.townAt(tx, tz)) continue;
+      const c = this.townCenter(tx, tz), d = Math.hypot(c.x - x, c.z - z);
+      if (d <= bd) { bd = d; best = c; }
+    }
+    return best;
+  }
+
+  /** Nearest Town in the whole lattice neighbourhood of (x,z) — for waypoints. */
+  nearestTown(x: number, z: number): Town {
+    let best: Town | null = null, bd = Infinity;
+    const cx = Math.floor(x / TOWN_L), cz = Math.floor(z / TOWN_L);
+    for (let tx = cx - 4; tx <= cx + 4; tx++) for (let tz = cz - 4; tz <= cz + 4; tz++) {
+      if (!this.townAt(tx, tz)) continue;
+      const c = this.townCenter(tx, tz), d = Math.hypot(c.x - x, c.z - z);
+      if (d < bd) { bd = d; best = c; }
+    }
+    return best ?? this.homeTown;
   }
 }
 
@@ -120,7 +175,9 @@ function surfaceBlock(seed: number, x: number, z: number, y: number, h: number):
  *  with the wreck's bench; aft row: save room (z -1..1, the ONLY door to the
  *  outside is at the stern), water compartment to the left (z 3..4, its tank is
  *  a pool dug into the ground), heat-regulator room to the right (z -4..-3).
- *  All bulkhead doors start closed. */
+ *  All bulkhead doors are Inside Doors and start closed: open one and the two
+ *  spaces behind it share one temperature. The wreck is plated — Metal Plating
+ *  floors and skin, never rods. */
 function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
   const Y0 = 30, Y1 = 34;
   // solid shell outline in plan view (rounded corners, tapered bow/stern tips)
@@ -139,24 +196,27 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
         // the cockpit tapers narrower than the rest of the hull
         const narrow = x >= 2 && Math.abs(z) > 2;
         const interior = x >= -5 && x <= 3 && z >= -4 && z <= 4 && y >= 31 && y <= 33 && !narrow;
-        set(x, y, z, interior ? AIR : y === Y0 ? METAL : HULL);
+        set(x, y, z, interior ? AIR : y === Y0 ? METAL_PLATING : HULL);
       }
   // rounded spine along the roof
   for (let x = -3; x <= 1; x++) for (let z = -2; z <= 2; z++) set(x, 35, z, HULL);
   for (let x = -2; x <= 0; x++) for (let z = -1; z <= 1; z++) set(x, 36, z, HULL);
-  // wings: thin metal planes out from the flanks, tapering at the tips
-  for (let x = -2; x <= 1; x++) for (const z of [6, 7, 8, 9, -6, -7, -8, -9]) set(x, 32, z, METAL);
-  for (const x of [-3, 2]) for (const z of [6, 7, 8, -6, -7, -8]) set(x, 32, z, METAL);
-  for (const x of [-1, 0]) { set(x, 31, 10, METAL); set(x, 31, -10, METAL); }
+  // wings: thin plated planes out from the flanks, tapering at the tips
+  for (let x = -2; x <= 1; x++) for (const z of [6, 7, 8, 9, -6, -7, -8, -9]) set(x, 32, z, METAL_PLATING);
+  for (const x of [-3, 2]) for (const z of [6, 7, 8, -6, -7, -8]) set(x, 32, z, METAL_PLATING);
+  for (const x of [-1, 0]) { set(x, 31, 10, METAL_PLATING); set(x, 31, -10, METAL_PLATING); }
 
   const door = (x: number, y: number, z: number) => { set(x, y, z, DOOR_CLOSED); set(x, y + 1, z, DOOR_UPPER); };
+  // Inside Doors: interior bulkheads. Closed they keep rooms apart on their own
+  // temperature; leave one open and the spaces merge into one room.
+  const doorIn = (x: number, y: number, z: number) => { set(x, y, z, DOOR_INNER); set(x, y + 1, z, DOOR_INNER_UPPER); };
   // bulkhead between hall and cockpit, and between hall and the aft row
   for (let z = -4; z <= 4; z++) for (let y = 31; y <= 33; y++) { set(1, y, z, HULL); set(-2, y, z, HULL); }
   for (let x = -5; x <= -3; x++) for (const z of [-2, 2]) for (let y = 31; y <= 33; y++) set(x, y, z, HULL);
-  door(1, 31, 0);          // hall -> cockpit
-  door(-2, 31, 0);         // hall -> save room
-  door(-2, 31, 3);         // hall -> water compartment
-  door(-2, 31, -3);        // hall -> regulator room
+  doorIn(1, 31, 0);        // hall -> cockpit
+  doorIn(-2, 31, 0);       // hall -> save room
+  doorIn(-2, 31, 3);       // hall -> water compartment
+  doorIn(-2, 31, -3);      // hall -> regulator room
   door(-6, 31, 0);         // stern: the only door to the outside
 
   // cockpit windscreen: insulating glass, rare but heat-safe
@@ -176,8 +236,8 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
   set(0, 31, -3, BENCH); set(0, 31, -2, BENCH_EXT);
   // ceiling lamps, one per room
   for (const [lx, lz] of [[3, 0], [0, 0], [-4, 3], [-4, -3], [-5, 0]] as const) set(lx, Y1, lz, LAMP);
-  // scattered metal salvage — kept clear of every doorway approach
-  for (const [sx, sz] of [[0, 3], [0, 4], [-1, 4], [2, 2]] as const) set(sx, 31, sz, METAL);
+  // scattered plating salvage — kept clear of every doorway approach
+  for (const [sx, sz] of [[0, 3], [0, 4], [-1, 4], [2, 2]] as const) set(sx, 31, sz, METAL_PLATING);
 }
 
 function paintSecondShip(set: (x: number, y: number, z: number, id: number) => void, t: { x: number; z: number }, seed: number) {
@@ -185,7 +245,7 @@ function paintSecondShip(set: (x: number, y: number, z: number, id: number) => v
   for (let i = 0; i < 40; i++) {
     const x = t.x + r.int(-5, 5), z = t.z + r.int(-5, 5);
     const y = Math.round(heightAt(seed, x, z));
-    set(x, y + r.int(0, 1), z, r.next() < 0.5 ? HULL : METAL);
+    set(x, y + r.int(0, 1), z, r.next() < 0.5 ? HULL : METAL_PLATING);
   }
   // the Engine Core sits at the exact center of the debris field, on the ground
   set(t.x, Math.round(heightAt(seed, t.x, t.z)) + 1, t.z, ENGINECORE);
@@ -213,6 +273,15 @@ function paintOasis(set: (x: number, y: number, z: number, id: number) => void, 
     const h = Math.round(heightAt(seed, tx, tz));
     for (let y = h + 1; y <= h + 4; y++) set(tx, y, tz, DEADWOOD);
   }
+  // ripe Dune Melons ripen on the sand at the water's edge — the desert's free drink
+  for (let i = 0; i < 5; i++) {
+    if (hash2(o.x, o.z, seed + 61 + i) < 0.35) continue;
+    const a = i * 1.27 + hash2(o.z, o.x, seed + 67 + i) * 0.8;
+    const rr = o.r - 0.4;
+    const tx = o.x + Math.round(Math.cos(a) * rr), tz = o.z + Math.round(Math.sin(a) * rr);
+    if (Math.hypot(tx - o.x, tz - o.z) < o.r) continue; // never in the pool
+    set(tx, hb + 1, tz, MELON_2);
+  }
 }
 
 function paintTown(set: (x: number, y: number, z: number, id: number) => void, t: Town, seed: number) {
@@ -225,8 +294,18 @@ function paintTown(set: (x: number, y: number, z: number, id: number) => void, t
         if (!(x === 0 && z === 1 && y <= h + 2)) set(t.x + bx + x, y, t.z + bz + z, ADOBE);
       }
     }
-    set(t.x + bx + 1, h + 2, t.z + bz + 2, METAL);
+    // every hut left behind a Supply Chest and a Bed; the good loot is decided
+    // when the chest is first opened (seeded, game.ts)
+    set(t.x + bx + 1, h + 2, t.z + bz + 1, CHEST);
+    set(t.x + bx + 1, h + 2, t.z + bz + 2, BED);
+    set(t.x + bx + 2, h + 2, t.z + bz + 2, BED_EXT);
   }
+  // someone's farm, gone to seed: a plot of Farmland with a few survivors standing
+  const fh = Math.round(heightAt(seed, t.x, t.z + 9));
+  for (let x = 0; x < 5; x++) for (let z = 0; z < 3; z++) set(t.x - 6 + x, fh, t.z + 8 + z, FARMLAND);
+  set(t.x - 5, fh + 1, t.z + 9, WHEAT_2);
+  set(t.x - 3, fh + 1, t.z + 8, WHEAT_2);
+  set(t.x - 2, fh + 1, t.z + 10, MELON_2);
 }
 
 export function genChunk(seed: number, st: Structures, cx: number, cz: number): Uint8Array {
@@ -265,6 +344,8 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number): 
           const ct = 2 + (hash2(wx, wz, seed + 37) * 3 | 0);
           for (let y = h + 1; y <= h + ct; y++) setW(wx, y, wz, CACTUS);
           if (ct >= 3 && hash2(wx, wz, seed + 41) > 0.55) setW(wx + (hash2(wx, wz, seed + 43) > 0.5 ? 1 : -1), h + 2, wz, CACTUS);
+          // some tall columns already carry a Prickly Pear on top
+          if (ct >= 3 && hash2(wx, wz, seed + 47) > 0.7) setW(wx, h + ct, wz, CACTUS_FRUIT);
         }
       }
     }
@@ -273,8 +354,17 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number): 
   if (cx >= -1 && cx <= 0 && cz >= -1 && cz <= 0) paintShip(setW);
   for (const o of st.oases)
     if (Math.abs(cx * CS + 8 - o.x) < o.r + 8 && Math.abs(cz * CS + 8 - o.z) < o.r + 8) paintOasis(setW, o, seed);
-  for (const t of st.towns)
-    if (Math.abs(cx * CS + 8 - t.x) < 12 && Math.abs(cz * CS + 8 - t.z) < 12) paintTown(setW, t, seed);
+  // Towns on an unbounded lattice: check which lattice cells touch this chunk.
+  // Centers jitter up to ±55 from their lattice point (the home Town can sit a
+  // whole half-cell away), so the scan window adds a cell of slack.
+  const tx0 = Math.floor((cx * CS - 14 - TOWN_L) / TOWN_L), tx1 = Math.floor((cx * CS + CS + 14 + TOWN_L) / TOWN_L);
+  const tz0 = Math.floor((cz * CS - 14 - TOWN_L) / TOWN_L), tz1 = Math.floor((cz * CS + CS + 14 + TOWN_L) / TOWN_L);
+  for (let tx = tx0; tx <= tx1; tx++) for (let tz = tz0; tz <= tz1; tz++) {
+    if (!st.townAt(tx, tz)) continue;
+    const t = st.townCenter(tx, tz);
+    // paint into any chunk whose cells overlap the town footprint (huts span ±8, the plot reaches further)
+    if (cx * CS <= t.x + 12 && cx * CS + CS - 1 >= t.x - 12 && cz * CS <= t.z + 12 && cz * CS + CS - 1 >= t.z - 10) paintTown(setW, t, seed);
+  }
   if (Math.abs(cx * CS + 8 - st.secondShip.x) < 12 && Math.abs(cz * CS + 8 - st.secondShip.z) < 12)
     paintSecondShip(setW, st.secondShip, seed);
 

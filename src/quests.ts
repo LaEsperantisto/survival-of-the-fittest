@@ -3,7 +3,7 @@
 
 export interface QuestDef {
   id: string;
-  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "wreck" | "core" | "finish";
+  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "wreck" | "core" | "finish";
   title: string;
   desc: string;
   goal: number;
@@ -34,6 +34,16 @@ export const QUESTS: QuestDef[] = [
     id: "tool", kind: "tool", title: "Handy Work",
     desc: "Craft any tool at a Crafting Bench.", goal: 1,
     reward: { item: "metal", n: 4 },
+  },
+  {
+    id: "farm", kind: "farm", title: "Green Thumbs",
+    desc: "Till sand with a shovel, plant a seed near water, and harvest one ripe crop.", goal: 1,
+    reward: { item: "seed_melon", n: 2 },
+  },
+  {
+    id: "supplies", kind: "supplies", title: "The Dwellers' Leftovers",
+    desc: "The desert was lived in before you. Reach a Town and open a Supply Chest — the first chest of a cluster holds the loot.", goal: 1,
+    reward: { item: "canister_full", n: 1 },
   },
   {
     id: "wreck", kind: "wreck", title: "The Second Wreck",

@@ -1,6 +1,8 @@
 import {
   SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, GLASS, INSGLASS, HULL,
   DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, ADOBE, ENGINECORE, REGULATOR, CHEST, CACTUS,
+  FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
+  DOOR_INNER, DOOR_INNER_UPPER, BED, BED_EXT,
 } from "./blocks";
 
 export interface ItemDef {
@@ -65,12 +67,24 @@ const ITEM_LIST: ItemDef[] = [
     w: 1, h: 2, mass: 2.2, weapon: { reach: 4.6, dmg: 7 }, color: "#c9d2dc",
   }),
   I({ id: "backpack1", name: "Backpack I", desc: "Equipped in the Backpack slot: inventory grid grows to 4×5, weight limit +20 kg.", w: 2, h: 2, mass: 2.0, equip: "backpack", color: "#7a5a3a" }),
-  I({ id: "cactus", name: "Cactus", desc: "Tall desert column. Break it for a Prickly Pear and a block you can replant.", w: 1, h: 2, mass: 1.5, block: CACTUS, color: "#3d8042" }),
+  I({ id: "cactus", name: "Cactus", desc: "Tall desert column. Replantable anywhere on sand or farm land; with water it fruits on its own. Break a fruit-topped one for the Prickly Pear.", w: 1, h: 2, mass: 1.5, block: CACTUS, color: "#3d8042" }),
   I({ id: "prickly_pear", name: "Prickly Pear", desc: "Cactus fruit. Eat it: +8 Water, +1 Health.", w: 1, h: 1, mass: 0.2, eat: { water: 8, health: 1 }, color: "#d64a82" }),
   I({ id: "snake_skin", name: "Snake Skin", desc: "Tough desert hide. Three of them stitch into Reptile Armour at a Crafting Bench.", w: 1, h: 2, mass: 0.6, color: "#b3946a" }),
   I({ id: "reptile_armor", name: "Reptile Armour", desc: "Equipped in the Body slot: scales shrug off 40% of all damage.", w: 2, h: 2, mass: 3.0, equip: "body", color: "#8a6f4d" }),
   I({ id: "rat_raw", name: "Kangaroo Rat (raw)", desc: "Raw meat. Cook it at a Campfire before eating.", w: 1, h: 1, mass: 0.8, color: "#a86a5a" }),
   I({ id: "rat_cooked", name: "Cooked Rat", desc: "Roasted meat. Eat it: +25 Health.", w: 1, h: 1, mass: 0.7, eat: { health: 25 }, color: "#c07a3a" }),
+  // ---- farming ----
+  I({ id: "farmland", name: "Farm Land", desc: "Tilled ground. Melon and Wheat seeds must be planted on it; Cactus accepts sand too.", w: 1, h: 1, mass: 1, block: FARMLAND, color: "#573d23" }),
+  I({ id: "seed_melon", name: "Melon Seed", desc: "Plant on Farm Land within 4 blocks of water. Loves heat (22-45 C air); stalls in the cold.", w: 1, h: 1, mass: 0.1, block: MELON_1, color: "#c8b060" }),
+  I({ id: "seed_wheat", name: "Wheat Seed", desc: "Plant on Farm Land within 4 blocks of water. Grows in the cool band (2-22 C) too.", w: 1, h: 1, mass: 0.1, block: WHEAT_1, color: "#d8c878" }),
+  I({ id: "dune_melon", name: "Dune Melon", desc: "Harvested from a ripe Melon. Eat it: +30 Water, +5 Health.", w: 2, h: 1, mass: 2, eat: { water: 30, health: 5 }, color: "#7a9a3a" }),
+  I({ id: "wheat", name: "Desert Wheat", desc: "Cut from ripe Wheat. Too tough raw - smelt it at a Campfire into Cooked Wheat.", w: 1, h: 1, mass: 0.2, color: "#d8b048" }),
+  I({ id: "cooked_wheat", name: "Cooked Wheat", desc: "Plain but dense. Eat it: +35 Health.", w: 1, h: 1, mass: 0.2, eat: { health: 35 }, color: "#b8853a" }),
+  // ---- building ----
+  I({ id: "chest_connector", name: "Chest Connector", desc: "Steel rail between Supply Chests: links their grids into one bigger Inventory Grid. Stores nothing itself.", w: 1, h: 1, mass: 1, block: CHEST_CONNECTOR, color: "#8a744a" }),
+  I({ id: "metal_plating", name: "Metal Plating", desc: "The ship's plated floor and skin. Same plate, same tools - disassemble it back.", w: 1, h: 1, mass: 1.2, block: METAL_PLATING, color: "#9aa0ac" }),
+  I({ id: "door_inner", name: "Inside Door", desc: "Interior bulkhead door. Keeps rooms apart when closed; leave one open and the spaces share one temperature.", w: 1, h: 1, mass: 2, block: DOOR_INNER, color: "#82868e" }),
+  I({ id: "bed", name: "Bed", desc: "Curtained sleep for 8 game hours, then the cool morning. One long sleep every 8 hours; press E at the bed. Takes a 2x1 floor span.", w: 2, h: 1, mass: 6, block: BED, color: "#a84a42" }),
 ];
 
 export const ITEMS: Record<string, ItemDef> = Object.fromEntries(ITEM_LIST.map((d) => [d.id, d]));
@@ -78,6 +92,14 @@ export const ITEMS: Record<string, ItemDef> = Object.fromEntries(ITEM_LIST.map((
 export const BLOCK_TO_ITEM: Record<number, string> = {};
 for (const it of Object.values(ITEMS)) if (it.block !== undefined) BLOCK_TO_ITEM[it.block] = it.id;
 BLOCK_TO_ITEM[DOOR_UPPER] = "door"; // both door halves drop the same item
+BLOCK_TO_ITEM[DOOR_INNER_UPPER] = "door_inner";
+BLOCK_TO_ITEM[BED_EXT] = "bed"; // both bed halves drop the bed
+// crop fallbacks: the explicit breakBlock handlers give the real harvest drops
+BLOCK_TO_ITEM[MELON_1] = "seed_melon";
+BLOCK_TO_ITEM[MELON_2] = "dune_melon";
+BLOCK_TO_ITEM[WHEAT_1] = "seed_wheat";
+BLOCK_TO_ITEM[WHEAT_2] = "wheat";
+BLOCK_TO_ITEM[CACTUS_FRUIT] = "cactus";
 
 // ---------------- Inventory Grid ----------------
 
@@ -95,7 +117,7 @@ export class Inventory {
   baseLimit = 30; // kg
   bonusLimit = 0;
 
-  constructor() { this.addItem("canister_full", 2); }
+  constructor() {} // fresh worlds start with an empty pack - supplies live in the cockpit chest
 
   capacity(): { w: number; h: number } { return { w: this.w, h: this.h }; }
 

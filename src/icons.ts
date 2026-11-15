@@ -2,7 +2,7 @@
 // items sample the world texture atlas; hand-drawn items (canisters, tools,
 // backpacks, rods, visors) are painted per footprint, then sliced into 16px
 // cells matching the item's Inventory Grid shape (row-major, unrotated).
-import { DOOR_UPPER, DOOR_CLOSED, BENCH, BENCH_EXT, BEACON, CAMPFIRE } from "./blocks";
+import { DOOR_UPPER, DOOR_CLOSED, BENCH, BENCH_EXT, BEACON, CAMPFIRE, BED, BED_EXT } from "./blocks";
 import { ITEMS } from "./items";
 import { TILE_SRC, TILE_PX, getAtlasCanvas } from "./renderer";
 
@@ -114,6 +114,31 @@ function drawArt(id: string, w: number, h: number, color: string): HTMLCanvasEle
     case "door":
       blit(g, 0, 0, DOOR_UPPER);
       blit(g, 0, T, DOOR_CLOSED);
+      return cv;
+    case "bed":
+      blit(g, 0, 0, BED);
+      blit(g, T, 0, BED_EXT);
+      return cv;
+    case "dune_melon": // striped desert melon, 2x1
+      g.fillStyle = "#5f7f2c"; g.beginPath(); g.ellipse(16, 11, 12, 8, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#3c541c"; g.lineWidth = 2;
+      g.beginPath(); g.ellipse(16, 11, 12, 8, 0, 0, Math.PI * 2); g.stroke();
+      g.strokeStyle = "#88a84c"; g.lineWidth = 1;
+      for (const dx of [-7, 0, 7]) { g.beginPath(); g.moveTo(16 + dx, 3); g.lineTo(16 + dx, 19); g.stroke(); }
+      rect(g, 15, 1, 2, 3, "#6b5238");
+      return cv;
+    case "wheat": { // golden stalks in a sheaf
+      g.strokeStyle = "#c8a844"; g.lineWidth = 2;
+      for (const dx of [4, 8, 12]) { g.beginPath(); g.moveTo(dx, 15); g.lineTo(dx, 3); g.stroke(); }
+      g.fillStyle = "#e0c860";
+      for (const dx of [4, 8, 12]) for (let y = 2; y < 9; y += 2) g.fillRect(dx - 2, y, 4, 2);
+      g.strokeStyle = "#7a5a30"; g.lineWidth = 1; g.beginPath(); g.moveTo(2, 12); g.lineTo(14, 12); g.stroke();
+      return cv;
+    }
+    case "cooked_wheat": // baked flatbread loaf
+      g.fillStyle = "#a8712e"; g.beginPath(); g.ellipse(8, 10, 6.5, 4.5, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#74501f"; g.lineWidth = 1; g.beginPath(); g.ellipse(8, 10, 6.5, 4.5, 0, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = "#d8a860"; g.fillRect(5, 8, 6, 1); g.fillRect(6, 7, 4, 1);
       return cv;
     case "bench":
       blit(g, 0, 0, BENCH);

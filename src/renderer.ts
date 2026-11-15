@@ -3,11 +3,16 @@ import {
   CS, CH, BLOCKS, AIR, SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, GLASS,
   INSGLASS, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, ENGINECORE, REGULATOR, CHEST, BENCH_EXT, CACTUS,
   WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1,
+  FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
+  DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT,
   isSolid,
 } from "./blocks";
 import { World, ckey, faceVisible } from "./world";
 import { DAY_SECONDS } from "./blocks";
 import { noise1, Rng } from "./noise";
+
+/** every block id that renders as a swingable door leaf */
+const DOOR_BLOCKS = new Set([DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN]);
 
 const FACES: { dir: [number, number, number]; corners: number[][]; shade: number; uv: [number, number] }[] = [
   { dir: [0, 1, 0], corners: [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]], shade: 1.0, uv: [0, 2] },
@@ -26,7 +31,9 @@ export const TILE_PX = 16, ATLAS_COLS = 16;
 
 export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, GLASS, INSGLASS,
   HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, DOOR_OPEN, ENGINECORE, REGULATOR, CHEST, BENCH_EXT, CACTUS,
-  WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1];
+  WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1,
+  FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
+  DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT];
 
 let atlasCv: HTMLCanvasElement | null = null;
 
@@ -204,6 +211,101 @@ export function getAtlasCanvas(): HTMLCanvasElement {
         for (let x = 0; x < 16; x++) { px(x, 4, "rgba(148,154,166,1)"); px(x, 5, "rgba(120,126,138,1)"); }
         for (let y = 2; y < 5; y++) for (const lx of [7, 8]) px(lx, y, "rgba(200,205,215,1)");
         px(7, 6, "rgba(40,42,48,1)"); px(8, 6, "rgba(40,42,48,1)");
+        break;
+      case FARMLAND:
+        // tilled rows: dark packed earth scored left-to-right
+        fill(col(nz(0.04)));
+        for (const ry of [2, 6, 10, 14]) for (let x = 0; x < 16; x++) px(x, ry, col(-0.14));
+        for (const ry of [3, 7, 11]) for (let x = 0; x < 16; x++) if (rng.next() > 0.6) px(x, ry, col(0.1));
+        break;
+      case MELON_1: case MELON_2: {
+        // sprout, then a ripe striped melon, painted on leafy ground
+        fill(col(nz(0.03)));
+        if (id === MELON_1) {
+          for (const [sx, sy] of [[7, 13], [8, 13], [7, 12], [8, 12], [9, 13]] as const) px(sx, sy, col(0.08));
+          px(6, 11, col(0.16)); px(9, 10, col(0.12)); px(7, 11, col(0.02));
+        } else {
+          for (let y = 6; y <= 13; y++) for (let x = 3; x <= 12; x++) {
+            const d = Math.hypot(x - 7.5, (y - 9.5) * 1.35);
+            if (d > 5.2) continue;
+            px(x, y, (x + ((y / 2) | 0)) % 4 === 0 ? col(-0.14) : col(0.05));
+          }
+          px(8, 5, col(-0.1)); px(7, 5, col(-0.16));
+          px(2, 13, col(0.1)); px(13, 12, col(0.06)); px(4, 14, col(0.08));
+        }
+        break;
+      }
+      case WHEAT_1: case WHEAT_2: {
+        fill(col(nz(0.03)));
+        for (const ry of [13, 14]) for (let x = 0; x < 16; x++) px(x, ry, col(-0.12));
+        if (id === WHEAT_1) {
+          for (const sx of [4, 8, 12]) for (let y = 11; y <= 14; y++) px(sx, y, col(0.1));
+        } else {
+          for (const sx of [3, 8, 13]) {
+            for (let y = 3; y <= 14; y++) px(sx, y, col(-0.05));
+            for (let y = 3; y <= 8; y += 2) { px(sx - 1, y, col(0.2)); px(sx + 1, y, col(0.15)); }
+          }
+        }
+        break;
+      }
+      case CACTUS_FRUIT:
+        // same ribbed column, but a magenta fruit crown
+        fill(col(0)); speckle(36, 0.1);
+        for (const rx of [2, 7, 12]) for (let y = 0; y < 16; y++) px(rx, y, col(-0.14));
+        for (const [ax, ay] of [[4, 4], [9, 6], [6, 10], [11, 12], [3, 14]] as const) {
+          px(ax, ay, col(0.22)); px(ax + 1, ay, col(-0.2)); px(ax, ay + 1, col(-0.2));
+        }
+        for (let y = 0; y <= 3; y++) for (let x = 5; x <= 10; x++)
+          px(x, y, "rgba(214,74,130,1)");
+        px(6, 0, "rgba(238,150,190,1)"); px(9, 1, "rgba(238,150,190,1)");
+        break;
+      case CHEST_CONNECTOR:
+        // steel rail bolted across a crate end: the chest link
+        fill(col(-0.12)); speckle(10, 0.05);
+        for (let x = 0; x < 16; x++) { px(x, 0, col(-0.26)); px(x, 15, col(-0.26)); px(x, 7, "rgba(150,156,168,1)"); px(x, 8, "rgba(110,116,128,1)"); }
+        for (const [rx, ry] of [[2, 3], [13, 3], [2, 12], [13, 12]] as const) px(rx, ry, "rgba(200,205,215,1)");
+        for (let y = 2; y <= 5; y++) px(0, y, col(0.14));
+        for (let y = 2; y <= 5; y++) px(15, y, col(0.14));
+        break;
+      case METAL_PLATING:
+        // shipboard plate: brushed metal, rivet seams
+        fill(col(0));
+        for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) px(x, y, col((x % 4 === 0 ? -0.05 : 0.02) + nz(0.04)));
+        for (let i = 0; i < 16; i++) { px(i, 0, col(-0.2)); px(i, 15, col(-0.2)); px(0, i, col(-0.16)); px(15, i, col(-0.16)); }
+        for (const [rx, ry] of [[3, 3], [12, 3], [3, 12], [12, 12]] as const) px(rx, ry, col(0.22));
+        break;
+      case DOOR_INNER: case DOOR_INNER_UPPER: {
+        // lighter interior door: same frame, no window up top is replaced by a slim slit
+        fill(col(-0.05)); speckle(10, 0.05);
+        for (let i = 0; i < 16; i++) { px(i, 0, col(-0.2)); px(i, 15, col(-0.2)); px(0, i, col(-0.2)); px(15, i, col(-0.2)); }
+        if (id === DOOR_INNER) {
+          g.strokeStyle = col(0.06); g.strokeRect(tx + 4.5, ty + 3.5, 7, 9);
+          for (let y = 7; y <= 9; y++) px(12, y, col(0.26));
+        } else {
+          for (let y = 5; y <= 10; y++) for (let x = 6; x <= 9; x++) px(x, y, col(0.1, 1, -0.05, 0.1, 0.15));
+          g.strokeStyle = col(0.12); g.strokeRect(tx + 5.5, ty + 4.5, 5, 7);
+        }
+        break;
+      }
+      case DOOR_INNER_OPEN:
+        for (let y = 0; y < 16; y++) { px(0, y, col(-0.12, 0.9)); px(1, y, col(0.03, 0.85)); px(2, y, col(-0.17, 0.7)); }
+        px(1, 7, col(0.26, 0.9)); px(1, 8, col(0.26, 0.9));
+        break;
+      case BED:
+        // quilted top with folded blanket edge
+        fill(col(nz(0.03)));
+        for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if ((x + y) % 5 === 0) px(x, y, col(-0.08));
+        g.strokeStyle = "rgba(60,26,24,1)"; g.lineWidth = 1; g.strokeRect(tx + 0.5, ty + 0.5, 15, 15);
+        for (let x = 0; x < 16; x++) { px(x, 11, "rgba(90,40,36,1)"); px(x, 12, "rgba(150,80,70,1)"); }
+        for (let y = 0; y < 11; y++) { px(0, y, col(0.12)); px(15, y, col(-0.1)); }
+        break;
+      case BED_EXT:
+        // pillow end
+        fill(col(nz(0.03)));
+        g.strokeStyle = "rgba(60,26,24,1)"; g.lineWidth = 1; g.strokeRect(tx + 0.5, ty + 0.5, 15, 15);
+        g.fillStyle = "rgba(226,220,206,1)"; g.fillRect(tx + 3, ty + 4, 10, 8);
+        g.strokeStyle = "rgba(160,152,134,1)"; g.strokeRect(tx + 3.5, ty + 4.5, 9, 7);
+        for (let x = 0; x < 16; x++) { px(x, 11, "rgba(90,40,36,1)"); px(x, 12, "rgba(150,80,70,1)"); }
         break;
     }
   };
@@ -415,7 +517,7 @@ export class Renderer {
     for (let x = 0; x < CS; x++) for (let z = 0; z < CS; z++) for (let y = 0; y < CH; y++) {
       const id = c[(x * CS + z) * CH + y];
       if (id === AIR) continue;
-      if (id === DOOR_CLOSED || id === DOOR_UPPER || id === DOOR_OPEN) {
+      if (DOOR_BLOCKS.has(id)) {
         this.emitDoor(pos, col, idx, uvs, world, x, y, z, cx * CS, cz * CS, id);
         continue;
       }
@@ -468,9 +570,12 @@ export class Renderer {
   private emitDoor(P: number[], C: number[], I: number[], U: number[], world: World,
     lx: number, ly: number, lz: number, ox: number, oz: number, id: number) {
     const wx = ox + lx, wz = oz + lz;
-    const upper = id === DOOR_UPPER || (id === DOOR_OPEN && world.get(wx, ly - 1, wz) === DOOR_OPEN);
-    const tile = TILE_SRC(upper ? DOOR_UPPER : DOOR_CLOSED);
-    const open = id === DOOR_OPEN;
+    const inner = id === DOOR_INNER || id === DOOR_INNER_UPPER || id === DOOR_INNER_OPEN;
+    const upper = id === DOOR_UPPER || id === DOOR_INNER_UPPER ||
+      (id === DOOR_OPEN && world.get(wx, ly - 1, wz) === DOOR_OPEN) ||
+      (id === DOOR_INNER_OPEN && world.get(wx, ly - 1, wz) === DOOR_INNER_OPEN);
+    const tile = TILE_SRC(upper ? (inner ? DOOR_INNER_UPPER : DOOR_UPPER) : (inner ? DOOR_INNER : DOOR_CLOSED));
+    const open = id === DOOR_OPEN || id === DOOR_INNER_OPEN;
     // wall running along x -> leaf spans x, thin in z; running along z -> spans z, thin in x
     const wallX = isSolid(world.get(wx - 1, ly, wz)) || isSolid(world.get(wx + 1, ly, wz));
     const spanZ = !wallX && (isSolid(world.get(wx, ly, wz - 1)) || isSolid(world.get(wx, ly, wz + 1)));

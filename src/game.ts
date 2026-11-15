@@ -5,10 +5,10 @@ import { Survival, REGULATOR_ROOM_MAX } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, slotDims, type ItemDef, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CACTUS, REGULATOR, CS, CH, DAY_SECONDS, isSolid, isWater } from "./blocks";
+import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, CS, CH, DAY_SECONDS, isSolid, isWater } from "./blocks";
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
-import { hashStr } from "./noise";
-import { heightAt, biomeAt } from "./gen";
+import { hashStr, hash2 } from "./noise";
+import { heightAt, biomeAt, TOWN_L } from "./gen";
 import { RECIPES, SMELT, canCraft, doCraft } from "./crafting";
 import { currentQuest, loadQuestState, questEvent, type QuestDef, type QuestState } from "./quests";
 import { Tutorial, INTRO_CINE, type CineSeg } from "./tutorial";
@@ -16,7 +16,7 @@ import { WorldMeta, RunSave, saveRun, exportRun, bestScore, submitBest, Settings
 import { itemTiles, itemArtUrl } from "./icons";
 import * as hud from "./hud";
 
-const isDoorHalf = (i: number) => i === DOOR_CLOSED || i === DOOR_UPPER;
+const isDoorHalf = (i: number) => i === DOOR_CLOSED || i === DOOR_UPPER || i === DOOR_INNER || i === DOOR_INNER_UPPER;
 
 export interface DroppedItem {
   id: number; x: number; y: number; z: number; itemId: string; count: number;
@@ -65,6 +65,10 @@ export class Game {
   openCacheId: number | null = null;
   openStation: [number, number, number] | null = null;
   private breaking: { x: number; y: number; z: number; need: number; elapsed: number } | null = null;
+  // planted crops: "x,y,z" -> accumulated good-conditions seconds
+  crops = new Map<string, number>();
+  private cropAcc = 0;
+  lastSleep = -1e9; // timeSec of the last bed sleep; one long sleep per game day
   private mouseDown = false;
   private breakMsg = false;
   private keys = new Set<string>();
@@ -74,6 +78,7 @@ export class Game {
   private regGlow = new Map<string, number>(); // "x,y,z" -> entity mesh id of an active regulator's glow shell
   private regGlowMat: THREE.MeshLambertMaterial | null = null;
   private regTick = -1;
+  private regActive = false; // cached from regulatorGlow's twice-a-second room scan
   private mobileJump = false;
   private entitySeq = 1;
   private audioTickAcc = 0;
@@ -158,18 +163,21 @@ export class Game {
   // then height grows one row per chest. Capacity is always 9 per chest.
 
   private chestCluster(x: number, y: number, z: number): [number, number, number][] {
+    // Chests link through each other and through Chest Connector rails; the
+    // rails themselves store nothing and don't count toward the grid size.
     const seen = new Set<string>([`${x},${y},${z}`]);
-    const stack: [number, number, number][] = [[x, y, z]];
+    const walk: [number, number, number][] = [[x, y, z]];
     const out: [number, number, number][] = [];
-    while (stack.length) {
-      const c = stack.pop()!;
-      out.push(c);
+    while (walk.length) {
+      const c = walk.pop()!;
+      if (this.world.get(c[0], c[1], c[2]) === CHEST) out.push(c);
       for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const) {
         const nx = c[0] + dx, ny = c[1] + dy, nz = c[2] + dz;
         const k = `${nx},${ny},${nz}`;
-        if (seen.has(k) || this.world.get(nx, ny, nz) !== CHEST) continue;
+        const nb = this.world.get(nx, ny, nz);
+        if (seen.has(k) || (nb !== CHEST && nb !== CHEST_CONNECTOR)) continue;
         seen.add(k);
-        stack.push([nx, ny, nz]);
+        walk.push([nx, ny, nz]);
       }
     }
     return out;
@@ -209,14 +217,51 @@ export class Game {
     return ci;
   }
 
+  private inTown(x: number, z: number): boolean {
+    const st = this.world.gen;
+    const tx = Math.floor(x / TOWN_L), tz = Math.floor(z / TOWN_L);
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+      if (!st.townAt(tx + a, tz + b)) continue;
+      const c = st.townCenter(tx + a, tz + b);
+      if (Math.abs(c.x - x) <= 10 && Math.abs(c.z - z) <= 10) return true;
+    }
+    return false;
+  }
+
+  /** A town Supply Chest's stores, rolled deterministically from its position. */
+  private townLoot(cx: number, cz: number): { itemId: string; count: number }[] {
+    const r = (salt: number) => hash2(cx, cz, this.seed + salt);
+    const items: { itemId: string; count: number }[] = [{ itemId: "canister_empty", count: 2 }];
+    if (r(11) < 0.7) items.push({ itemId: "seed_wheat", count: 1 + (r(12) < 0.5 ? 1 : 0) });
+    if (r(13) < 0.4) items.push({ itemId: "seed_melon", count: 1 + (r(14) < 0.4 ? 1 : 0) });
+    if (r(15) < 0.6) items.push({ itemId: "cooked_wheat", count: 1 + (r(16) < 0.35 ? 1 : 0) });
+    if (r(17) < 0.5) items.push({ itemId: "metal", count: 1 + Math.floor(r(18) * 3) });
+    if (r(19) < 0.45) items.push({ itemId: "chest_connector", count: 1 + Math.floor(r(20) * 2) });
+    if (r(21) < 0.3) items.push({ itemId: "door_inner", count: 1 });
+    if (r(22) < 0.25) items.push({ itemId: "bed", count: 1 });
+    return items;
+  }
+
   private openChest(x: number, y: number, z: number) {
     const cells = this.chestCluster(x, y, z);
     const key = Game.chestKey(cells);
+    const known = this.chests.has(key);
     if (!this.chests.has(key)) this.chests.set(key, []);
     const ci = this.emptyChestGrid(cells.length);
     ci.slots = this.chests.get(key)!;
+    // world-placed Supply Chests hold stores exactly once: a cluster never
+    // opened before rolls its loot now, and every later opening is bare
+    if (!known && cells.some(([cx, , cz]) => this.inTown(cx, cz))) {
+      for (const it of this.townLoot(cells[0][0], cells[0][2])) {
+        const s: Slot = { itemId: it.itemId, count: it.count, x: 0, y: 0 };
+        if (!Game.placeSlotFree(ci, s)) this.dropEntity(it.itemId, it.count, 2);
+      }
+      hud.toast("Someone's stores — untouched since the town emptied.");
+      this.questBump("supplies");
+    }
     this.chestInv = ci;
     this.gridFocus = "chest";
+    this.tut?.notify("chest");
     this.ui = "inv";
     this.unlockPointer();
     this.audio.door();
@@ -308,6 +353,8 @@ export class Game {
       if (cache.items.length) this.renderer.addEntityMesh(cache.id, this.cacheMeshPos(cache), this.cacheColor(cache), 0.7);
     }
     this.campCharges = new Map(Object.entries(run.campfires ?? {}).map(([k, v]) => [k, v]));
+    this.crops = new Map(run.crops ?? []);
+    if (run.lastSleep) this.lastSleep = run.lastSleep;
     this.chests = new Map((run.chests ?? []).map((c) => [c.cells, c.slots.map((s) => ({ ...s }))]));
     for (const c of legacyChests) this.adoptLegacyChest(c);
     this.pods = (run.pods ?? []).map((p) => ({
@@ -346,6 +393,8 @@ export class Game {
       caches: this.caches.map((c) => ({ x: c.x, y: c.y, z: c.z, kind: c.kind, items: c.items.map((i) => ({ ...i })) })),
       chests: [...this.chests].map(([cells, slots]) => ({ cells, slots: slots.map((s) => ({ ...s })) })),
       campfires: Object.fromEntries(this.campCharges),
+      crops: [...this.crops],
+      lastSleep: this.lastSleep > 0 ? this.lastSleep : undefined,
       deltas: this.world.serializeDeltas(),
     };
   }
@@ -603,6 +652,21 @@ export class Game {
         if (!cells.length) return null;
         const b = nearest(cells);
         return { name: "Crafting Bench", x: b.x + 0.5, y: b.y, z: b.z + 0.5 };
+      }
+      case "supplies": {
+        const t = this.world.gen.nearestTown(p.x, p.z);
+        return t ? { name: "Town", x: t.x + 0.5, y: ground(t.x, t.z), z: t.z + 0.5 } : null;
+      }
+      case "farm": {
+        if (!this.crops.size) return null; // point at the nearest plot once something is planted
+        let bk: string | null = null, bd = Infinity;
+        for (const k of this.crops.keys()) {
+          const [x, , z] = k.split(",").map(Number);
+          const d = (x + 0.5 - p.x) ** 2 + (z + 0.5 - p.z) ** 2;
+          if (d < bd) { bd = d; bk = k; }
+        }
+        const [x, y, z] = bk!.split(",").map(Number);
+        return { name: "Your Farm", x: x + 0.5, y: y + 1, z: z + 0.5 };
       }
       default: return null; // sky / mine / day: nothing to point at
     }
@@ -902,6 +966,7 @@ export class Game {
       this.survival.update(dt, this.world, this.player.pos, {
         sprinting: this.player.sprinting && (mx !== 0 || mz !== 0),
         overencumbered, biome, tSec: this.timeSec, sunElev: kf.sunElev, inWater: this.player.inWater,
+        warmth: this.fireWarmth(this.player.pos),
       });
       this.updateBreaking(dt);
       this.updatePickups();
@@ -950,13 +1015,17 @@ export class Game {
       }
     }
     this.regulatorGlow();
+    this.updateCrops(dt);
     const surgeCool = this.survival.surgeCooldown > 0;
     for (const id of ["surge-btn", "m-surge"]) {
       const b = document.getElementById(id) as HTMLButtonElement | null;
       if (b && b.disabled !== surgeCool) b.disabled = surgeCool;
     }
 
-    hud.updateHud(this.survival, this.inv, this.timeSec, this.dayNumber(), this.settings.units, now);
+    hud.updateHud(this.survival, this.inv, this.timeSec, this.dayNumber(), this.settings.units, now, {
+      regulated: this.roomRegulated(),
+      napReady: this.timeSec - this.lastSleep >= DAY_SECONDS,
+    });
     this.podFrame(dt);
     this.questFrame();
     this.guideFrame(dt);
@@ -1109,13 +1178,14 @@ export class Game {
     this.tut?.notify("mine");
     const id = this.world.get(x, y, z);
     this.questBump("mine");
-    if (isDoorHalf(id) || id === DOOR_OPEN) {
+    if (isDoorHalf(id) || id === DOOR_OPEN || id === DOOR_INNER_OPEN) {
+      const inner = id === DOOR_INNER || id === DOOR_INNER_UPPER || id === DOOR_INNER_OPEN;
       this.world.set(x, y, z, AIR);
       for (const dy of [-1, 1]) {
         const n = this.world.get(x, y + dy, z);
-        if (isDoorHalf(n) || n === DOOR_OPEN) this.world.set(x, y + dy, z, AIR);
+        if (isDoorHalf(n) || n === DOOR_OPEN || n === DOOR_INNER_OPEN) this.world.set(x, y + dy, z, AIR);
       }
-      this.giveOrDrop("door", 1);
+      this.giveOrDrop(inner ? "door_inner" : "door", 1);
       this.audio.blockBreak();
       return;
     }
@@ -1131,6 +1201,23 @@ export class Game {
       this.world.set(x, y, z, AIR);
       this.giveOrDrop("prickly_pear", 1);
       this.giveOrDrop("cactus", 1);
+      this.audio.blockBreak();
+      return;
+    }
+    if (id === CACTUS_FRUIT) {
+      this.world.set(x, y, z, AIR);
+      this.giveOrDrop("prickly_pear", 2);
+      this.giveOrDrop("cactus", 1);
+      this.audio.blockBreak();
+      return;
+    }
+    if (id === BED || id === BED_EXT) {
+      // a bed is a pair: breaking either half removes the whole bed
+      this.world.set(x, y, z, AIR);
+      const px = x + (id === BED ? 1 : -1);
+      const peer = this.world.get(px, y, z);
+      if (peer === BED || peer === BED_EXT) this.world.set(px, y, z, AIR);
+      this.giveOrDrop("bed", 1);
       this.audio.blockBreak();
       return;
     }
@@ -1461,9 +1548,18 @@ export class Game {
       }
       if (!benchPeer) { hud.toast("The Crafting Bench needs an open block beside it."); this.audio.error(); return; }
     }
+    if (def.block === MELON_1 || def.block === WHEAT_1 || def.block === CACTUS) {
+      // seeds only take in tilled ground; a cactus pad also accepts loose sand
+      const under = this.world.get(bx, by - 1, bz);
+      const ok = under === FARMLAND || (def.block === CACTUS && (under === SAND || under === SANDSTONE || under === DIRT));
+      if (!ok) { hud.toast("Plant on Farm Land (till with a shovel); a Cactus also accepts sand."); this.audio.error(); return; }
+    }
     this.world.set(bx, by, bz, def.block);
     if (benchPeer) this.world.set(benchPeer[0], benchPeer[1], benchPeer[2], BENCH_EXT);
     if (def.block === DOOR_CLOSED && this.world.get(bx, by + 1, bz) === AIR) this.world.set(bx, by + 1, bz, DOOR_UPPER);
+    if (def.block === DOOR_INNER && this.world.get(bx, by + 1, bz) === AIR) this.world.set(bx, by + 1, bz, DOOR_INNER_UPPER);
+    if (def.block === BED && this.world.get(bx + 1, by, bz) === AIR) this.world.set(bx + 1, by, bz, BED_EXT); // a bed spans 2 blocks
+    if (def.block === MELON_1 || def.block === WHEAT_1) { this.crops.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); }
     if (def.block === ENGINECORE) {
       const q = currentQuest(this.quests);
       if (q && q.kind === "finish") {
@@ -1493,8 +1589,14 @@ export class Game {
     if (t.hit) {
       const { x, y, z } = t.hit;
       const id = this.world.get(x, y, z);
-      if (isDoorHalf(id) || id === DOOR_OPEN) {
-        if (id === DOOR_OPEN) {
+      if (id === MELON_2 || id === WHEAT_2 || id === CACTUS_FRUIT) { this.harvest(x, y, z, id); return; }
+      if (id === BED || id === BED_EXT) { this.sleep(); return; }
+      if (isDoorHalf(id) || id === DOOR_OPEN || id === DOOR_INNER_OPEN) {
+        const inner = id === DOOR_INNER || id === DOOR_INNER_UPPER || id === DOOR_INNER_OPEN;
+        const openId = inner ? DOOR_INNER_OPEN : DOOR_OPEN;
+        const half = (n: number) => (inner ? n === DOOR_INNER || n === DOOR_INNER_UPPER : n === DOOR_CLOSED || n === DOOR_UPPER);
+        const base = inner ? DOOR_INNER : DOOR_CLOSED, upper = inner ? DOOR_INNER_UPPER : DOOR_UPPER;
+        if (id === openId) {
           // a door must never close on the player standing in the doorway
           const p = this.player.pos;
           if (p.x > x - 0.2 && p.x < x + 1.2 && p.z > z - 0.2 && p.z < z + 1.2) {
@@ -1503,15 +1605,15 @@ export class Game {
             return;
           }
           // rebuild the pair with correct halves: the open block below marks us as the top
-          if (this.world.get(x, y - 1, z) === DOOR_OPEN) {
-            this.world.set(x, y, z, DOOR_UPPER);
-            this.world.set(x, y - 1, z, DOOR_CLOSED);
-          } else if (this.world.get(x, y + 1, z) === DOOR_OPEN) {
-            this.world.set(x, y, z, DOOR_CLOSED);
-            this.world.set(x, y + 1, z, DOOR_UPPER);
+          if (this.world.get(x, y - 1, z) === openId) {
+            this.world.set(x, y, z, upper);
+            this.world.set(x, y - 1, z, base);
+          } else if (this.world.get(x, y + 1, z) === openId) {
+            this.world.set(x, y, z, base);
+            this.world.set(x, y + 1, z, upper);
           } else {
             // lone open half — its neighbor tells us which half we are
-            this.world.set(x, y, z, isDoorHalf(this.world.get(x, y + 1, z)) ? DOOR_UPPER : DOOR_CLOSED);
+            this.world.set(x, y, z, half(this.world.get(x, y + 1, z)) ? upper : base);
           }
         } else {
           // push-door: the leaf swings away from whoever opens it
@@ -1521,8 +1623,8 @@ export class Game {
           const k = x + "," + z;
           if (Math.abs(off) > 0.35) this.world.doorSwing.set(k, (off > 0 ? -1 : 1) as 1 | -1);
           else this.world.doorSwing.delete(k);
-          this.world.set(x, y, z, DOOR_OPEN);
-          for (const dy of [-1, 1]) if (isDoorHalf(this.world.get(x, y + dy, z))) this.world.set(x, y + dy, z, DOOR_OPEN);
+          this.world.set(x, y, z, openId);
+          for (const dy of [-1, 1]) if (half(this.world.get(x, y + dy, z))) this.world.set(x, y + dy, z, openId);
           this.tut?.notify("door");
         }
         this.audio.door();
@@ -1569,6 +1671,89 @@ export class Game {
     }
   }
 
+  /** E at a ripe crop: pick it. Melons re-ripen on the vine; wheat clears back to Farmland. */
+  private harvest(x: number, y: number, z: number, id: number) {
+    if (id === MELON_2) {
+      this.world.set(x, y, z, MELON_1);
+      this.crops.set(`${x},${y},${z}`, 30); // the vine keeps growing from partway
+      this.giveOrDrop("dune_melon", 1 + (hash2(x, z, this.seed + 71) < 0.4 ? 1 : 0));
+      this.questBump("farm");
+      this.audio.pickup();
+      hud.toast("Dune Melon picked — the plant keeps growing.");
+    } else if (id === WHEAT_2) {
+      this.world.set(x, y, z, FARMLAND);
+      this.crops.delete(`${x},${y},${z}`);
+      this.giveOrDrop("wheat", 2);
+      this.giveOrDrop("seed_wheat", 1);
+      this.questBump("farm");
+      this.audio.pickup();
+      hud.toast("Desert Wheat cut — the Farmland stays tilled.");
+    } else {
+      this.world.set(x, y, z, CACTUS);
+      this.giveOrDrop("prickly_pear", 2);
+      this.questBump("farm");
+      this.audio.pickup();
+      hud.toast("Prickly Pears picked — the cactus goes on fruiting.");
+    }
+  }
+
+  /** E at a Bed: one long sleep per game day — 8 hours pass in the dark. */
+  private sleep() {
+    const since = this.timeSec - this.lastSleep;
+    if (since < DAY_SECONDS) {
+      const left = Math.ceil((DAY_SECONDS - since) / 60);
+      hud.toast(`You just slept. The next long sleep comes in ${left} min.`);
+      this.audio.error();
+      return;
+    }
+    this.lastSleep = this.timeSec;
+    this.timeSec += DAY_SECONDS / 3; // 8 of the 24 hours
+    const fade = document.getElementById("sleepfade")!;
+    fade.classList.add("on");
+    this.audio.door();
+    setTimeout(() => fade.classList.remove("on"), 1200);
+    hud.toast("You sleep eight hours, to the cool of the morning.");
+    this.saveNow();
+  }
+
+  /** A lit Campfire nearby takes the edge off the cold: +18 °C close in, +9 °C at a reach away. */
+  private fireWarmth(pos: THREE.Vector3): number {
+    const fx = Math.floor(pos.x), fy = Math.floor(pos.y), fz = Math.floor(pos.z);
+    let best = 0;
+    for (let dx = -6; dx <= 6; dx++) for (let dz = -6; dz <= 6; dz++) for (let dy = -2; dy <= 2; dy++) {
+      if (this.world.get(fx + dx, fy + dy, fz + dz) !== CAMPFIRE) continue;
+      const d = Math.max(Math.abs(dx), Math.abs(dz));
+      best = Math.max(best, d <= 4 ? 18 : 9);
+    }
+    return best;
+  }
+
+  /** Crops advance only while their cell has water within 4 blocks and air in its temperature band. */
+  private updateCrops(dt: number) {
+    this.cropAcc += dt;
+    if (this.cropAcc < 2) return;
+    const dtc = this.cropAcc;
+    this.cropAcc = 0;
+    for (const [key, p] of this.crops) {
+      const [x, y, z] = key.split(",").map(Number);
+      const id = this.world.get(x, y, z);
+      if (id !== MELON_1 && id !== MELON_2 && id !== WHEAT_1 && id !== WHEAT_2) { this.crops.delete(key); continue; }
+      if (id === MELON_2 || id === WHEAT_2) continue; // ripe, waiting
+      const melon = id === MELON_1;
+      let wet = false;
+      outer: for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) for (let dy = -2; dy <= 1; dy++) {
+        if (isWater(this.world.get(x + dx, y + dy, z + dz))) { wet = true; break outer; }
+      }
+      const temp = this.survival.airTempAt(this.world, x, y, z, this.timeSec);
+      const band = melon ? temp >= 22 && temp <= 45 : temp >= 2 && temp <= 42;
+      if (wet && band) {
+        const np = p + dtc;
+        this.crops.set(key, np);
+        if (np >= (melon ? 60 : 90)) this.world.set(x, y, z, melon ? MELON_2 : WHEAT_2);
+      }
+    }
+  }
+
   /** Q: consume whatever is currently held in the hands. */
   private useItem() {
     if (this.ui || this.paused) return;
@@ -1577,6 +1762,20 @@ export class Game {
     const d = ITEMS[sel.itemId];
     if (sel.itemId === "canister_full") { this.drink(); return; }
     if (d.eat) { this.eat(sel, d); return; }
+    if (d.tool?.type === "shovel") {
+      // a shovel also tills: aimed at the top face of loose ground, it makes Farmland
+      const t = this.raycastTarget();
+      if (t?.hit) {
+        const { x, y, z } = t.hit;
+        const id = this.world.get(x, y, z);
+        if (t.face.y === 1 && (id === SAND || id === SANDSTONE || id === DIRT || id === SALT)) {
+          this.world.set(x, y, z, FARMLAND);
+          this.audio.place();
+          hud.toast("Tilled into Farm Land — plant seeds here, keep water within 4 blocks.");
+          return;
+        }
+      }
+    }
     hud.toast(`You can't use ${d.name}.`);
     this.audio.error();
   }
@@ -1631,6 +1830,7 @@ export class Game {
       }
     }
     const active = room.sealed && room.regulators > 0 && room.regulators * REGULATOR_ROOM_MAX >= room.size;
+    this.regActive = active;
     const want = new Set(active ? room.regCells : []);
     for (const [key, eid] of this.regGlow) {
       if (want.has(key)) continue;
@@ -1747,7 +1947,8 @@ export class Game {
     this.relock();
   }
 
-  private renderHeld() { hud.updateHud(this.survival, this.inv, this.timeSec, this.dayNumber(), this.settings.units, performance.now()); }
+  private roomRegulated(): boolean { return this.regActive; }
+  private renderHeld() { hud.updateHud(this.survival, this.inv, this.timeSec, this.dayNumber(), this.settings.units, performance.now(), { regulated: this.regActive, napReady: this.timeSec - this.lastSleep >= DAY_SECONDS }); }
 
   /** Distinct carried item types in pack order — the hotbar's rows. */
   private hotbarItems(): string[] {

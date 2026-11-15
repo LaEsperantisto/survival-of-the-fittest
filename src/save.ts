@@ -66,6 +66,8 @@ export interface RunSave {
   caches: { x: number; y: number; z: number; kind?: "death" | "chest" | "reward"; items: { itemId: string; count: number }[] }[];
   chests?: { cells: string; slots: { itemId: string; count: number; x: number; y: number; rot?: boolean }[] }[];
   campfires: Record<string, number>;
+  crops?: [string, number][]; // planted crop key -> accumulated good seconds
+  lastSleep?: number;         // timeSec of the last bed sleep
   deltas: Record<string, number[]>;
 }
 

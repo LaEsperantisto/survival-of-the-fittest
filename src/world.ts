@@ -1,4 +1,4 @@
-import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, REGULATOR, CS, CH, isOpaque, isWater, waterStrength, flowId } from "./blocks";
+import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, REGULATOR, CS, CH, isOpaque, isWater, waterStrength, flowId } from "./blocks";
 import { genChunk, Structures } from "./gen";
 
 export const ckey = (cx: number, cz: number) => cx + "," + cz;
@@ -74,7 +74,7 @@ export class World {
         const nx = cx + dx, ny = cy + dy, nz = cz + dz;
         if (ny >= CH) { sealed = false; continue; }
         const id = this.get(nx, ny, nz);
-        if (id === AIR || id === DOOR_OPEN) {
+        if (id === AIR || id === DOOR_OPEN || id === DOOR_INNER_OPEN) {
           const k = nx + "," + ny + "," + nz;
           if (!seen.has(k)) { seen.add(k); stack.push([nx, ny, nz]); }
         } else if (id === REGULATOR) regs.add(nx + "," + ny + "," + nz);
@@ -222,7 +222,7 @@ export function faceVisible(world: World, x: number, y: number, z: number, selfI
   const n = world.get(x, y, z);
   // a closed door is a thin slab, not a full cube: keep the neighbouring wall's
   // faces so no see-through gap opens at the door jamb
-  if (n === DOOR_CLOSED || n === DOOR_UPPER) return true;
+  if (n === DOOR_CLOSED || n === DOOR_UPPER || n === DOOR_INNER || n === DOOR_INNER_UPPER) return true;
   if (isOpaque(n)) return false;
   if (n === selfId) return false; // hide interior faces between same transparent block
   return true;

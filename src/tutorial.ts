@@ -23,7 +23,7 @@ export const INTRO_CINE: CineSeg[] = [
   { t0: 13.5, t1: 16.5, from: [-0.5, 32.3, 1.5], to: [0.5, 32.62, 2.5], look: [2.6, 31.5, -1.5] },
 ];
 
-type Goal = "door" | "surge" | "refill" | "drink" | "craft" | "mine" | "save";
+type Goal = "door" | "surge" | "refill" | "drink" | "chest" | "craft" | "mine" | "plant" | "save";
 
 interface TutStep {
   t: string;
@@ -54,6 +54,9 @@ const STEPS: TutStep[] = [
     cap: "The full canister is already in your hands — press <b>Q</b> to drink: +25 water, and the cold water chases off a little heat. Q <i>uses whatever you hold</i>: food works the same way. Water is the desert's first tax — budget every trip around it.",
     guide: { name: "Water Tank", x: -4, y: 30, z: 4 }, goal: "drink", hold: 30,
     enter: (g) => g.selectHeld("canister_full") },
+  { t: "Supply Chest",
+    cap: "The cockpit's Supply Chest is stocked — look at it and press <b>E</b>. Chests are real blocks: place them anywhere, and touching ones share one bigger grid.",
+    guide: { name: "Supply Chest", x: 3, y: 31, z: 0 }, goal: "chest", hold: 60 },
   { t: "Craft",
     cap: "The wreck's Crafting Bench stands in the hall — press <b>E</b> at it and make a Wood shovel; there is dead wood in your pack.",
     guide: { name: "Crafting Bench", x: 0, y: 31, z: -3 }, goal: "craft",
@@ -61,6 +64,10 @@ const STEPS: TutStep[] = [
   { t: "Mine",
     cap: "Select the shovel on the bottom hotbar — click it, scroll, or press its number — then hold <b>Left-click</b> on sand until it breaks. Rock outcrops need a pickaxe; you will craft one soon enough.",
     goal: "mine", hold: 45 },
+  { t: "Farming",
+    cap: "A shovel has a second use: press <b>Q</b> while aiming at sand to till it into <b>Farm Land</b>, then plant seeds in it. Crops ripen only while water sits within 4 blocks and the air stays in their band — melons love the heat, wheat does not. The desert used to be farmed; the towns still hold seeds.",
+    goal: "plant", hold: 40,
+    enter: (g) => { g.giveOrDrop("seed_wheat", 2); g.selectHeld("shovel"); } },
   { t: "Save Points",
     cap: "Last lesson: a Save Beacon waits in the aft cabin. Press <b>E</b> at it. Beacons are the only save points and the only respawns — craft more and set one before every long trip. After this, the desert is yours.",
     guide: { name: "Save Beacon", x: -4, y: 31, z: -1 }, goal: "save", hold: 30 },

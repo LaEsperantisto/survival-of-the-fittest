@@ -202,11 +202,22 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 #vision-hit.flash { animation: hitflash .55s ease-out; }
 @keyframes hitflash { 0% { opacity: 1; } 100% { opacity: 0; } }
 
+/* sleep fade: eight hours go by behind a black screen */
+#sleepfade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 0.9s ease; }
+#sleepfade.on { opacity: 1; transition: opacity 0.25s ease; }
+
+/* status chips under the clock */
+#chips { position: absolute; right: 12px; top: 36px; display: flex; gap: 6px; justify-content: flex-end; }
+.chip { font-size: 11px; letter-spacing: 1.5px; padding: 3px 8px; border-radius: 3px;
+  background: rgba(0, 0, 0, 0.45); border: 1px solid rgba(255, 255, 255, 0.22); }
+#chip-reg { color: #9fd8b4; }
+#chip-nap { color: #b9c8e8; }
+
 /* UI size scale */
 #hud, #mobile, .panel, .screen { zoom: var(--ui-scale, 1); }
 
 /* guided tour caption card */
-#tut-card { position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%);
+#tut-card { position: absolute; left: 50%; bottom: 170px; transform: translateX(-50%);
   width: min(640px, 92vw); padding: 12px 18px 10px; background: rgba(10, 12, 16, 0.82);
   border: 1px solid #3a4150; border-radius: 8px; text-align: center; pointer-events: auto; }
 #tut-card.pop { animation: tutpop 0.4s ease-out; }

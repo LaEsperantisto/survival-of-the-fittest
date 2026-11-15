@@ -28,8 +28,12 @@ export class Survival {
   worldTimeToDayFrac(t: number) { return (t % DAY_SECONDS) / DAY_SECONDS; }
 
   ambient(biome: number, frac: number, tSec: number): number {
-    // desert diurnal curve: coldest at sunrise (frac .25), hottest mid-afternoon
-    let T = AMBIENT_MEAN - AMBIENT_AMP * Math.cos((frac - 0.28) * Math.PI * 2);
+    // desert diurnal curve: coldest at sunrise (frac .28), hottest early afternoon (frac .58);
+    // it climbs through the morning and drifts down over the long night
+    const d = (frac - 0.28 + 1) % 1;
+    let T = AMBIENT_MEAN - AMBIENT_AMP * (d <= 0.3
+      ? Math.cos((d / 0.3) * Math.PI)
+      : Math.cos((1 + ((d - 0.3) / 0.7)) * Math.PI));
     if (biome === 2) T -= 2;                 // salt flats reflect
     if (biome === 3 || biome === 4) T += 3;  // rock retains heat
     // 10-s stepped weather fluctuation, deterministic timeline (±8°C)
@@ -39,7 +43,7 @@ export class Survival {
 
   /** body-temp target from shelter + sun; nothing hardcoded "inside ship". */
   update(dt: number, world: World, pos: THREE.Vector3, opts: {
-    sprinting: boolean; overencumbered: boolean; biome: number; tSec: number; sunElev: number; inWater: boolean;
+    sprinting: boolean; overencumbered: boolean; biome: number; tSec: number; sunElev: number; inWater: boolean; warmth: number;
   }) {
     if (this.health <= 0) return;
     if (this.surgeCooldown > 0) this.surgeCooldown -= dt;
@@ -93,6 +97,7 @@ export class Survival {
       const wt = THREE.MathUtils.clamp(amb, 12, 24) - 3;
       ambEff = (ambEff + wt) / 2;
     }
+    if (opts.warmth) ambEff += opts.warmth; // a campfire at your back
     // body always regulates toward 36.6; exposure pulls it toward the effective air temp
     const target = 36.6 + (ambEff - 36.6) * (1 - shelter);
     this.lastAmbient = amb; this.lastAmbientEff = ambEff; this.lastShelterR = here.R; this.lastTarget = target;
@@ -122,6 +127,19 @@ export class Survival {
     this.vision = THREE.MathUtils.clamp((28 - this.water) / 28, 0, 1);
   }
 
+  /** Standalone air temperature at one cell (same model as update's cellAir) — used by crops. */
+  airTempAt(world: World, x: number, y: number, z: number, tSec: number): number {
+    const frac = this.worldTimeToDayFrac(tSec);
+    const amb = this.ambient(0, frac, tSec);
+    const { openSky } = world.skyResistance(x, y, z);
+    let ambEff = amb;
+    const sun = Math.max(0, Math.sin((frac - 0.28) * Math.PI * 2)); // rough solar elevation over the day
+    if (openSky && sun > 0) ambEff += 8 + 10 * sun;
+    const room = world.roomInfo(x, y, z);
+    if (room.sealed) ambEff = room.regulators * REGULATOR_ROOM_MAX >= room.size ? 36.6 : amb;
+    return ambEff;
+  }
+
   hurt(amount: number, cause: string) {
     if (this.health <= 0 || this.invincible) return;
     this.health -= amount;
@@ -140,8 +158,8 @@ export class Survival {
 
   drink() {
     this.water = Math.min(100, this.water + 25);
-    // cool water straight into the gut knocks body temp down a little
-    if (this.body > 34) this.body = Math.max(34, this.body - Math.min(1.5, this.body - 33.5));
+    // cool water straight into the gut knocks body temp down only a little
+    if (this.body > 34) this.body = Math.max(34, this.body - Math.min(0.7, this.body - 33.7));
   }
 
   reset() { this.health = 100; this.water = 100; this.body = 36.6; this.causeOfDeath = null; }

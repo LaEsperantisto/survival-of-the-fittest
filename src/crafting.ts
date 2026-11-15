@@ -33,15 +33,23 @@ export const RECIPES: Recipe[] = [
   { out: "metal", count: 1, needs: { ironrod: 2 }, bench: true },
   { out: "visor", count: 1, needs: { metal: 2, glass: 1, salt: 2 }, bench: true },
   { out: "reptile_armor", count: 1, needs: { snake_skin: 3 }, bench: true },
+  // ---- farming & building ----
+  { out: "farmland", count: 1, needs: { dirt: 1 }, bench: false },
+  { out: "chest_connector", count: 1, needs: { deadwood: 2, metal: 1 }, bench: false },
+  { out: "metal_plating", count: 1, needs: { metal: 1 }, bench: false },
+  { out: "door_inner", count: 1, needs: { metal: 1, deadwood: 1 }, bench: true },
+  { out: "bed", count: 1, needs: { deadwood: 3, snake_skin: 2 }, bench: true },
 ];
 
 /** Campfire smelting: consumes one fuel charge per item. */
 export const SMELT: { in: string; out: string }[] = [
   { in: "sand", out: "glass" },
+  { in: "farmland", out: "glass" }, // Farm Land is packed dirt - the kiln doesn't care
   { in: "dirt", out: "adobe" },
   { in: "sandstone", out: "rock" },
   { in: "rock", out: "ironrod" },
   { in: "rat_raw", out: "rat_cooked" },
+  { in: "wheat", out: "cooked_wheat" },
 ];
 
 export function canCraft(inv: Inventory, r: Recipe): boolean {

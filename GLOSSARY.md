@@ -30,8 +30,12 @@ A block that transmits heat. Ordinary Glass conducts — it is the exception the
 **Insulating Glass**:
 A rare, hard-to-craft transparent Insulating Block. The wreck's cockpit already has it.
 
-**Door**:
+**Sealed Door**:
 An opening in the Hull that insulates exactly like Hull Plating while closed.
+_Avoid_: metal door
+
+**Inside Door**:
+A door that never insulates: in temperature terms it is just air. It divides rooms visually and for movement, but never helps seal a Space. Every door inside the Ship's interior is one; only openings to the outside are Sealed Doors.
 
 **Heat Regulator**:
 A craftable device that holds a sealed Space at body-neutral temperature — 100 open cells of capacity each, and multiple Regulators covering one Space stack their capacity. It works by enclosure, not by region tag: if the space stops being sealed, the Regulators do nothing. Without enough Regulator capacity, a sealed Space is as hot or as cold as the outside. Drawing on an active Regulator restores the Body to neutral on the spot; an idle one does nothing.
@@ -70,21 +74,32 @@ Terrain regions: Dunes, Rocky Desert, Badlands/mountains, Salt Flats, dry canyon
 A structure with a finite water source, green trees and plants that can be farmed.
 
 **Town**:
-A structure out in the world holding rare loot.
+A settlement out in the world: huts, Supply Chests with rare loot, Beds, and the only source of Desert Wheat Seed. No living soul is home — yet.
 
 **Dead Tree**:
 A leafless tree scattered through the desert.
 
 **Cactus**:
-A spined desert plant standing in the open sand, bearing edible Prickly Pears.
+A spined desert plant standing in the open sand. Cacti actually grow: a replanted piece climbs over time, and a mature column develops Fruit-Bearing blocks.
+_Avoid_: prickly pear plant
+
+**Fruit-Bearing Block**:
+The cactus variant that carries Prickly Pears. Only it gives fruit; breaking any other Cactus block yields just the replantable block. Breaking a fruiting block leaves the column standing.
 
 **Prickly Pear**:
 Cactus fruit — eating is the first way to drink away from water.
 _Avoid_: cactus berry
 
+**Bed**:
+A 2×1 block in every Town and a craftable comfort of one's own. Sleeping in a Bed passes 8 in-game hours no matter the hour, but only once per game day — and a game day is 24 real minutes.
+_Avoid_: cot, sleep (as the block's name)
+
+**Metal Plating**:
+The Ship's structural metal — a placeable block with Metal Rod's properties. Rods themselves are crafting material and are never placed.
+
 **Save Point**:
 A craftable, permanently placed block (the Save Beacon). Cannot be picked back up. The world persists only at Save Points; death respawns the player at the most recent intact one — if all are destroyed, at the crash site.
-_Avoid_: checkpoint, bed
+_Avoid_: checkpoint
 
 **Death Cache**:
 the container holding a dead player's items at the death spot. It accepts no new items and vanishes only when emptied.
@@ -99,6 +114,9 @@ _Avoid_: crate, locker
 
 **Linked Chests**:
 Chests touching face-to-face form one cluster with a single Grid: 3×3 per chest, growing sideways up to three wide, then taller — one extra row per further chest. Capacity is always 9 per chest. Breaking one chest shrinks the cluster; contents that no longer fit fall to the ground. The link is pure adjacency — break the chain and the grids split immediately, contents split with them (spilling when necessary).
+
+**Chest Rail**:
+A cheap connector that carries a chest link through itself: a Chest sits against a Rail links to the Chest on the Rail's far side, though the Rail itself stores nothing and is never opened.
 
 **World Export / Import**:
 A file format for a world, so the same world can be played on different devices.
@@ -149,7 +167,23 @@ Two parts: days survived and Main Quest progress. Completing the game scores hig
 A drinkable item (1×2 in the Inventory Grid). Buried in the world, or waiting in the Supply Chest; finite per world. Oases provide finite water; a late-game method synthesizes water.
 
 **Farming**:
-Growing Oasis plants where Heat is not too high and Water is not too low.
+Growing crops on Farmland where Air Temperature suits the species and Water is within reach. Growth follows Air Temperature, not sun or shade: the reason outdoor farming is dangerous is that the danger that costs you health is the same danger that costs you time.
+_Avoid_: greenhouse (crops are not tied to glass), gardening
+
+**Farmland**:
+A crafted block that carries crops. Cacti tolerate bare Sand too; melons and wheat need Farmland. A crop grows only while a Water block is within 4 tiles.
+
+**Crop**:
+A planted plant that advances through growth stages over time while its species' Air Temperature band and its moisture hold. Out of band a Crop pauses, never dies.
+
+**Seed**:
+The planted form of a crop. Breaking a mature crop yields its food plus seeds.
+
+**Dune Melon**:
+The first crop found — wild at Oases. Eaten raw: a big drink with a little healing. Its seeds start a farm.
+
+**Desert Wheat**:
+The harder crop, discovered in Town loot: it tolerates cold but not the midday, and its cooked food heals more than anything else on the farm.
 
 **Inventory Grid**:
 A rectangular grid of slots; items occupy footprints (Water Canister 1×2). Expandable via Backpacks. Every item instance claims its own cells — duplicates never share a slot, so more of something means more space taken.
