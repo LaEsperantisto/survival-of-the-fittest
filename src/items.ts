@@ -20,6 +20,7 @@ export interface ItemDef {
   bag?: { w: number; h: number; kg: number }; // Backpack-slot gear: grid size + weight bonus
   armor?: number;            // Body-slot gear: fraction of every damage shrugged off
   fuel?: number;             // max fuel charges (Head Lantern)
+  instaBreak?: boolean;      // Voidbreaker: every block shatters on the first swing frame
   color: string;             // icon color
 }
 
@@ -67,6 +68,7 @@ const ITEM_LIST: ItemDef[] = [
   toolItem("pickaxe", 4, "alloy", "#c07848"), toolItem("shovel", 4, "alloy", "#c07848"), toolItem("axe", 4, "alloy", "#c07848"),
   toolItem("disassembler", 1, "metal", "#c0c8d8"),
   toolItem("disassembler", 2, "alloy", "#c07848"),
+  I({ id: "voidbreaker", name: "Voidbreaker", desc: "Cheat gear: every block — even Ship Hull and bedrock-hard stuff — shatters the instant you swing. There is no recipe: it only comes out of the cheat menu.", w: 1, h: 2, mass: 2.0, instaBreak: true, color: "#8a5ad6" }),
   I({
     id: "sword", name: "Metal Sword",
     desc: "A forged blade. Hits Desert Snakes and rats far harder than any tool, and reaches farther.",

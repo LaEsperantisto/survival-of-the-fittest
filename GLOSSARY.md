@@ -350,5 +350,8 @@ The Portable Light worn in the Light slot: toggled at will, it burns fuel charge
 **Backpack**:
 An upgrade worn in the Backpack slot, expanding the Inventory Grid and/or raising the Weight Limit. (Backpack I, then the larger Backpack II.)
 
+**Voidbreaker**:
+A Cheat Menu tool that shatters any block on the spot — Tool tiers, break times and unbreakable blocks (even a Broken Thruster) all lose the argument. It has no recipe and exists only for play-mode mischief.
+
 **Settings**:
 Menu with units (Celsius/Fahrenheit), controls, and rendering options.

@@ -95,6 +95,13 @@ function drawArt(id: string, w: number, h: number, color: string): HTMLCanvasEle
       rect(g, 7, 20, 3, 9, "#6b5238"); rect(g, 7, 22, 3, 1, "#4a3926"); rect(g, 7, 25, 3, 1, "#4a3926");
       rect(g, 6, 29, 5, 2, "#4a4a52");
       return cv;
+    case "voidbreaker": // void-iron pick: the head looks torn out of reality
+      rect(g, 7, 16, 2, 14, "#2a1d3a");
+      rect(g, 6, 14, 4, 3, "#180f24");
+      line(g, 3, 12, 13, 12, "#8a5ad6", 2); line(g, 3, 12, 3, 15, "#8a5ad6"); line(g, 13, 12, 13, 15, "#8a5ad6");
+      g.fillStyle = "#e8d6ff"; g.fillRect(5, 9, 1, 2); g.fillRect(10, 10, 1, 1); g.fillRect(8, 11, 1, 2);
+      g.fillStyle = "#00000088"; g.fillRect(7, 10, 2, 1); g.fillRect(6, 11, 1, 2);
+      return cv;
     case "ironrod":
       rect(g, 6, 1, 3, 14, "#8a4f2e");
       rect(g, 7, 2, 1, 12, "#d08a52");

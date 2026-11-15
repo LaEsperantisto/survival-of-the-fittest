@@ -1211,9 +1211,12 @@ export class Game {
   }
 
   private canBreakWith(id: number): { ok: boolean; time: number; why?: string } {
+    const slot = this.inv.selectedSlot();
+    // The Voidbreaker (cheat-menu only, never craftable) shatters anything:
+    // tool tiers and "cannot break" blocks alike, on the first frame.
+    if (slot && ITEMS[slot.itemId].instaBreak) return { ok: true, time: 0.01 };
     const def = BLOCKS[id];
     if (def.breakTime <= 0) return { ok: false, time: 0, why: "cannot break" };
-    const slot = this.inv.selectedSlot();
     const tool = slot ? ITEMS[slot.itemId].tool : undefined;
     if (def.tool !== null) {
       if (!tool || tool.type !== def.tool) return { ok: false, time: 0, why: `need a ${def.tool}` };
