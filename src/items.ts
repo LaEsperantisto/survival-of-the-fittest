@@ -1,6 +1,6 @@
 import {
   SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, GLASS, INSGLASS, HULL,
-  DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, ADOBE, ENGINECORE, REGULATOR, CHEST,
+  DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, ADOBE, ENGINECORE, REGULATOR, CHEST, CACTUS,
 } from "./blocks";
 
 export interface ItemDef {
@@ -11,6 +11,8 @@ export interface ItemDef {
   mass: number;              // kg
   block?: number;            // block it places
   tool?: { type: "pickaxe" | "shovel" | "axe" | "disassembler"; tier: number };
+  eat?: { water?: number; health?: number };  // eating applies these to the player
+  equip?: "backpack" | "head" | "body";       // goes in that Armour Slot
   color: string;             // icon color
 }
 
@@ -51,12 +53,18 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "catalyst", name: "Catalyst", desc: "Rare alien chemistry. Found in Towns and the second wreck. Needed for Insulating Glass (M2 craft chain).", w: 1, h: 1, mass: 0.3, color: "#c07fe0" }),
   I({ id: "engine_core", name: "Engine Core", desc: "The heart of the second wreck. Quest-exclusive — place it within reach of a Save Beacon to finish the Main Quest.", w: 1, h: 1, mass: 6.0, block: ENGINECORE, color: "#c468e8" }),
   I({ id: "ironrod", name: "Iron Rod", desc: "Iron baked out of desert Rock at a Campfire. Two rods forge one Metal Rod at a Crafting Bench — tools without touching the wreck.", w: 1, h: 1, mass: 1.0, color: "#b0683f" }),
-  I({ id: "visor", name: "Surveyor's Visor", desc: "A Visor upgrade. While held, the HUD marks every Death Cache, Reward Cache and Supply Chest through walls with a beam.", w: 1, h: 1, mass: 0.8, color: "#66e5f0" }),
+  I({ id: "visor", name: "Surveyor's Visor", desc: "A Visor upgrade. Equipped in the Head slot, the HUD marks every Death Cache, Reward Cache and Supply Chest through walls with a beam.", w: 1, h: 1, mass: 0.8, equip: "head", color: "#66e5f0" }),
   toolItem("pickaxe", 1, "wood", "#a8834f"), toolItem("pickaxe", 2, "stone", "#8d8680"), toolItem("pickaxe", 3, "metal", "#9aa0aa"),
   toolItem("shovel", 1, "wood", "#a8834f"), toolItem("shovel", 2, "stone", "#8d8680"), toolItem("shovel", 3, "metal", "#9aa0aa"),
   toolItem("axe", 1, "wood", "#a8834f"), toolItem("axe", 2, "stone", "#8d8680"), toolItem("axe", 3, "metal", "#9aa0aa"),
   toolItem("disassembler", 1, "metal", "#c0c8d8"),
-  I({ id: "backpack1", name: "Backpack I", desc: "Inventory grid grows to 4×5. Weight limit +20 kg.", w: 2, h: 2, mass: 2.0, color: "#7a5a3a" }),
+  I({ id: "backpack1", name: "Backpack I", desc: "Equipped in the Backpack slot: inventory grid grows to 4×5, weight limit +20 kg.", w: 2, h: 2, mass: 2.0, equip: "backpack", color: "#7a5a3a" }),
+  I({ id: "cactus", name: "Cactus", desc: "Tall desert column. Break it for a Prickly Pear and a block you can replant.", w: 1, h: 2, mass: 1.5, block: CACTUS, color: "#3d8042" }),
+  I({ id: "prickly_pear", name: "Prickly Pear", desc: "Cactus fruit. Eat it: +8 Water, +1 Health.", w: 1, h: 1, mass: 0.2, eat: { water: 8, health: 1 }, color: "#d64a82" }),
+  I({ id: "snake_skin", name: "Snake Skin", desc: "Tough desert hide. Three of them stitch into Reptile Armour at a Crafting Bench.", w: 1, h: 2, mass: 0.6, color: "#b3946a" }),
+  I({ id: "reptile_armor", name: "Reptile Armour", desc: "Equipped in the Body slot: scales shrug off 40% of all damage.", w: 2, h: 2, mass: 3.0, equip: "body", color: "#8a6f4d" }),
+  I({ id: "rat_raw", name: "Kangaroo Rat (raw)", desc: "Raw meat. Cook it at a Campfire before eating.", w: 1, h: 1, mass: 0.8, color: "#a86a5a" }),
+  I({ id: "rat_cooked", name: "Cooked Rat", desc: "Roasted meat. Eat it: +25 Health.", w: 1, h: 1, mass: 0.7, eat: { health: 25 }, color: "#c07a3a" }),
 ];
 
 export const ITEMS: Record<string, ItemDef> = Object.fromEntries(ITEM_LIST.map((d) => [d.id, d]));

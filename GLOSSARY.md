@@ -75,6 +75,13 @@ A structure out in the world holding rare loot.
 **Dead Tree**:
 A leafless tree scattered through the desert.
 
+**Cactus**:
+A spined desert plant standing in the open sand, bearing edible Prickly Pears.
+
+**Prickly Pear**:
+Cactus fruit — eating is the first way to drink away from water.
+_Avoid_: cactus berry
+
 **Save Point**:
 A craftable, permanently placed block (the Save Beacon). Cannot be picked back up. The world persists only at Save Points; death respawns the player at the most recent intact one — if all are destroyed, at the crash site.
 _Avoid_: checkpoint, bed
@@ -95,6 +102,19 @@ Chests touching face-to-face form one cluster with a single Grid: 3×3 per chest
 
 **World Export / Import**:
 A file format for a world, so the same world can be played on different devices.
+
+### Wildlife
+
+**Desert Snake**:
+A low predator that attacks whatever steps too close. Its skin is Reptile Armour's material.
+_Avoid_: mob, viper
+
+**Kangaroo Rat**:
+A skittish desert creature that bolts rather than fights; its cooked meat restores Health.
+_Avoid_: jerboa
+
+**Reptile Armour**:
+Armour stitched from Desert Snake skins; worn in the Body slot it shrugs off a fixed share of every damage taken.
 
 ### Systems
 
@@ -131,6 +151,10 @@ Growing Oasis plants where Heat is not too high and Water is not too low.
 A rectangular grid of slots; items occupy footprints (Water Canister 1×2). Expandable via Backpacks. Every item instance claims its own cells — duplicates never share a slot, so more of something means more space taken.
 _Avoid_: stacking, merging slots
 
+**Armour Slot**:
+One of three dedicated equipment places above the Inventory Grid: Backpack, Head, Body. Gear in an Armour Slot works passively, takes no room in the Grid, and comes off by clicking the filled slot.
+_Avoid_: equip slot, paper doll
+
 **Temporary Storage**:
 The parked state of an item lifted out of the Inventory Grid by a drag that wasn't completed. An item at rest in Temporary Storage blocks closing the inventory until it is placed back or dropped.
 _Avoid_: held item, cursor slot
@@ -142,10 +166,10 @@ How much mass the Inventory Grid may hold. Exceedable by at most 10% — while O
 The state of carrying above the Weight Limit (max +10%): incredibly slow, draining Water.
 
 **Visor**:
-The player's HUD. Upgradeable to show more: heat fluctuations, marked points (the Ship, the player's Base).
+Head-slot gear powering the player's HUD. Upgradeable to show more: heat fluctuations, marked points (the Ship, the player's Base). Upgrades count only while equipped.
 
 **Waypoint**:
-The HUD's guide to the active quest: a compass heading, a distance, and a marker at the target. A held Surveyor's Visor — a craftable Visor upgrade — additionally marks every Cache and Supply Chest through walls.
+The HUD's guide to the active quest: a compass heading, a distance, and a marker at the target. A Surveyor's Visor equipped in the Head slot — a craftable Visor upgrade — additionally marks every Cache and Supply Chest through walls.
 
 **Water**:
 Exists as source blocks (Oasis pools, Bucket-placed). A placed source flows — spreading over terrain and draining — until it meets a new source or runs out. Bucket-carrying lifts exactly one source.
@@ -170,7 +194,7 @@ A rare traveling trader in Towns: barters rare loot for Water Canisters; finite 
 The single quest-exclusive item — the final quest artifact. Everything else in the game is eventually craftable.
 
 **Backpack**:
-An upgrade expanding the Inventory Grid and/or raising the Weight Limit.
+An upgrade worn in the Backpack slot, expanding the Inventory Grid and/or raising the Weight Limit.
 
 **Settings**:
 Menu with units (Celsius/Fahrenheit), controls, and rendering options.

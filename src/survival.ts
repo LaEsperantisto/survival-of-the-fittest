@@ -8,7 +8,7 @@ export const SAFE_LO = 36.0, SAFE_HI = 37.5;   // safe body temperature zone
 // where Health starts draining — the HUD paints a mark on each bar here
 export const HOT_LIMIT = 39.5, COLD_LIMIT = 31.5, WATER_LIMIT = 5;
 
-const AMBIENT_MEAN = 21, AMBIENT_AMP = 26;     // 24-min desert day: ~-5 night, ~+47 peak
+const AMBIENT_MEAN = 27, AMBIENT_AMP = 25;     // 24-min desert day: ~2 °C night, ~52 °C peak
 export const REGULATOR_ROOM_MAX = 100;         // open cells (sealed) one Heat Regulator can hold at neutral
 
 export class Survival {

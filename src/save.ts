@@ -57,6 +57,7 @@ export interface RunSave {
   survival: { health: number; water: number; body: number };
   quest?: { i: number; p: number[] };
   inventory: { slots: { itemId: string; count: number; x: number; y: number; rot?: boolean }[]; selected: number; w: number; h: number; bonusLimit: number };
+  equip?: { backpack?: string; head?: string; body?: string };
   beaconMarks: { x: number; y: number; z: number }[];
   collected: number[];
   entities: { x: number; y: number; z: number; itemId: string; count: number }[];

@@ -31,6 +31,7 @@ export const RECIPES: Recipe[] = [
   // the landlubber's metal chain: bake Rock into Iron Rods, forge them at a bench
   { out: "metal", count: 1, needs: { ironrod: 2 }, bench: true },
   { out: "visor", count: 1, needs: { metal: 2, glass: 1, salt: 2 }, bench: true },
+  { out: "reptile_armor", count: 1, needs: { snake_skin: 3 }, bench: true },
 ];
 
 /** Campfire smelting: consumes one fuel charge per item. */
@@ -39,6 +40,7 @@ export const SMELT: { in: string; out: string }[] = [
   { in: "dirt", out: "adobe" },
   { in: "sandstone", out: "rock" },
   { in: "rock", out: "ironrod" },
+  { in: "rat_raw", out: "rat_cooked" },
 ];
 
 export function canCraft(inv: Inventory, r: Recipe): boolean {

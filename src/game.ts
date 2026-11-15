@@ -5,7 +5,8 @@ import { Survival, REGULATOR_ROOM_MAX } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, slotDims, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CS, CH, DAY_SECONDS, isSolid } from "./blocks";
+import { BLOCKS, AIR, WATER, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CACTUS, CS, CH, DAY_SECONDS, isSolid } from "./blocks";
+import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr } from "./noise";
 import { heightAt, biomeAt } from "./gen";
 import { RECIPES, SMELT, canCraft, doCraft } from "./crafting";
@@ -22,6 +23,11 @@ export interface DroppedItem {
   repickAt?: number; // game time before which auto-pickup is suppressed (manual drops)
 }
 export interface DeathCache { id: number; x: number; y: number; z: number; kind: "death" | "chest" | "reward"; items: { itemId: string; count: number }[]; markerEid?: number }
+export interface Mob {
+  kind: MobKind; hp: number; x: number; y: number; z: number;
+  yaw: number; biteCd: number; wanderT: number; wanderYaw: number; wanderOn: boolean;
+  vis: MobVisual;
+}
 export interface Raycast { hit: { x: number; y: number; z: number } | null; water: { x: number; y: number; z: number } | null; face: THREE.Vector3 }
 
 export class Game {
@@ -40,6 +46,12 @@ export class Game {
   private gridFocus: "inv" | "chest" = "inv";
   campCharges = new Map<string, number>();
   beaconMarks: { x: number; y: number; z: number }[] = [];
+  // living desert: mobs are runtime-only (never saved); they respawn near the player
+  private mobs: Mob[] = [];
+  private mobSpawnAcc = 9;
+  private attackCd = 0;
+  // Armour Slots: equipped gear lives here, not in the inventory grid
+  equip: { backpack: Slot | null; head: Slot | null; body: Slot | null } = { backpack: null, head: null, body: null };
   collected = new Set<number>();
   running = false;
   paused = false;
@@ -231,6 +243,11 @@ export class Game {
       this.inv.w = run.inventory.w; this.inv.h = run.inventory.h;
       this.inv.baseLimit = 30; this.inv.bonusLimit = run.inventory.bonusLimit;
     } else this.inv.bonusLimit = run.inventory.bonusLimit;
+    // Armour Slots: restore gear without touching grid sizes (the saved w/h/bonusLimit already encode them)
+    for (const slot of ["backpack", "head", "body"] as const) {
+      const id = run.equip?.[slot];
+      if (id) this.equip[slot] = { itemId: id, count: 1, x: 0, y: 0 };
+    }
     this.beaconMarks = run.beaconMarks ?? [];
     this.collected = new Set(run.collected ?? []);
     const collected = this.collected;
@@ -279,6 +296,7 @@ export class Game {
       survival: { health: this.survival.health, water: this.survival.water, body: this.survival.body },
       quest: { i: this.quests.i, p: this.quests.p.slice() },
       inventory: { slots: this.inv.slots.map((s) => ({ ...s })), selected: this.inv.selected, w: this.inv.w, h: this.inv.h, bonusLimit: this.inv.bonusLimit },
+      equip: { backpack: this.equip.backpack?.itemId, head: this.equip.head?.itemId, body: this.equip.body?.itemId },
       beaconMarks: this.beaconMarks,
       collected: this.collectedCanisterIndices(),
       entities: this.entities.filter((e) => !e.buried).map((e) => ({ x: e.x, y: e.y, z: e.z, itemId: e.itemId, count: e.count })),
@@ -401,9 +419,9 @@ export class Game {
   }
 
   // The HUD guides the active quest: a compass heading + distance (hud.updateWaypoint)
-  // and a waypoint beam at the target. With a Surveyor's Visor selected, every
-  // Cache and chest cluster also gets a marker beam (items.ts: "while held the HUD
-  // marks every Death Cache, Reward Cache and Supply Chest").
+  // and a waypoint beam at the target. With a Surveyor's Visor equipped in the
+  // Head slot, every Cache and chest cluster also gets a marker beam (items.ts:
+  // "equipped in the Head slot the HUD marks every Death Cache, Reward Cache and Supply Chest").
   private guideFrame(dt: number) {
     this.guideAcc += dt;
     if (this.guideAcc < 0.4) return;
@@ -426,7 +444,7 @@ export class Game {
     }
 
     const want = new Map<string, [number, number, number, number]>();
-    if (this.inv.selectedSlot()?.itemId === "visor") {
+    if (this.equip.head?.itemId === "visor") {
       for (const c of this.caches)
         if (c.items.length)
           want.set(`c${c.id}`, [c.x + 0.5, c.y, c.z + 0.5, c.kind === "chest" ? 0xe6c96a : c.kind === "reward" ? 0xd8a24a : 0xcc4433]);
@@ -809,6 +827,7 @@ export class Game {
     this.podFrame(dt);
     this.questFrame();
     this.guideFrame(dt);
+    this.mobFrame(dt);
     this.audio.setDay(kf.sunElev > 0);
 
     this.autosaveAcc += dt;
@@ -889,6 +908,22 @@ export class Game {
 
   private updateBreaking(dt: number) {
     if (!this.mouseDown) { this.breaking = null; this.showBreakBar(null); return; }
+    // a mob under the crosshair wins over the block behind it
+    const mb = this.meleeMob();
+    if (mb) {
+      this.breaking = null; this.showBreakBar(null);
+      if (this.attackCd <= 0) {
+        this.attackCd = 0.5;
+        const sel = this.inv.selectedSlot();
+        mb.hp -= 3 + (sel ? ITEMS[sel.itemId].tool?.tier ?? 0 : 0);
+        this.audio.thud();
+        const kx = mb.x - this.player.pos.x, kz = mb.z - this.player.pos.z;
+        const kl = Math.max(0.2, Math.hypot(kx, kz));
+        if (this.mobCanStand(mb, mb.x + (kx / kl) * 0.6, mb.z + (kz / kl) * 0.6)) { mb.x += (kx / kl) * 0.6; mb.z += (kz / kl) * 0.6; mb.y = this.mobSurface(mb.x, mb.z); }
+        if (mb.hp <= 0) this.killMob(mb);
+      }
+      return;
+    }
     const t = this.raycastTarget();
     if (!t?.hit) { this.breaking = null; this.showBreakBar(null); return; }
     const { x, y, z } = t.hit;
@@ -933,6 +968,14 @@ export class Game {
       this.world.set(x, y, z, AIR);
       this.beaconMarks = this.beaconMarks.filter((b) => !(b.x === x && b.y === y && b.z === z));
       hud.toast("Save beacon destroyed. Respawn falls back to the newest intact beacon.");
+      this.audio.blockBreak();
+      return;
+    }
+    if (id === CACTUS) {
+      // every cactus column block carries fruit: one Prickly Pear plus the block itself
+      this.world.set(x, y, z, AIR);
+      this.giveOrDrop("prickly_pear", 1);
+      this.giveOrDrop("cactus", 1);
       this.audio.blockBreak();
       return;
     }
@@ -982,6 +1025,185 @@ export class Game {
     const item = this.blockItemId(id);
     if (item) this.giveOrDrop(item, 1);
     this.audio.blockBreak();
+  }
+
+  // ---------- desert wildlife ----------
+
+  /** Highest solid block top at this column, or -1 over the void. */
+  private mobSurface(x: number, z: number): number {
+    const fx = Math.floor(x), fz = Math.floor(z);
+    const top = Math.max(30, Math.round(heightAt(this.seed, fx, fz)) + 8);
+    for (let y = top; y >= 0; y--) {
+      const id = this.world.get(fx, y, fz);
+      if (id !== AIR && BLOCKS[id].solid) return y + 1;
+    }
+    return -1;
+  }
+
+  /** Can this mob stand at (x,z): floor within one step climb, headroom above it? */
+  private mobCanStand(m: Mob, x: number, z: number): boolean {
+    const gy = this.mobSurface(x, z);
+    if (gy < 0 || gy > m.y + 1.01) return false;
+    return this.world.get(Math.floor(x), gy, Math.floor(z)) === AIR;
+  }
+
+  private spawnMob(kind: MobKind, x: number, y: number, z: number) {
+    const vis = makeMobMesh(kind);
+    vis.group.position.set(x, y, z);
+    vis.group.rotation.y = Math.random() * Math.PI * 2;
+    this.renderer.addSceneObject(vis.group);
+    this.mobs.push({
+      kind, hp: MOB_DEFS[kind].hp, x, y, z, yaw: vis.group.rotation.y,
+      biteCd: 0, wanderT: Math.random() * 3, wanderYaw: Math.random() * Math.PI * 2, wanderOn: false, vis,
+    });
+  }
+
+  private killMob(m: Mob) {
+    this.renderer.removeSceneObject(m.vis.group);
+    this.mobs = this.mobs.filter((x) => x !== m);
+    for (const d of MOB_DEFS[m.kind].drops) this.giveOrDrop(d.itemId, d.count);
+    hud.toast(`${MOB_DEFS[m.kind].name} killed.`);
+  }
+
+  /** Keep the desert stocked around the player: up to 4 snakes, 8 kangaroo rats. */
+  private topUpMobs() {
+    const targets: Record<MobKind, number> = { snake: 4, rat: 8 };
+    const counts: Record<MobKind, number> = { snake: 0, rat: 0 };
+    for (const m of this.mobs) counts[m.kind]++;
+    const p = this.player.pos;
+    for (const kind of ["snake", "rat"] as MobKind[]) {
+      while (counts[kind] < targets[kind]) {
+        counts[kind]++; // every attempt, successful or not, spends a slot this round
+        const a = Math.random() * Math.PI * 2, r = 30 + Math.random() * 30;
+        const x = Math.floor(p.x + Math.cos(a) * r) + 0.5, z = Math.floor(p.z + Math.sin(a) * r) + 0.5;
+        if (Math.hypot(x, z) < 24) continue; // keep the crash site quiet
+        if (this.beaconMarks.some((b) => Math.hypot(b.x + 0.5 - x, b.z + 0.5 - z) < 16)) continue; // save points stay safe
+        const gy = this.mobSurface(x, z);
+        if (gy <= 1 || this.world.get(Math.floor(x), gy, Math.floor(z)) !== AIR ||
+            this.world.get(Math.floor(x), gy + 1, Math.floor(z)) !== AIR) continue;
+        this.spawnMob(kind, x, gy, z);
+      }
+    }
+  }
+
+  /** The mob nearest the crosshair within reach, if no block is closer. */
+  private meleeMob(): Mob | null {
+    const o = this.player.eye();
+    const dir = new THREE.Vector3();
+    this.renderer.camera.getWorldDirection(dir);
+    const blk = this.raycastTarget();
+    const blockDist = blk?.hit
+      ? Math.hypot(blk.hit.x + 0.5 - o.x, blk.hit.y + 0.5 - o.y, blk.hit.z + 0.5 - o.z)
+      : Infinity;
+    let best: Mob | null = null, bestT = Infinity;
+    for (const m of this.mobs) {
+      const def = MOB_DEFS[m.kind];
+      const cx = m.x - o.x, cy = m.y + def.height / 2 - o.y, cz = m.z - o.z;
+      const t = cx * dir.x + cy * dir.y + cz * dir.z;
+      if (t < 0.2 || t > 3.2 || t > blockDist) continue;
+      const px = o.x + dir.x * t - m.x, py = o.y + dir.y * t - (m.y + def.height / 2), pz = o.z + dir.z * t - m.z;
+      if (px * px + py * py + pz * pz > (def.hitR + 0.3) * (def.hitR + 0.3)) continue;
+      if (t < bestT) { bestT = t; best = m; }
+    }
+    return best;
+  }
+
+  private mobFrame(dt: number) {
+    this.attackCd -= dt;
+    this.mobSpawnAcc += dt;
+    if (this.mobSpawnAcc > 4) { this.mobSpawnAcc = 0; this.topUpMobs(); }
+    const p = this.player.pos, t = this.timeSec;
+    for (const m of this.mobs.slice()) {
+      const def = MOB_DEFS[m.kind];
+      const dx = p.x - m.x, dz = p.z - m.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 110) { this.renderer.removeSceneObject(m.vis.group); this.mobs = this.mobs.filter((x) => x !== m); continue; }
+      let vx = 0, vz = 0;
+      if (def.aggroR > 0 && dist < def.aggroR && dist > 0.01) {
+        vx = (dx / dist) * def.speed; vz = (dz / dist) * def.speed;
+        m.yaw = Math.atan2(vx, vz);
+        if (dist < 1.2 + def.hitR && m.biteCd <= 0) {
+          m.biteCd = def.biteCd;
+          const armor = this.equip.body ? 0.6 : 1; // Reptile Armour: scales shrug off 40%
+          this.survival.hurt(def.biteDmg * armor, `${def.name.toLowerCase()} bite`);
+          this.audio.hurt();
+          hud.toast(armor < 1 ? `A ${def.name.toLowerCase()} bites you — the Reptile Armour soaks some of it.` : `A ${def.name.toLowerCase()} bites you!`);
+        }
+      } else if (def.fleeR > 0 && dist < def.fleeR && dist > 0.01) {
+        vx = (-dx / dist) * def.speed; vz = (-dz / dist) * def.speed;
+        m.yaw = Math.atan2(vx, vz);
+      } else {
+        m.wanderT -= dt;
+        if (m.wanderT <= 0) { m.wanderT = 2 + Math.random() * 4; m.wanderYaw = Math.random() * Math.PI * 2; m.wanderOn = Math.random() < 0.55; }
+        if (m.wanderOn) { vx = Math.sin(m.wanderYaw) * def.speed * 0.35; vz = Math.cos(m.wanderYaw) * def.speed * 0.35; m.yaw = m.wanderYaw; }
+      }
+      m.biteCd -= dt;
+      let moving = 0;
+      if (vx !== 0 || vz !== 0) {
+        const nx = m.x + vx * dt, nz = m.z + vz * dt;
+        if (this.mobCanStand(m, nx, nz)) { m.x = nx; m.z = nz; moving = 1; }
+        else m.wanderYaw = m.yaw = Math.random() * Math.PI * 2; // walk into a wall -> pick a new direction
+      }
+      m.y = this.mobSurface(m.x, m.z);
+      m.vis.group.position.set(m.x, m.y, m.z);
+      m.vis.group.rotation.y = m.yaw;
+      m.vis.animate(t, moving);
+    }
+  }
+
+  // ---------- Armour Slots: equip / unequip ----------
+
+  /** Would every currently-held item fit an w×h grid? (Backpack shrink guard.) */
+  private gridFits(w: number, h: number): boolean {
+    const probe = new Inventory();
+    probe.slots = [];
+    probe.w = w; probe.h = h;
+    for (const s of this.inv.slots) if (!Game.placeSlotFree(probe, { ...s, x: 0, y: 0 })) return false;
+    return true;
+  }
+
+  private applyEquip() {
+    const wantW = this.equip.backpack ? 4 : 3, wantH = this.equip.backpack ? 5 : 4;
+    if (this.inv.w !== wantW || this.inv.h !== wantH)
+      this.inv.setBackpack(wantW, wantH, this.equip.backpack ? 20 : 0);
+    if (this.inv.selected >= this.inv.slots.length) this.inv.selected = 0;
+    this.renderInv();
+  }
+
+  private equipItem() {
+    const sel = this.inv.selectedSlot();
+    if (!sel) return;
+    const d = ITEMS[sel.itemId];
+    if (!d.equip) return;
+    const slot = d.equip;
+    const prev = this.equip[slot];
+    // swapping out old gear puts it back in the pack — refuse if it would not fit
+    if (prev && this.inv.addItem(prev.itemId, prev.count) > 0) {
+      this.inv.removeItem(prev.itemId, 1); // undo the partial add
+      hud.toast("No room in your pack for the gear you are taking off.");
+      this.audio.error();
+      return;
+    }
+    this.inv.slots.splice(this.inv.slots.indexOf(sel), 1);
+    this.equip[slot] = sel;
+    this.applyEquip();
+    this.audio.pickup();
+    hud.toast(`${d.name} equipped in the ${slot} slot.`);
+  }
+
+  private unequipSlot(slot: "backpack" | "head" | "body") {
+    const it = this.equip[slot];
+    if (!it) return;
+    if (!this.gridFits(this.equip.backpack && slot === "backpack" ? 3 : this.inv.w, this.equip.backpack && slot === "backpack" ? 5 : this.inv.h)) {
+      hud.toast("Your pack is too full — make room before taking it off.");
+      this.audio.error();
+      return;
+    }
+    this.equip[slot] = null;
+    this.applyEquip(); // grid may shrink to 3×4 before the item lands back in it
+    this.inv.addItem(it.itemId, it.count);
+    this.audio.place();
+    hud.toast(`${ITEMS[it.itemId].name} taken off.`);
   }
 
   /** The other half of a two-block Crafting Bench, or null. */
@@ -1357,6 +1579,26 @@ export class Game {
     }
     dropTemp.classList.toggle("hidden", !this.temp);
 
+    // Armour Slots row: Backpack / Head / Body
+    for (const slot of ["backpack", "head", "body"] as const) {
+      const el = document.getElementById("eq-" + slot)!;
+      const it = this.equip[slot];
+      if (it) {
+        const d = ITEMS[it.itemId];
+        el.classList.add("filled");
+        el.style.background = d.color;
+        el.style.backgroundImage = `url(${itemTiles(it.itemId)[0] ?? ""})`;
+        el.title = `Click to take off the ${d.name}`;
+        el.onclick = () => this.unequipSlot(slot);
+      } else {
+        el.classList.remove("filled");
+        el.style.background = "#23262e";
+        el.style.backgroundImage = "";
+        el.title = "";
+        el.onclick = null;
+      }
+    }
+
     // rebuild the side panel from scratch every render (accumulating text/buttons bug)
     const side = document.getElementById("inv-side")!;
     const fInv = this.gridFocus === "chest" && this.chestInv ? this.chestInv : this.inv;
@@ -1379,17 +1621,31 @@ export class Game {
       };
       side.appendChild(rotBtn);
     }
-    if (sel && sel.itemId === "backpack1") {
-      const useBtn = document.createElement("button");
-      useBtn.textContent = "Wear backpack";
-      useBtn.onclick = () => {
-        fInv.removeItem("backpack1", 1);
-        this.inv.setBackpack(4, 5, 20);
-        hud.toast("Backpack I equipped: grid 4×5, +20 kg.");
-        this.renderInv();
-      };
-      side.appendChild(useBtn);
-    } else if (sel) {
+    if (sel) {
+      const d = ITEMS[sel.itemId];
+      if (d.equip) {
+        const eqBtn = document.createElement("button");
+        eqBtn.textContent = `Equip (${d.equip} slot)`;
+        eqBtn.onclick = () => this.equipItem();
+        side.appendChild(eqBtn);
+      }
+      if (d.eat && fInv === this.inv) {
+        const eatBtn = document.createElement("button");
+        eatBtn.textContent = "Eat";
+        eatBtn.onclick = () => {
+          const name = ITEMS[sel.itemId].name;
+          this.inv.removeItem(sel.itemId, 1);
+          const bits: string[] = [];
+          if (d.eat!.water) { this.survival.water = Math.min(100, this.survival.water + d.eat!.water); bits.push(`+${d.eat!.water} Water`); }
+          if (d.eat!.health) { this.survival.health = Math.min(100, this.survival.health + d.eat!.health); bits.push(`+${d.eat!.health} Health`); }
+          this.audio.drink();
+          hud.toast(`Ate ${name}: ${bits.join(", ")}`);
+          this.renderInv();
+        };
+        side.appendChild(eatBtn);
+      }
+    }
+    if (sel) {
       if (fInv === this.chestInv) {
         const packBtn = document.createElement("button");
         packBtn.textContent = "Move to pack";

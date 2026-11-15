@@ -3,7 +3,7 @@
 export const AIR = 0, SAND = 1, SANDSTONE = 2, ROCK = 3, GRAVEL = 4, DIRT = 5, SALT = 6,
   DEADWOOD = 7, GLASS = 8, INSGLASS = 9, HULL = 10, DOOR_CLOSED = 11, DOOR_OPEN = 12,
   LAMP = 13, METAL = 14, BEACON = 15, BENCH = 16, CAMPFIRE = 17, WATER = 18, ADOBE = 19,
-  DOOR_UPPER = 20, ENGINECORE = 21, REGULATOR = 22, CHEST = 23, BENCH_EXT = 24;
+  DOOR_UPPER = 20, ENGINECORE = 21, REGULATOR = 22, CHEST = 23, BENCH_EXT = 24, CACTUS = 25;
 
 export type ToolType = "pickaxe" | "shovel" | "axe" | "disassembler";
 
@@ -62,6 +62,8 @@ export const BLOCKS: BlockDef[] = [
   // The Crafting Bench stands two blocks wide: BENCH is the working top, this the
   // drawer-and-legs frame. Placed and broken as a pair with BENCH.
   def({ id: BENCH_EXT, name: "Crafting Bench (frame)", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.0, tool: null, minTier: 0, placeable: false, color: [0.45, 0.36, 0.27] }),
+  // Cactus: desert flora; breaking one yields its Prickly Pear fruit plus the block.
+  def({ id: CACTUS, name: "Cactus", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 0.9, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.24, 0.5, 0.26] }),
 ];
 
 export const CH = 96;           // world height (Y)

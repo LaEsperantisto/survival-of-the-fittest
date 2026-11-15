@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import {
   CS, CH, BLOCKS, AIR, SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, GLASS,
-  INSGLASS, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, ENGINECORE, REGULATOR, CHEST, BENCH_EXT,
+  INSGLASS, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, ENGINECORE, REGULATOR, CHEST, BENCH_EXT, CACTUS,
   isSolid,
 } from "./blocks";
 import { World, ckey, faceVisible } from "./world";
@@ -24,7 +24,7 @@ const FACES: { dir: [number, number, number]; corners: number[][]; shade: number
 export const TILE_PX = 16, ATLAS_COLS = 16;
 
 export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, GLASS, INSGLASS,
-  HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, DOOR_OPEN, ENGINECORE, REGULATOR, CHEST, BENCH_EXT];
+  HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, WATER, ADOBE, DOOR_OPEN, ENGINECORE, REGULATOR, CHEST, BENCH_EXT, CACTUS];
 
 let atlasCv: HTMLCanvasElement | null = null;
 
@@ -186,6 +186,14 @@ export function getAtlasCanvas(): HTMLCanvasElement {
           if (d >= 3.2) px(x, y, col(0.12));
           else px(x, y, col(0.22 + (3 - d) * 0.1, 1, -0.05, 0.15, 0.2));
         }
+        break;
+      case CACTUS:
+        fill(col(0)); speckle(36, 0.1);
+        for (const rx of [2, 7, 12]) for (let y = 0; y < 16; y++) px(rx, y, col(-0.14));
+        for (const [ax, ay] of [[4, 3], [9, 5], [6, 8], [11, 10], [3, 13], [8, 14]]) {
+          px(ax, ay, col(0.22)); px(ax + 1, ay, col(-0.2)); px(ax, ay + 1, col(-0.2));
+        }
+        px(13, 1, "rgba(214,74,130,1)"); px(1, 6, "rgba(198,58,114,1)"); px(5, 11, "rgba(214,74,130,1)");
         break;
       case CHEST:
         // wooden crate: planks, steel band across the lid, latch plate
@@ -524,6 +532,9 @@ export class Renderer {
   entityMesh(eid: number): THREE.Object3D | undefined {
     return this.entityGroup.children.find((ch) => ch.userData.eid === eid);
   }
+  /** Free-floating objects (mob rigs) sharing the entity layer. */
+  addSceneObject(o: THREE.Object3D) { this.entityGroup.add(o); }
+  removeSceneObject(o: THREE.Object3D) { this.entityGroup.remove(o); }
 
   private nextEid = 1_000_000; // marker/beam ids never collide with entity ids
 

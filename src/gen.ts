@@ -1,6 +1,6 @@
 import {
   AIR, SAND, SANDSTONE, ROCK, GRAVEL, SALT, DEADWOOD, HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON,
-  WATER, ADOBE, INSGLASS, BENCH, BENCH_EXT, ENGINECORE, CS, CH, REGULATOR,
+  WATER, ADOBE, INSGLASS, BENCH, BENCH_EXT, ENGINECORE, CS, CH, REGULATOR, CACTUS,
 } from "./blocks";
 import { fbm2, ridge2, value2, hash2, Rng } from "./noise";
 
@@ -254,6 +254,15 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number): 
         if (bi !== B_MESA && bi !== B_CANYON) {
           const th = 3 + (hash2(wx, wz, seed + 29) * 3 | 0);
           for (let y = h + 1; y <= h + th; y++) setW(wx, y, wz, DEADWOOD);
+        }
+      }
+      // cacti: ribbed columns, sometimes with a short side arm
+      if (!atCrash && c[(x * CS + z) * CH + h + 1] === 0 && hash2(wx, wz, seed + 31) > 0.9915) {
+        const bi = biomeAt(wx, wz, seed);
+        if (bi === B_DUNES || bi === B_ROCKY) {
+          const ct = 2 + (hash2(wx, wz, seed + 37) * 3 | 0);
+          for (let y = h + 1; y <= h + ct; y++) setW(wx, y, wz, CACTUS);
+          if (ct >= 3 && hash2(wx, wz, seed + 41) > 0.55) setW(wx + (hash2(wx, wz, seed + 43) > 0.5 ? 1 : -1), h + 2, wz, CACTUS);
         }
       }
     }
