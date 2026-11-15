@@ -1238,6 +1238,18 @@ export class Game {
       this.audio.blockBreak();
       return;
     }
+    if (id === MELON_2 || id === MELON_1 || id === WHEAT_2 || id === WHEAT_1) {
+      // breaking a crop by hand or tool yields its harvest too — rougher than
+      // picking it (E) but never a wasted plant
+      this.world.set(x, y, z, id === WHEAT_2 || id === WHEAT_1 ? FARMLAND : AIR);
+      this.crops.delete(`${x},${y},${z}`);
+      if (id === MELON_2) this.giveOrDrop("dune_melon", 1);
+      if (id === WHEAT_2) { this.giveOrDrop("wheat", 1); this.giveOrDrop("seed_wheat", 1); }
+      if (id === MELON_1) this.giveOrDrop("seed_melon", 1);
+      if (id === WHEAT_1) this.giveOrDrop("seed_wheat", 1); // unripe wheat: just the seed
+      this.audio.blockBreak();
+      return;
+    }
     if (id === LEAVES) {
       this.world.set(x, y, z, AIR);
       this.giveOrDrop("kindling", 1);

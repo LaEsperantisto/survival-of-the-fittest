@@ -89,8 +89,8 @@ export const BLOCKS: BlockDef[] = [
   // and everything but Cactus stalls if the outdoor air leaves its band.
   def({ id: MELON_1, name: "Melon Sprout", solid: false, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: false, color: [0.28, 0.52, 0.28] }),
   def({ id: MELON_2, name: "Dune Melon", solid: false, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 0.3, tool: null, minTier: 0, placeable: false, color: [0.42, 0.56, 0.24] }),
-  def({ id: WHEAT_1, name: "Wheat Sprout", solid: false, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: false, color: [0.66, 0.66, 0.34] }),
-  def({ id: WHEAT_2, name: "Desert Wheat", solid: false, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 0.3, tool: null, minTier: 0, placeable: false, color: [0.84, 0.74, 0.32] }),
+  def({ id: WHEAT_1, name: "Wheat Sprout", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: false, color: [0.66, 0.66, 0.34] }),
+  def({ id: WHEAT_2, name: "Desert Wheat", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.3, tool: null, minTier: 0, placeable: false, color: [0.84, 0.74, 0.32] }),
   // Fruit-topped cactus column block: harvest it for a Prickly Pear, the column
   // stays and regrows the fruit on its own.
   def({ id: CACTUS_FRUIT, name: "Fruiting Cactus", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 0.9, tool: null, fastTool: "axe", minTier: 0, placeable: false, color: [0.3, 0.5, 0.34] }),

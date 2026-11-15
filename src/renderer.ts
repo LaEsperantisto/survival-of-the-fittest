@@ -14,6 +14,8 @@ import { SkyLighting, MAX_LIGHT, lidx } from "./light";
 
 /** every block id that renders as a swingable door leaf */
 const DOOR_BLOCKS = new Set([DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN]);
+/** blocks that render as crossed blade quads instead of cubes */
+const CROSS_BLOCKS = new Set([WHEAT_1, WHEAT_2, SAPLING]);
 
 const FACES: { dir: [number, number, number]; corners: number[][]; shade: number; uv: [number, number] }[] = [
   { dir: [0, 1, 0], corners: [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]], shade: 1.0, uv: [0, 2] },
@@ -25,8 +27,12 @@ const FACES: { dir: [number, number, number]; corners: number[][]; shade: number
 ];
 
 // ---------------- procedural texture atlas ----------------
-// One 16x16 tile per block id, drawn on a 256x256 canvas at load. Pixel art,
-// deterministic, no external assets. Vertex colors still carry face shading.
+// One 16x16 tile per face kind, drawn on a 256x256 canvas at load: a base tile
+// per block id (also sampled by the item icons) plus variant tiles for faces
+// whose real material differs (grass blades vs soil, log rings vs bark, lid vs
+// crate side...). FACE_T maps (block id, FACES index) to the tile each face
+// uses. Deterministic pixel art, no external assets; vertex colors carry the
+// face shading.
 
 export const TILE_PX = 16, ATLAS_COLS = 16;
 
@@ -35,6 +41,18 @@ export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, G
   WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING];
+
+// extra face tiles, appended after the base tiles; each recipe is shaded with
+// the named block's base colour
+const VARIANTS: [string, number][] = [
+  ["grass_top", GRASS], ["grass_side", GRASS], ["wood_top", WOOD],
+  ["farmland_side", FARMLAND], ["sandstone_top", SANDSTONE], ["hull_top", HULL],
+  ["water_side", WATER], ["bed_side", BED], ["chest_top", CHEST],
+  ["bench_top", BENCH], ["bench_ext_top", BENCH_EXT], ["campfire_top", CAMPFIRE],
+  ["cactus_top", CACTUS],
+];
+const VI: Record<string, number> = {};
+VARIANTS.forEach(([name], i) => (VI[name] = TILE_LIST.length + i));
 
 let atlasCv: HTMLCanvasElement | null = null;
 
@@ -45,302 +63,571 @@ export function getAtlasCanvas(): HTMLCanvasElement {
   cv.width = cv.height = ATLAS_COLS * TILE_PX;
   const g = cv.getContext("2d")!;
   const rng = new Rng(0xbeef);
-  const tileOf: Record<number, number> = {};
-  TILE_LIST.forEach((id, i) => (tileOf[id] = i));
+  const tileIdx: Record<string, number> = {};
+  TILE_LIST.forEach((id, i) => (tileIdx[String(id)] = i));
+  for (const name in VI) tileIdx[name] = VI[name];
 
+  // current tile origin + base colour, set per tile just before its recipe runs
+  let tx = 0, ty = 0, br = 0, bg = 0, bb = 0;
   const cl = (v: number) => Math.max(0, Math.min(1, v));
-  const draw = (id: number) => {
-    const t = tileOf[id];
-    const tx = (t % ATLAS_COLS) * TILE_PX, ty = ((t / ATLAS_COLS) | 0) * TILE_PX;
-    const [br, bg, bb] = BLOCKS[id].color;
-    const col = (dl: number, a = 1, hr = 0, hg = 0, hb = 0) =>
-      `rgba(${Math.round(cl(br + dl + hr) * 255)},${Math.round(cl(bg + dl + hg) * 255)},${Math.round(cl(bb + dl + hb) * 255)},${a})`;
-    const px = (x: number, y: number, c: string) => { g.fillStyle = c; g.fillRect(tx + x, ty + y, 1, 1); };
-    const fill = (c: string) => { g.fillStyle = c; g.fillRect(tx, ty, TILE_PX, TILE_PX); };
-    const nz = (s: number) => (rng.next() - 0.5) * s;
-    const speckle = (n: number, s: number) => {
-      for (let i = 0; i < n; i++) px(rng.int(0, 15), rng.int(0, 15), col(nz(s)));
-    };
-    const crack = (len: number, s: number) => {
-      let x = rng.int(1, 13), y = rng.int(1, 13);
-      for (let i = 0; i < len; i++) { px(x, y, col(nz(s) - 0.15)); x += rng.int(-1, 1); y += rng.int(0, 1); x = Math.max(0, Math.min(15, x)); y = Math.max(0, Math.min(15, y)); }
-    };
-    switch (id) {
-      case SAND: fill(col(0)); speckle(50, 0.14); break;
-      case SANDSTONE:
-        fill(col(0)); speckle(30, 0.1);
-        for (const ry of [3, 8, 12]) for (let x = 0; x < 16; x++) if (rng.next() > 0.25) px(x, ry + (x % 2), col(-0.12));
-        break;
-      case ROCK: fill(col(nz(0.08))); speckle(40, 0.12); crack(9, 0.05); crack(7, 0.05); break;
-      case GRAVEL:
-        fill(col(-0.04));
-        for (let i = 0; i < 14; i++) {
-          const x = rng.int(1, 14), y = rng.int(1, 14);
-          px(x, y, col(0.12)); px(x + 1, y, col(0.05)); px(x, y + 1, col(-0.15)); px(x - 1, y, col(-0.1));
-        }
-        break;
-      case DIRT: fill(col(0)); speckle(70, 0.22); break;
-      case SALT:
-        fill(col(0.04)); speckle(25, 0.08);
-        for (let y = 2; y < 16; y += 5) for (let x = 0; x < 16; x++) if (rng.next() > 0.4) px(x, y + (x % 3 === 2 ? 1 : 0), col(-0.12));
-        break;
-      case DEADWOOD:
-        fill(col(0));
-        for (let x = 0; x < 16; x++) for (let y = 0; y < 16; y++) px(x, y, col(nz(0.16) + Math.sin(y * 0.9 + x) * 0.03));
-        px(5, 6, col(-0.2)); px(6, 6, col(-0.25)); px(5, 7, col(-0.15));
-        break;
-      case GLASS:
-        fill(col(0, 0.16));
-        for (let i = 0; i < 16; i++) { px(i, 0, col(0.12, 0.4)); px(i, 15, col(0.12, 0.4)); px(0, i, col(0.12, 0.4)); px(15, i, col(0.12, 0.4)); }
-        for (let i = 2; i < 8; i++) px(i, i + 2, col(0.3, 0.4));
-        break;
-      case INSGLASS:
-        fill(col(0, 0.26));
-        for (let i = 0; i < 16; i++) { px(i, 0, col(0.1, 0.55)); px(i, 15, col(0.1, 0.55)); px(0, i, col(0.1, 0.55)); px(15, i, col(0.1, 0.55)); px(8, i, col(0.06, 0.5)); px(i, 8, col(0.06, 0.5)); }
-        break;
-      case HULL:
-        fill(col(0));
-        for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) px(x, y, col(-y * 0.006 + nz(0.05)));
-        for (let x = 0; x < 16; x++) px(x, 10, col(-0.22));
-        for (const rx of [1, 5, 9, 13]) { px(rx, 9, col(0.18)); px(rx, 11, col(0.12)); }
-        break;
-      case DOOR_CLOSED:
-        // bottom half: recessed panel + handle
-        fill(col(-0.03)); speckle(12, 0.06);
-        for (let i = 0; i < 16; i++) { px(i, 0, col(-0.22)); px(i, 15, col(-0.22)); px(0, i, col(-0.22)); px(15, i, col(-0.22)); }
-        g.strokeStyle = col(0.08); g.strokeRect(tx + 3.5, ty + 2.5, 8, 10);
-        for (let y = 7; y <= 9; y++) px(12, y, col(0.3));
-        break;
-      case DOOR_UPPER:
-        // top half: same frame, but a viewport instead of a handle
-        fill(col(-0.03)); speckle(12, 0.06);
-        for (let i = 0; i < 16; i++) { px(i, 0, col(-0.22)); px(i, 15, col(-0.22)); px(0, i, col(-0.22)); px(15, i, col(-0.22)); }
-        for (let y = 4; y <= 11; y++) for (let x = 5; x <= 10; x++) px(x, y, col(-0.3, 1, -0.1, -0.02, 0.06));
-        g.strokeStyle = col(0.14); g.strokeRect(tx + 4.5, ty + 3.5, 7, 9);
-        break;
-      case DOOR_OPEN:
-        // leaf parked in the frame: mostly see-through, one steel edge visible
-        for (let y = 0; y < 16; y++) { px(0, y, col(-0.1, 0.9)); px(1, y, col(0.05, 0.85)); px(2, y, col(-0.15, 0.7)); }
-        px(1, 7, col(0.3, 0.9)); px(1, 8, col(0.3, 0.9));
-        break;
-      case LAMP:
-        fill(col(-0.25));
-        for (let y = 5; y <= 10; y++) for (let x = 5; x <= 10; x++) px(x, y, col(y > 5 && y < 10 && x > 5 && x < 10 ? 0.38 : 0.2));
-        for (let x = 4; x <= 11; x++) { px(x, 4, col(-0.15)); px(x, 11, col(-0.15)); }
-        break;
-      case METAL:
-        fill(col(0));
-        for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) px(x, y, col((y % 3 === 0 ? -0.06 : 0.03) + nz(0.05)));
-        for (const [rx, ry] of [[2, 2], [13, 2], [2, 13], [13, 13]] as const) px(rx, ry, col(0.2));
-        break;
-      case BEACON:
-        fill(col(-0.25)); speckle(10, 0.08);
-        for (let dy = -3; dy <= 3; dy++) { const w2 = 3 - Math.abs(dy); for (let dx = -w2; dx <= w2; dx++) px(8 + dx, 8 + dy, col(dy === 0 ? 0 : 0.05, 1)); }
-        px(8, 7, col(0.3, 1)); px(7, 8, col(0.2, 1));
-        break;
-      case BENCH:
-        // workbench top: thick slab with sawn edge, tools laid on it
-        fill(col(0)); speckle(14, 0.08);
-        for (let x = 0; x < 16; x++) { px(x, 0, col(-0.28)); px(x, 1, col(0.12)); px(x, 5, col(-0.22)); }
-        for (let x = 0; x < 16; x++) for (let y = 6; y < 16; y++) px(x, y, col(-0.12 + (y % 4 === 0 ? -0.08 : 0) + nz(0.05)));
-        // saw + mallet silhouettes on the slab
-        for (let x = 3; x <= 12; x++) px(x, 3, "rgba(150,156,168,1)");
-        px(2, 3, "rgba(90,64,40,1)"); px(2, 4, "rgba(90,64,40,1)");
-        for (let x = 8; x <= 11; x++) { px(x, 2, "rgba(110,80,50,1)"); }
-        px(11, 2, "rgba(150,156,168,1)"); px(12, 2, "rgba(150,156,168,1)"); px(11, 3, "rgba(150,156,168,1)"); px(12, 3, "rgba(150,156,168,1)");
-        break;
-      case BENCH_EXT:
-        // frame under the bench top: legs, drawer face, shelf
-        fill(col(-0.18)); speckle(10, 0.06);
-        for (const lx of [1, 2, 13, 14]) for (let y = 0; y < 16; y++) px(lx, y, col(0.1));
-        for (let y = 3; y <= 8; y++) for (let x = 4; x <= 11; x++) px(x, y, col(0.06 + nz(0.04)));
-        for (let x = 4; x <= 11; x++) { px(x, 3, col(-0.3)); px(x, 8, col(-0.3)); }
-        px(7, 5, "rgba(190,190,190,1)"); px(8, 5, "rgba(190,190,190,1)");
-        for (let x = 3; x <= 12; x++) px(x, 12, col(0.12));
-        for (let x = 3; x <= 12; x++) px(x, 13, col(-0.25));
-        break;
-      case CAMPFIRE:
-        fill(col(-0.1));
-        for (let i = 0; i < 16; i += 2) { px(i, 13, col(0.15, 1, 0.02, -0.02, 0)); px(i + 1, 14, col(0.08)); }
-        for (let i = 2; i < 12; i++) { px(i, 14 - i + 2, col(0.05, 1, -0.1, -0.15, -0.25)); px(i, i - 1, col(0.0, 1, -0.12, -0.18, -0.3)); }
-        for (let y = 5; y <= 10; y++) for (let x = 6; x <= 9; x++) px(x, y, col(y < 8 ? 0.3 : 0.18, 1, 0.25, -0.05, -0.3));
-        px(7, 6, col(0.45, 1, 0.3, 0.1, -0.25)); px(8, 5, col(0.4, 1, 0.25, 0.05, -0.25));
-        break;
-      case WATER7: case WATER6: case WATER5: case WATER4: case WATER3: case WATER2: case WATER1: case WATER:
-        fill(col(0, 0.72));
-        for (const ry of [2, 6, 10, 14]) for (let x = 0; x < 16; x++) if (rng.next() > 0.45) px(x, ry + (x % 4 < 2 ? 0 : 1), col(0.15, 0.8));
-        speckle(10, 0.08);
-        break;
-      case ADOBE:
-        fill(col(nz(0.06)));
-        for (const ry of [3, 7, 11]) for (let x = 0; x < 16; x++) px(x, ry, col(-0.18));
-        for (let band = 0, y0 = 0; y0 < 16; y0 += 4, band++)
-          for (let x = (band % 2) * 4; x < 16; x += 8) for (let y = y0; y < y0 + 3; y++) px(x, y, col(-0.15));
-        break;
-      case ENGINECORE:
-        // dark violet casing, glowing alien core with a bright ring
-        fill(col(-0.35, 1, 0.05, 0, 0.1));
-        for (let i = 0; i < 24; i++) px(rng.int(0, 15), rng.int(0, 15), col(-0.25, 1, 0.1, 0, 0.18));
-        for (let x = 4; x <= 11; x++) for (let y = 4; y <= 11; y++) {
-          const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
-          if (d >= 3.5) px(x, y, col(0.12, 1, 0.55, 0.15, 0.85));       // ring
-          else px(x, y, col(0.3 + (3 - d) * 0.15, 1, 0.75, 0.3, 1));     // hot core
-        }
-        break;
-      case REGULATOR:
-        // steel panel: heat-exchange fins on top, glowing teal vent ring below
-        fill(col(-0.08)); speckle(10, 0.05);
-        for (const ry of [1, 3, 5]) for (let x = 2; x <= 13; x++) px(x, ry, col(-0.25));
-        for (let x = 4; x <= 11; x++) for (let y = 7; y <= 14; y++) {
-          const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 10.5));
-          if (d >= 3.2) px(x, y, col(0.12));
-          else px(x, y, col(0.22 + (3 - d) * 0.1, 1, -0.05, 0.15, 0.2));
-        }
-        break;
-      case CACTUS:
-        fill(col(0)); speckle(36, 0.1);
-        for (const rx of [2, 7, 12]) for (let y = 0; y < 16; y++) px(rx, y, col(-0.14));
-        for (const [ax, ay] of [[4, 3], [9, 5], [6, 8], [11, 10], [3, 13], [8, 14]]) {
-          px(ax, ay, col(0.22)); px(ax + 1, ay, col(-0.2)); px(ax, ay + 1, col(-0.2));
-        }
-        px(13, 1, "rgba(214,74,130,1)"); px(1, 6, "rgba(198,58,114,1)"); px(5, 11, "rgba(214,74,130,1)");
-        break;
-      case CHEST:
-        // wooden crate: planks, steel band across the lid, latch plate
-        fill(col(-0.02)); speckle(18, 0.07);
-        for (let x = 0; x < 16; x++) { px(x, 0, col(-0.28)); px(x, 7, col(-0.24)); px(x, 15, col(-0.3)); }
-        for (let x = 0; x < 16; x++) { px(x, 4, "rgba(148,154,166,1)"); px(x, 5, "rgba(120,126,138,1)"); }
-        for (let y = 2; y < 5; y++) for (const lx of [7, 8]) px(lx, y, "rgba(200,205,215,1)");
-        px(7, 6, "rgba(40,42,48,1)"); px(8, 6, "rgba(40,42,48,1)");
-        break;
-      case FARMLAND:
-        // tilled rows: dark packed earth scored left-to-right
-        fill(col(nz(0.04)));
-        for (const ry of [2, 6, 10, 14]) for (let x = 0; x < 16; x++) px(x, ry, col(-0.14));
-        for (const ry of [3, 7, 11]) for (let x = 0; x < 16; x++) if (rng.next() > 0.6) px(x, ry, col(0.1));
-        break;
-      case MELON_1: case MELON_2: {
-        // sprout, then a ripe striped melon, painted on leafy ground
-        fill(col(nz(0.03)));
-        if (id === MELON_1) {
-          for (const [sx, sy] of [[7, 13], [8, 13], [7, 12], [8, 12], [9, 13]] as const) px(sx, sy, col(0.08));
-          px(6, 11, col(0.16)); px(9, 10, col(0.12)); px(7, 11, col(0.02));
-        } else {
-          for (let y = 6; y <= 13; y++) for (let x = 3; x <= 12; x++) {
-            const d = Math.hypot(x - 7.5, (y - 9.5) * 1.35);
-            if (d > 5.2) continue;
-            px(x, y, (x + ((y / 2) | 0)) % 4 === 0 ? col(-0.14) : col(0.05));
-          }
-          px(8, 5, col(-0.1)); px(7, 5, col(-0.16));
-          px(2, 13, col(0.1)); px(13, 12, col(0.06)); px(4, 14, col(0.08));
-        }
-        break;
-      }
-      case WHEAT_1: case WHEAT_2: {
-        fill(col(nz(0.03)));
-        for (const ry of [13, 14]) for (let x = 0; x < 16; x++) px(x, ry, col(-0.12));
-        if (id === WHEAT_1) {
-          for (const sx of [4, 8, 12]) for (let y = 11; y <= 14; y++) px(sx, y, col(0.1));
-        } else {
-          for (const sx of [3, 8, 13]) {
-            for (let y = 3; y <= 14; y++) px(sx, y, col(-0.05));
-            for (let y = 3; y <= 8; y += 2) { px(sx - 1, y, col(0.2)); px(sx + 1, y, col(0.15)); }
-          }
-        }
-        break;
-      }
-      case CACTUS_FRUIT:
-        // same ribbed column, but a magenta fruit crown
-        fill(col(0)); speckle(36, 0.1);
-        for (const rx of [2, 7, 12]) for (let y = 0; y < 16; y++) px(rx, y, col(-0.14));
-        for (const [ax, ay] of [[4, 4], [9, 6], [6, 10], [11, 12], [3, 14]] as const) {
-          px(ax, ay, col(0.22)); px(ax + 1, ay, col(-0.2)); px(ax, ay + 1, col(-0.2));
-        }
-        for (let y = 0; y <= 3; y++) for (let x = 5; x <= 10; x++)
-          px(x, y, "rgba(214,74,130,1)");
-        px(6, 0, "rgba(238,150,190,1)"); px(9, 1, "rgba(238,150,190,1)");
-        break;
-      case CHEST_CONNECTOR:
-        // steel rail bolted across a crate end: the chest link
-        fill(col(-0.12)); speckle(10, 0.05);
-        for (let x = 0; x < 16; x++) { px(x, 0, col(-0.26)); px(x, 15, col(-0.26)); px(x, 7, "rgba(150,156,168,1)"); px(x, 8, "rgba(110,116,128,1)"); }
-        for (const [rx, ry] of [[2, 3], [13, 3], [2, 12], [13, 12]] as const) px(rx, ry, "rgba(200,205,215,1)");
-        for (let y = 2; y <= 5; y++) px(0, y, col(0.14));
-        for (let y = 2; y <= 5; y++) px(15, y, col(0.14));
-        break;
-      case METAL_PLATING:
-        // shipboard plate: brushed metal, rivet seams
-        fill(col(0));
-        for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) px(x, y, col((x % 4 === 0 ? -0.05 : 0.02) + nz(0.04)));
-        for (let i = 0; i < 16; i++) { px(i, 0, col(-0.2)); px(i, 15, col(-0.2)); px(0, i, col(-0.16)); px(15, i, col(-0.16)); }
-        for (const [rx, ry] of [[3, 3], [12, 3], [3, 12], [12, 12]] as const) px(rx, ry, col(0.22));
-        break;
-      case DOOR_INNER: case DOOR_INNER_UPPER: {
-        // lighter interior door: same frame, no window up top is replaced by a slim slit
-        fill(col(-0.05)); speckle(10, 0.05);
-        for (let i = 0; i < 16; i++) { px(i, 0, col(-0.2)); px(i, 15, col(-0.2)); px(0, i, col(-0.2)); px(15, i, col(-0.2)); }
-        if (id === DOOR_INNER) {
-          g.strokeStyle = col(0.06); g.strokeRect(tx + 4.5, ty + 3.5, 7, 9);
-          for (let y = 7; y <= 9; y++) px(12, y, col(0.26));
-        } else {
-          for (let y = 5; y <= 10; y++) for (let x = 6; x <= 9; x++) px(x, y, col(0.1, 1, -0.05, 0.1, 0.15));
-          g.strokeStyle = col(0.12); g.strokeRect(tx + 5.5, ty + 4.5, 5, 7);
-        }
-        break;
-      }
-      case DOOR_INNER_OPEN:
-        for (let y = 0; y < 16; y++) { px(0, y, col(-0.12, 0.9)); px(1, y, col(0.03, 0.85)); px(2, y, col(-0.17, 0.7)); }
-        px(1, 7, col(0.26, 0.9)); px(1, 8, col(0.26, 0.9));
-        break;
-      case BED:
-        // quilted top with folded blanket edge
-        fill(col(nz(0.03)));
-        for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if ((x + y) % 5 === 0) px(x, y, col(-0.08));
-        g.strokeStyle = "rgba(60,26,24,1)"; g.lineWidth = 1; g.strokeRect(tx + 0.5, ty + 0.5, 15, 15);
-        for (let x = 0; x < 16; x++) { px(x, 11, "rgba(90,40,36,1)"); px(x, 12, "rgba(150,80,70,1)"); }
-        for (let y = 0; y < 11; y++) { px(0, y, col(0.12)); px(15, y, col(-0.1)); }
-        break;
-      case BED_EXT:
-        // pillow end
-        fill(col(nz(0.03)));
-        g.strokeStyle = "rgba(60,26,24,1)"; g.lineWidth = 1; g.strokeRect(tx + 0.5, ty + 0.5, 15, 15);
-        g.fillStyle = "rgba(226,220,206,1)"; g.fillRect(tx + 3, ty + 4, 10, 8);
-        g.strokeStyle = "rgba(160,152,134,1)"; g.strokeRect(tx + 3.5, ty + 4.5, 9, 7);
-        for (let x = 0; x < 16; x++) { px(x, 11, "rgba(90,40,36,1)"); px(x, 12, "rgba(150,80,70,1)"); }
-        break;
-      case GRASS:
-        // earth under a hardy green crust
-        fill(col(-0.18, 1, -0.06, -0.12, -0.02)); speckle(40, 0.18);
-        for (let x = 0; x < 16; x++) {
-          const h = 3 + Math.round(rng.next() * 3);
-          for (let y = 0; y < h; y++) px(x, y, col(nz(0.1) + (y === 0 ? 0.08 : 0)));
-        }
-        break;
-      case WOOD:
-        // bark: vertical grain with a knot
-        fill(col(0));
-        for (let x = 0; x < 16; x++) {
-          const d = -0.1 + (x % 4 === 0 ? -0.1 : 0) + Math.sin(x * 1.7) * 0.05;
-          for (let y = 0; y < 16; y++) px(x, y, col(d + nz(0.06)));
-        }
-        px(9, 6, col(-0.25)); px(10, 6, col(-0.2)); px(9, 7, col(-0.18)); px(10, 7, col(-0.28));
-        break;
-      case LEAVES:
-        // dense mottle with pinholes of shade
-        fill(col(0)); speckle(90, 0.3);
-        for (let i = 0; i < 8; i++) { const x = rng.int(1, 14), y = rng.int(1, 14); px(x, y, col(-0.28)); px(x + 1, y + 1, col(0.18)); }
-        break;
-      case SAPLING:
-        // a small green shoot on a bare stalk
-        for (let y = 6; y < 16; y++) px(8, y, col(-0.25));
-        px(7, 5, col(0.1)); px(8, 5, col(0.15)); px(9, 5, col(0.1));
-        px(6, 4, col(0.05)); px(7, 4, col(0.12)); px(8, 4, col(0.18)); px(9, 4, col(0.12)); px(10, 4, col(0.05));
-        px(7, 3, col(0.08)); px(8, 3, col(0.14)); px(9, 3, col(0.08));
-        px(8, 2, col(0.1));
-        break;
+  const col = (dl: number, a = 1, hr = 0, hg = 0, hb = 0) =>
+    `rgba(${Math.round(cl(br + dl + hr) * 255)},${Math.round(cl(bg + dl + hg) * 255)},${Math.round(cl(bb + dl + hb) * 255)},${a})`;
+  const px = (x: number, y: number, c: string) => { g.fillStyle = c; g.fillRect(tx + x, ty + y, 1, 1); };
+  const fill = (c: string) => { g.fillStyle = c; g.fillRect(tx, ty, TILE_PX, TILE_PX); };
+  const nz = (s: number) => (rng.next() - 0.5) * s;
+  const speckle = (n: number, s: number) => {
+    for (let i = 0; i < n; i++) px(rng.int(0, 15), rng.int(0, 15), col(nz(s)));
+  };
+  const crack = (len: number, s: number, dl = -0.15) => {
+    let x = rng.int(1, 13), y = rng.int(1, 13);
+    for (let i = 0; i < len; i++) {
+      px(x, y, col(dl + nz(s)));
+      x += rng.int(-1, 1); y += rng.int(0, 1);
+      x = Math.max(0, Math.min(15, x)); y = Math.max(0, Math.min(15, y));
     }
   };
-  for (const id of TILE_LIST) draw(id);
+  // tiling 2-octave value noise over the tile, in [-1, 1]: the soft mottling
+  // real materials have that per-pixel static never does
+  const fbm = (): number[] => {
+    const layer = (gs: number): number[] => {
+      const grid: number[] = [];
+      for (let i = 0; i < gs * gs; i++) grid.push(rng.next());
+      const at = (xx: number, yy: number) => grid[(yy % gs) * gs + (xx % gs)];
+      const out: number[] = [];
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+        const sx = (x * gs) / 16, sy = (y * gs) / 16;
+        const x0 = Math.floor(sx), y0 = Math.floor(sy), fx = sx - x0, fy = sy - y0;
+        const top = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * fx;
+        const bot = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * fx;
+        out.push(top + (bot - top) * fy);
+      }
+      return out;
+    };
+    const a = layer(4), b = layer(8);
+    return a.map((v, i) => (v * 0.65 + b[i] * 0.35 - 0.5) * 2);
+  };
+  // paint every pixel from the noise plus a recipe's own positional term
+  const fbmFill = (fn: (x: number, y: number, n: number) => number): number[] => {
+    const n = fbm();
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) px(x, y, col(fn(x, y, n[y * 16 + x])));
+    return n;
+  };
+  // one rounded stone: dark rim, lit from the top-left
+  const pebble = (cx: number, cy: number, r: number, dl: number) => {
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const d = Math.hypot(dx, dy);
+      if (d > r + 0.3) continue;
+      px(cx + dx, cy + dy, col(dl + (d > r - 0.6 ? -0.2 : dx + dy < -r * 0.5 ? 0.14 : -0.02)));
+    }
+  };
+  // diagonal reflection streaks across a face
+  const glint = (offs: number[], alpha: number, dl = 0.25) => {
+    for (const k of offs) for (let i = 0; i < 16; i++) {
+      const y = i - k;
+      if (y >= 0 && y < 16) px(i, y, col(dl, alpha));
+    }
+  };
+
+  const recipes: Record<string, () => void> = {};
+  const R = (key: string, fn: () => void) => (recipes[key] = fn);
+
+  R(String(SAND), () => {
+    fbmFill((x, y, n) => n * 0.07 + Math.sin((x + y) * 0.55 + n * 5) * 0.03); // wind ripples
+    speckle(24, 0.18);                                                        // coarse grit
+    for (let i = 0; i < 5; i++) px(rng.int(0, 15), rng.int(0, 15), col(-0.14));
+  });
+  R(String(SANDSTONE), () => {
+    const n = fbm();
+    for (let y = 0; y < 16; y++) {
+      const band = Math.floor(((y + n[y * 16 + 8] * 1.2 + 16) % 16) / 4);     // drifting strata
+      const tone = [-0.05, 0.03, -0.01, 0.05][band % 4];
+      for (let x = 0; x < 16; x++) px(x, y, col(tone + n[y * 16 + x] * 0.05 + (y % 4 === 0 ? -0.12 : 0)));
+    }
+    speckle(26, 0.08);
+  });
+  R("sandstone_top", () => {
+    fbmFill((x, y, n) => n * 0.06);
+    for (let i = 0; i < 7; i++) { const x = rng.int(1, 14), y = rng.int(1, 14); px(x, y, col(-0.13)); px(x + 1, y, col(-0.06)); } // wind pits
+    speckle(30, 0.1);
+  });
+  R(String(ROCK), () => {
+    fbmFill((x, y, n) => n * 0.1);                                            // large mottling
+    crack(11, 0.06, -0.14); crack(8, 0.06, -0.2);
+    for (let i = 0; i < 4; i++) px(rng.int(0, 15), rng.int(0, 15), col(0.2)); // mineral flecks
+    speckle(16, 0.1);
+  });
+  R(String(GRAVEL), () => {
+    fbmFill((x, y, n) => n * 0.08 - 0.06);                                    // sandy gaps
+    for (let i = 0; i < 9; i++) pebble(rng.int(2, 13), rng.int(2, 13), rng.int(1, 3), nz(0.18));
+  });
+  R(String(DIRT), () => {
+    fbmFill((x, y, n) => n * 0.13 + (Math.sin(x * 1.4) + Math.cos(y * 1.1)) * 0.03); // clods
+    speckle(44, 0.2);
+    for (let i = 0; i < 3; i++) { const x = rng.int(2, 13), y = rng.int(2, 13); px(x, y, col(0.16)); px(x + 1, y, col(0.08)); }
+  });
+  R(String(SALT), () => {
+    fbmFill((x, y, n) => n * 0.05 + 0.04);                                     // bleached crust
+    crack(10, 0.03, 0.06); crack(8, 0.03, 0.09);                               // polygonal plates
+    for (let i = 0; i < 30; i++) px(rng.int(0, 15), rng.int(0, 15), col(0.13)); // crystalline sparkle
+  });
+  R(String(DEADWOOD), () => {
+    const n = fbmFill((x, y, nn) => nn * 0.04 - 0.05);
+    for (let y = 0; y < 16; y++) {
+      for (let x = 1; x < 15; x++)                                             // splintered grain
+        if (Math.sin(x * 0.5 + y * 2.6 + n[y * 16 + x] * 4) > 0.7) px(x, y, col(-0.18));
+      if (y % 5 === 2 && rng.next() > 0.4) px(rng.int(2, 13), y, col(0.12));   // light wear
+    }
+  });
+  R(String(GLASS), () => {
+    fill("rgba(170,215,232,0.22)");
+    glint([5, 8, 14], 0.5, 0.3);
+    glint([11], 0.32, 0.22);
+  });
+  R(String(INSGLASS), () => {
+    fbmFill((x, y, n) => n * 0.05);                                            // frosty foam core
+    crack(7, 0.02, -0.1);
+    glint([9], 0.18, 0.12);                                                    // only a hint shows through
+  });
+  R(String(HULL), () => {
+    const n = fbmFill((x, y, nn) => nn * 0.03);                               // faint panel tone
+    for (let x = 0; x < 16; x++) {                                            // weld seam
+      px(x, 10, col(-0.24));
+      if (x % 2 === 0) px(x, 9, col(-0.08));
+    }
+    for (let y = 0; y < 16; y++) {                                            // rivet columns
+      if (y % 4 !== 1) continue;
+      for (const rx of [1, 6, 11]) {
+        px(rx, y, col(0.22)); px(rx + 1, y, col(0.05)); px(rx, y + 1, col(-0.16)); px(rx + 1, y + 1, col(-0.12));
+      }
+    }
+    for (let i = 0; i < 10; i++) px(rng.int(0, 15), rng.int(0, 15), col(-0.02, 1, 0.06, -0.01, -0.08)); // micrometeoroid pits
+    if (n[3 * 16 + 12] > 0.3) px(12, 3, col(0.35, 1, 0.1, 0, 0));             // one stray bolt catch
+  });
+  R("hull_top", () => {
+    fbmFill((x, y, n) => n * 0.03);
+    for (const ry of [4, 12]) for (let x = 0; x < 16; x++) px(x, ry, col(-0.22)); // sun-bleached seams
+    for (const rx of [2, 7, 12]) for (let y = 0; y < 16; y++) if (y % 4 === 2) px(rx, y, col(0.2));
+    for (let i = 0; i < 8; i++) px(rng.int(0, 15), rng.int(0, 15), col(0.28, 1, 0.05, -0.02, -0.06)); // sandblown scuffs
+  });
+  R(String(DOOR_CLOSED), () => {
+    fbmFill((x, y, n) => n * 0.03 - 0.03);
+    for (let i = 0; i < 16; i++) { px(i, 0, col(-0.26)); px(i, 15, col(-0.26)); px(0, i, col(-0.26)); px(15, i, col(-0.26)); }
+    for (let y = 2; y <= 12; y++)                                             // recessed panel bevel
+      for (let x = 3; x <= 12; x++) {
+        if (x === 3 || x === 12 || y === 2 || y === 12) px(x, y, col(-0.2));
+        else if (x === 4 && y > 3 && y < 11) px(x, y, col(0.08));             // light from the left
+      }
+    for (let y = 7; y <= 9; y++) { px(13, y, col(0.35)); px(12, y, col(-0.28)); } // handle + shadow
+    for (let x = 5; x < 11; x++) px(x, 14, col(-0.15, 1, 0.1, 0, -0.02));     // boot scuffs
+  });
+  R(String(DOOR_UPPER), () => {
+    fbmFill((x, y, n) => n * 0.03 - 0.03);
+    for (let i = 0; i < 16; i++) { px(i, 0, col(-0.26)); px(i, 15, col(-0.26)); px(0, i, col(-0.26)); px(15, i, col(-0.26)); }
+    for (let y = 4; y <= 11; y++) for (let x = 5; x <= 10; x++) px(x, y, col(-0.32, 1, -0.1, -0.02, 0.06)); // viewport
+    for (const k of [5, 8])                                                   // glass glint, viewport only
+      for (let x = 5; x <= 10; x++) { const y = x - k + 4; if (y >= 4 && y <= 11) px(x, y, col(0.35, 0.5)); }
+    for (const [rx, ry] of [[2, 2], [13, 2], [2, 13], [13, 13]] as const) px(rx, ry, col(0.2)); // bolts
+  });
+  R(String(DOOR_OPEN), () => {
+    // leaf parked in the frame: mostly see-through, one steel edge visible
+    for (let y = 0; y < 16; y++) { px(0, y, col(-0.1, 0.9)); px(1, y, col(0.05, 0.85)); px(2, y, col(-0.15, 0.7)); }
+    px(1, 7, col(0.3, 0.9)); px(1, 8, col(0.3, 0.9));
+  });
+  R(String(LAMP), () => {
+    fill(col(-0.28));
+    for (let y = 4; y <= 11; y++) for (let x = 4; x <= 11; x++) {
+      const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+      px(x, y, d > 3 ? col(0.12) : col(0.42 - d * 0.06, 1, 0.3, 0.18, -0.02)); // hot glass with a falloff
+    }
+    for (const [rx, ry] of [[4, 4], [11, 4], [4, 11], [11, 11]] as const) px(rx, ry, col(0.25)); // corner bolts
+  });
+  R(String(METAL), () => {
+    fbmFill((x, y, n) => n * 0.03 + (y % 2 === 0 ? 0.02 : -0.02));            // brushed grain
+    for (const [rx, ry] of [[2, 2], [13, 2], [2, 13], [13, 13]] as const) px(rx, ry, col(0.22)); // bevel + bolts
+    for (let i = 0; i < 5; i++) {                                             // rust nicks
+      const x = rng.int(2, 13), y = rng.int(2, 13);
+      px(x, y, col(-0.12, 1, 0.24, 0.02, -0.14)); px(x + 1, y, col(-0.2, 1, 0.16, 0, -0.1));
+    }
+  });
+  R(String(BEACON), () => {
+    fbmFill((x, y, n) => n * 0.03 - 0.25);
+    for (let dy = -3; dy <= 3; dy++) {
+      const w2 = 3 - Math.abs(dy);
+      for (let dx = -w2; dx <= w2; dx++) {
+        if (Math.hypot(dx, dy) > w2 + 0.3) continue;
+        px(8 + dx, 8 + dy, col(dy === 0 ? 0.05 : 0, 1, 0.95 - Math.abs(dy) * 0.08, 0.15, 0.1)); // housing lamp, redder mid
+      }
+    }
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
+      if (Math.hypot(dx, dy) < 1.6) px(8 + dx, 8 + dy, col(0.4 - Math.hypot(dx, dy) * 0.15, 1, 1, 0.3, 0.1));
+    for (let y = 0; y < 16; y += 3) { const w = 3 - Math.abs((y % 6) - 3); for (let dx = -w; dx <= w; dx++) px(8 + dx, y, col(0.08)); } // housing seams
+  });
+  R(String(BENCH), () => {
+    // side view: thick slab over legs, drawer face between them
+    const n = fbmFill((x, y, nn) => nn * 0.05 + (y < 5 ? 0.02 : -0.14));
+    for (let x = 0; x < 16; x++) { px(x, 0, col(0.14)); px(x, 1, col(0.06)); px(x, 4, col(-0.26)); }
+    for (let y = 5; y < 16; y++) for (const lx of [1, 2, 13, 14]) px(lx, y, col(0.06 + n[y * 16 + lx] * 0.02)); // legs
+    for (let y = 6; y <= 10; y++) for (let x = 4; x <= 11; x++) px(x, y, col(-0.04 + n[y * 16 + x] * 0.04));    // drawer face
+    for (let x = 4; x <= 11; x++) { px(x, 6, col(-0.28)); px(x, 10, col(-0.28)); }
+    px(7, 8, "rgba(190,190,190,1)"); px(8, 8, "rgba(190,190,190,1)");        // handle
+    for (let x = 3; x <= 12; x++) { px(x, 13, col(0.1)); px(x, 14, col(-0.3)); } // lower shelf
+  });
+  R("bench_top", () => {
+    // top-down planks with a saw and mallet laid out
+    fbmFill((x, y, nn) => nn * 0.04 + Math.sin(y * 1.7 + nn * 3) * 0.03);
+    for (let x = 0; x < 16; x++) { px(x, 0, col(-0.2)); px(x, 15, col(-0.2)); }
+    for (let y = 0; y < 16; y++) if (y % 5 === 4) for (let x = 0; x < 16; x++) px(x, y, col(-0.14)); // plank seams
+    for (let x = 2; x <= 11; x++) px(x, 4, "rgba(160,166,178,1)");            // saw blade
+    for (let x = 2; x <= 11; x += 2) px(x, 5, "rgba(120,126,140,1)");         // teeth
+    px(12, 4, "rgba(96,66,40,1)"); px(13, 4, "rgba(96,66,40,1)"); px(12, 5, "rgba(80,54,32,1)"); // handle
+    for (let x = 4; x <= 6; x++) px(x, 9, "rgba(120,88,54,1)");               // mallet head
+    for (let x = 4; x <= 6; x++) px(x, 10, "rgba(100,72,44,1)");
+    px(5, 11, "rgba(150,156,168,1)"); px(5, 12, "rgba(150,156,168,1)"); px(5, 13, "rgba(140,146,158,1)"); // shaft
+    for (let i = 0; i < 6; i++) px(rng.int(0, 15), rng.int(0, 15), col(-0.06, 1, 0.02, -0.01, -0.04)); // shavings
+  });
+  R(String(BENCH_EXT), () => {
+    fbmFill((x, y, n) => n * 0.04 - 0.14);                                   // plainer frame under the extension
+    for (let x = 0; x < 16; x++) { px(x, 0, col(0.05)); px(x, 2, col(-0.24)); }
+    for (let y = 3; y < 16; y++) for (const lx of [1, 2, 13, 14]) px(lx, y, col(0.04));
+    for (let x = 3; x <= 12; x++) { px(x, 11, col(0.08)); px(x, 12, col(-0.26)); } // shelf
+  });
+  R("bench_ext_top", () => {
+    fbmFill((x, y, nn) => nn * 0.04 + Math.sin(x * 1.6 + nn * 2) * 0.03);    // plain plank top
+    for (let y = 0; y < 16; y++) { px(0, y, col(-0.18)); px(15, y, col(-0.18)); }
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (x % 6 === 3 && rng.next() > 0.5) px(x, y, col(-0.1));
+  });
+  R(String(CAMPFIRE), () => {
+    // side view: stone ring, crossed logs, flame painted on the block
+    fbmFill((x, y, n) => n * 0.05 - 0.1);                                     // ashy base, solid (opaque block)
+    for (let i = 0; i < 5; i++) pebble(2 + i * 3, 13, 1, -0.05);             // stone ring
+    g.strokeStyle = "rgba(70,50,32,1)"; g.lineWidth = 2;                    // crossed logs
+    g.beginPath(); g.moveTo(tx + 4, ty + 13); g.lineTo(tx + 12, ty + 9); g.stroke();
+    g.beginPath(); g.moveTo(tx + 12, ty + 13); g.lineTo(tx + 4, ty + 9); g.stroke();
+    g.lineWidth = 1;
+    for (let y = 2; y < 10; y++) {                                          // flame, brighter up the middle
+      const w = Math.max(0, 5 - Math.abs(y - 7) - (y < 5 ? 5 - y : 0));
+      for (let dx = -w; dx <= w; dx++) {
+        const d = Math.abs(dx) / (w + 1);
+        px(8 + dx, y, col(d * 0.1, 1, 0.85 - d * 0.4, 0.35 - d * 0.25, -0.45));
+      }
+    }
+    px(8, 1, col(0.2, 1, 0.7, 0.15, -0.4)); px(7, 3, col(0.3, 1, 0.9, 0.4, -0.4)); // sparks
+  });
+  R("campfire_top", () => {
+    fbmFill((x, y, n) => -0.12 + n * 0.05);
+    for (let i = 0; i < 16; i++) {                                          // scorched ring
+      const a = (i / 16) * Math.PI * 2;
+      px(8 + Math.round(Math.cos(a) * 5.5), 8 + Math.round(Math.sin(a) * 5.5), col(0.12));
+      px(8 + Math.round(Math.cos(a) * 4), 8 + Math.round(Math.sin(a) * 4), col(-0.3, 1, 0.1, -0.02, -0.06));
+    }
+    for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2 + 0.5; pebble(8 + Math.round(Math.cos(a) * 6), 8 + Math.round(Math.sin(a) * 6), 1, 0); }
+    for (let r = 0; r < 3; r++) for (let i = 0; i < 8; i++) {               // ember glow
+      const a = (i / 8) * Math.PI * 2 + r * 0.4;
+      px(8 + Math.round(Math.cos(a) * r * 1.5), 8 + Math.round(Math.sin(a) * r * 1.5), col(0.2 + (3 - r) * 0.12, 1, 0.5, -0.05, -0.35));
+    }
+  });
+  for (const w of [WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1, WATER])
+    R(String(w), () => {
+      const n = fbmFill((x, y, nn) => nn * 0.04 + Math.sin((x + y * 0.5) * 0.8 + nn * 4) * 0.04); // drifting ripples
+      for (const ry of [2, 6, 10, 14]) for (let x = 0; x < 16; x++)
+        if (n[ry * 16 + x] > -0.2) px(x, ry + (x % 4 < 2 ? 0 : 1), col(0.16, 0.75));
+      for (let i = 0; i < 5; i++) px(rng.int(0, 15), rng.int(0, 15), col(0.3, 0.5)); // bubbles
+    });
+  R("water_side", () => {
+    fbmFill((x, y, n) => n * 0.04 + y * 0.004);                             // darker with depth
+    for (let x = 0; x < 16; x++) {
+      if (rng.next() > 0.3) px(x, 0, col(0.22, 0.8));                       // surface shimmer line
+      if (x % 3 === 0) px(x, 1 + (x % 2), col(0.1, 0.5));
+    }
+    for (let y = 2; y < 16; y++) if (rng.next() > 0.75) px(rng.int(0, 15), y, col(0.12, 0.4)); // rising bubbles
+  });
+  R(String(ADOBE), () => {
+    fbmFill((x, y, n) => n * 0.08 - 0.02);                                  // sandy mix variation
+    for (let y = 0; y < 16; y++)                                            // mud courses, staggered joints
+      for (let x = 0; x < 16; x++)
+        if (y % 5 === 4 || (x + (Math.floor(y / 5) % 2) * 4) % 8 === 3) px(x, y, col(-0.14 + nz(0.03)));
+    for (let i = 0; i < 3; i++) crack(rng.int(8, 12), 0.05, -0.1);          // sun cracks
+    for (let i = 0; i < 10; i++) px(rng.int(0, 15), rng.int(0, 15), col(0.12)); // straw bits
+  });
+  R(String(ENGINECORE), () => {
+    // dark violet casing, glowing alien core with a bright ring
+    const n = fbmFill((x, y, nn) => nn * 0.06 - 0.35);
+    for (let y = 0; y < 16; y++)
+      if (n[y * 16 + 1] > 0.2) px(1, y, col(-0.1, 1, 0.04, 0, 0.08));       // coolant streaks
+    for (let x = 0; x <= 15; x += 5) { px(x, 0, col(0.1, 1, 0.1, 0, 0.15)); px(x, 15, col(0.1, 1, 0.1, 0, 0.15)); } // conduit runs
+    for (let x = 3; x <= 12; x++) for (let y = 3; y <= 12; y++) {           // hexagonal core
+      const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+      const hex = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5), Math.abs((x + y) - 15) / 2);
+      if (d >= 4.2) continue;
+      if (hex >= 3.4) px(x, y, col(0.15, 1, 0.55, 0.15, 0.85));             // ring
+      else px(x, y, col(0.32 + (3 - d) * 0.12, 1, 0.75, 0.3, 1));           // hot core
+    }
+    for (const [cx, cy] of [[5, 5], [10, 10], [10, 5]] as const) if ((cx + cy) % 2 === 0) px(cx, cy, col(0.45, 1, 0.8, 0.35, 1)); // facets
+  });
+  R(String(REGULATOR), () => {
+    // steel panel: heat-exchange fins on top, glowing teal vent ring below
+    const n = fbmFill((x, y, nn) => nn * 0.03 + (y % 2 === 0 ? 0.015 : -0.015) - 0.08); // brushed steel
+    for (const ry of [1, 3, 5]) {
+      for (let x = 2; x <= 13; x++) px(x, ry, col(-0.28));
+      for (let x = 2; x <= 13; x += 3) px(x, ry - 1, col(0.12));            // fin highlights
+    }
+    for (let x = 4; x <= 11; x++) for (let y = 7; y <= 14; y++) {
+      const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 10.5));
+      if (d >= 3.2) px(x, y, col(0.1 + n[y * 16 + x] * 0.05));
+      else px(x, y, col(0.24 + (3 - d) * 0.1, 1, -0.05, 0.2, 0.22));        // teal vent glow
+    }
+    px(5, 12, col(0.15, 1, -0.1, 0.12, 0.12)); px(10, 9, col(0.15, 1, -0.1, 0.12, 0.12)); // instrument dots
+    for (let y = 7; y <= 14; y++) if (y % 2 === 1) px(14, y, col(-0.2));    // pipe stub
+  });
+  R(String(CACTUS), () => {
+    const n = fbmFill((x, y, nn) => nn * 0.06);
+    for (const rx of [2, 7, 12]) for (let y = 0; y < 16; y++) px(rx, y, col(-0.16 + n[y * 16 + rx] * 0.03)); // ribs
+    for (let x = 0; x < 16; x++) if (x % 5 !== 2 && x % 5 !== 3) for (let y = 0; y < 16; y += 3)
+      if (rng.next() > 0.4) px(x, y, col(0.5, 1, 0.05, 0.02, -0.05));        // spines catch light
+    for (const [ax, ay] of [[4, 3], [9, 5], [6, 8], [11, 10], [3, 13], [8, 14]] as const) {
+      px(ax, ay, col(0.2)); px(ax + 1, ay, col(-0.2)); px(ax, ay + 1, col(-0.2)); // areoles
+    }
+    px(13, 1, "rgba(214,74,130,1)"); px(1, 6, "rgba(198,58,114,1)"); px(5, 11, "rgba(214,74,130,1)"); // rare blossom
+  });
+  R("cactus_top", () => {
+    const n = fbmFill((x, y, nn) => nn * 0.06);                              // top-down rib rings
+    for (let r = 2; r <= 6; r += 2) for (let i = 0; i < 20; i++) {
+      const a = (i / 20) * Math.PI * 2;
+      px(8 + Math.round(Math.cos(a) * r), 8 + Math.round(Math.sin(a) * r), col(r === 6 ? -0.14 : -0.06 + n[i] * 0.05));
+    }
+    for (let i = 0; i < 8; i++) {                                            // crown of spines
+      const a = (i / 8) * Math.PI * 2;
+      px(8 + Math.round(Math.cos(a) * 1.5), 8 + Math.round(Math.sin(a) * 1.5), col(0.45, 1, 0.05, 0.03, -0.04));
+    }
+    px(8, 8, col(0.15));
+  });
+  R(String(CACTUS_FRUIT), () => {
+    // same ribbed column, but a magenta fruit crown
+    const n = fbmFill((x, y, nn) => nn * 0.06);
+    for (const rx of [2, 7, 12]) for (let y = 0; y < 16; y++) px(rx, y, col(-0.16 + n[y * 16 + rx] * 0.03));
+    for (const [ax, ay] of [[4, 4], [9, 6], [6, 10], [11, 12], [3, 14]] as const) {
+      px(ax, ay, col(0.2)); px(ax + 1, ay, col(-0.2)); px(ax, ay + 1, col(-0.2));
+    }
+    for (let y = 0; y <= 3; y++) for (let x = 5; x <= 10; x++)
+      if (y === 3 || x === 5 || x === 10 || rng.next() > 0.3) px(x, y, "rgba(214,74,130,1)"); // fruit mass
+    for (let i = 0; i < 9; i++) px(5 + (i % 4) * 2, Math.floor(i / 4), "rgba(238,150,190,1)"); // seed flecks
+    px(6, 0, "rgba(238,150,190,1)"); px(9, 1, "rgba(248,190,214,1)");
+  });
+  R(String(CHEST), () => {
+    // wooden crate: planks, steel band across the lid, latch plate
+    fbmFill((x, y, nn) => nn * 0.05 - 0.02 + Math.sin(x * 1.3 + nn * 3) * 0.02);
+    for (let x = 0; x < 16; x++) { px(x, 0, col(-0.3)); px(x, 7, col(-0.24)); px(x, 15, col(-0.3)); }
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (x % 5 === 2 && y > 7 && rng.next() > 0.4) px(x, y, col(-0.12)); // lower plank seams
+    for (let x = 0; x < 16; x++) { px(x, 4, "rgba(148,154,166,1)"); px(x, 5, "rgba(120,126,138,1)"); } // steel band
+    for (let y = 2; y < 5; y++) for (const lx of [7, 8]) px(lx, y, "rgba(200,205,215,1)");
+    px(7, 6, "rgba(40,42,48,1)"); px(8, 6, "rgba(40,42,48,1)");              // latch
+    for (let i = 0; i < 4; i++) {                                            // corner brackets
+      const [cx, cy] = [[0, 0], [15, 0], [0, 15], [15, 15]][i];
+      px(cx, cy, col(0.2)); px(cx + (cx ? -1 : 1), cy, col(0.1)); px(cx, cy + (cy ? -1 : 1), col(0.1));
+    }
+  });
+  R("chest_top", () => {
+    fbmFill((x, y, n) => n * 0.05 + Math.sin(y * 1.4 + n * 2) * 0.02);       // lid planks
+    for (let x = 0; x < 16; x++) { px(x, 0, col(-0.26)); px(x, 15, col(-0.26)); }
+    for (let x = 0; x < 16; x++) if (x !== 7 && x !== 8) { px(x, 7, "rgba(148,154,166,1)"); px(x, 8, "rgba(120,126,138,1)"); }
+    for (const [rx, ry] of [[2, 2], [13, 2], [2, 13], [13, 13]] as const) px(rx, ry, "rgba(200,205,215,1)"); // band rivets
+  });
+  R(String(FARMLAND), () => {
+    // tilled rows: dark packed earth scored left-to-right, damp in the furrows
+    const n = fbmFill((x, y, nn) => nn * 0.1 - 0.06);
+    for (const ry of [2, 6, 10, 14]) for (let x = 0; x < 16; x++) px(x, ry, col(-0.16 + nz(0.03)));
+    for (const ry of [1, 5, 9, 13]) for (let x = 0; x < 16; x++)
+      if (n[ry * 16 + x] > -0.1 && rng.next() > 0.55) px(x, ry, col(0.1)); // ridge crests
+    for (let i = 0; i < 8; i++) px(rng.int(0, 15), rng.int(0, 15), col(0.05, 1, 0.0, -0.02, 0.04)); // grit
+  });
+  R("farmland_side", () => {
+    fbmFill((x, y, n) => n * 0.09 - 0.04);
+    for (let x = 0; x < 16; x++) px(x, 0, col(0.14));                        // packed top crust
+    for (let x = 0; x < 16; x++) for (let y = 1; y < 16; y++) if (rng.next() > 0.88) px(x, y, col(0.14)); // crumbly specks
+  });
+  R(String(MELON_1), () => {
+    fill("rgba(0,0,0,0)");
+    for (const [sx, sy] of [[7, 13], [8, 13], [7, 12], [8, 12], [9, 13], [6, 12]] as const) px(sx, sy, col(0.1)); // sprout on bare dirt
+    px(6, 11, col(0.16)); px(9, 10, col(0.12)); px(7, 11, col(0.02));
+    for (let i = 0; i < 4; i++) px(rng.int(5, 10), rng.int(12, 15), col(-0.05));
+  });
+  R(String(MELON_2), () => {
+    // a ripe striped melon sitting on leafy ground
+    fbmFill((x, y, n) => n * 0.04 - 0.02);
+    for (let y = 4; y <= 13; y++) for (let x = 2; x <= 13; x++) {            // big fruit, fills the cell
+      const d = Math.hypot((x - 7.5) * 1.1, (y - 8.5) * 1.25);
+      if (d > 5.8) continue;
+      const stripe = (x + ((y / 2) | 0)) % 4 === 0;
+      px(x, y, stripe ? col(-0.18) : col(0.04));
+      if (d > 5.2) px(x, y, col(-0.24));                                     // rim shade
+      if (x < 5 && y < 7 && !stripe) px(x, y, col(0.2));                     // highlight
+    }
+    px(8, 3, col(-0.1)); px(7, 3, col(-0.16)); px(8, 4, col(-0.08));         // stem
+    px(2, 13, col(0.1)); px(13, 12, col(0.06)); px(4, 14, col(0.08));        // leaves at the base
+  });
+  R(String(WHEAT_1), () => {
+    fill("rgba(0,0,0,0)");                                                   // crossed-quad crop: transparent bg
+    for (const sx of [4, 8, 12]) {                                           // short sprout shoots
+      for (let y = 11; y <= 15; y++) { px(sx, y, col(0.08)); if (y < 14) px(sx, y, col(0.14)); }
+      px(sx - 1, 12, col(0.06));
+    }
+  });
+  R(String(WHEAT_2), () => {
+    fill("rgba(0,0,0,0)");
+    for (const sx of [3, 7, 11, 14]) {                                       // a stand of young blades
+      const bend = sx % 2 ? 1 : -1;
+      for (let y = 2; y <= 15; y++) px(sx + (y < 6 ? bend : 0), y, col(y < 7 ? 0.22 : -0.02)); // golden head, green stalk
+      px(sx - bend, 4, col(0.18)); px(sx - bend, 9, col(0.06));              // leaning neighbours
+      px(sx + bend, 2, col(0.3));                                            // head tip
+    }
+  });
+  R(String(CHEST_CONNECTOR), () => {
+    // steel rail bolted across a crate end: the chest link
+    fbmFill((x, y, n) => n * 0.03 - 0.12);
+    for (let x = 0; x < 16; x++) { px(x, 0, col(-0.26)); px(x, 15, col(-0.26)); px(x, 7, "rgba(150,156,168,1)"); px(x, 8, "rgba(110,116,128,1)"); }
+    for (const [rx, ry] of [[2, 3], [13, 3], [2, 12], [13, 12]] as const) { px(rx, ry, "rgba(200,205,215,1)"); px(rx + 1, ry, "rgba(150,156,168,1)"); }
+    for (let y = 2; y <= 5; y++) { px(0, y, col(0.14)); px(15, y, col(0.14)); }
+  });
+  R(String(METAL_PLATING), () => {
+    // shipboard plate: brushed metal, rivet seams
+    const n = fbmFill((x, y, nn) => nn * 0.03 + (x % 4 === 0 ? -0.04 : 0.015));
+    for (let i = 0; i < 16; i++) { px(i, 0, col(-0.22)); px(i, 15, col(-0.22)); px(0, i, col(-0.16)); px(15, i, col(-0.16)); }
+    for (const [rx, ry] of [[3, 3], [12, 3], [3, 12], [12, 12]] as const) {
+      px(rx, ry, col(0.24)); px(rx + 1, ry, col(0.08)); px(rx, ry + 1, col(-0.14));
+    }
+    for (let i = 0; i < 6; i++) px(rng.int(1, 14), rng.int(1, 14), col(-0.02, 1, 0.05, -0.01, -0.06)); // dents and pits
+    if (n[8] > 0.4) for (let y = 1; y < 4; y++) px(12, y, col(0.06, 1, 0.2, 0.02, -0.1)); // faint rust streak
+  });
+  R(String(DOOR_INNER), () => {
+    // lighter interior door: recessed panel, handle
+    fbmFill((x, y, n) => n * 0.03 - 0.05);
+    for (let i = 0; i < 16; i++) { px(i, 0, col(-0.24)); px(i, 15, col(-0.24)); px(0, i, col(-0.24)); px(15, i, col(-0.24)); }
+    for (let y = 3; y <= 12; y++) for (let x = 4; x <= 11; x++)
+      if (x === 4 || x === 11 || y === 3 || y === 12) px(x, y, col(0.1));
+    for (let y = 7; y <= 9; y++) { px(12, y, col(0.26)); px(11, y, col(-0.22)); }
+  });
+  R(String(DOOR_INNER_UPPER), () => {
+    fbmFill((x, y, n) => n * 0.03 - 0.05);
+    for (let i = 0; i < 16; i++) { px(i, 0, col(-0.24)); px(i, 15, col(-0.24)); px(0, i, col(-0.24)); px(15, i, col(-0.24)); }
+    for (let y = 5; y <= 10; y++) for (let x = 6; x <= 9; x++) px(x, y, col(0.1, 1, -0.05, 0.1, 0.15)); // slim slit
+    for (let x = 6; x <= 9; x++) { const y = x - 1; if (y >= 5 && y <= 10) px(x, y, col(0.3, 0.6)); }   // slit glint
+    for (let y = 5; y <= 10; y++) for (let x = 6; x <= 9; x++) if (x === 6 || x === 9 || y === 5 || y === 10) px(x, y, col(0.1, 1, -0.05, 0.1, 0.15));
+  });
+  R(String(DOOR_INNER_OPEN), () => {
+    for (let y = 0; y < 16; y++) { px(0, y, col(-0.12, 0.9)); px(1, y, col(0.03, 0.85)); px(2, y, col(-0.17, 0.7)); }
+    px(1, 7, col(0.26, 0.9)); px(1, 8, col(0.26, 0.9));
+  });
+  R(String(BED), () => {
+    // quilted top with a folded blanket edge
+    fbmFill((x, y, nn) => nn * 0.04 + 0.02);
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if ((x + y) % 5 === 0) px(x, y, col(-0.1));   // stitch lines
+    for (let i = 0; i < 16; i++) { px(i, 0, "rgba(60,26,24,1)"); px(i, 15, "rgba(60,26,24,1)"); px(0, i, "rgba(60,26,24,1)"); px(15, i, "rgba(60,26,24,1)"); } // wooden rail
+    for (let x = 0; x < 16; x++) { px(x, 11, "rgba(90,40,36,1)"); px(x, 12, "rgba(150,80,70,1)"); px(x, 13, "rgba(120,60,52,1)"); } // folded blanket
+    for (let y = 1; y < 11; y++) { px(1, y, col(0.12)); px(14, y, col(-0.08)); }                             // pillow-side sheen
+  });
+  R("bed_side", () => {
+    // mattress over a wooden frame, seen from the side
+    fbmFill((x, y, nn) => nn * 0.04 - (y > 11 ? -0.1 : 0.04));
+    for (let x = 0; x < 16; x++) { px(x, 0, col(0.14)); px(x, 10, col(-0.22)); }                              // mattress piping
+    for (let y = 1; y < 10; y++) for (let x = 0; x < 16; x++) if ((x + y) % 6 === 1) px(x, y, col(-0.06));    // tufts
+    for (let y = 11; y < 16; y++) for (let x = 0; x < 16; x++) px(x, y, "rgba(70,44,26,1)");                  // frame
+    for (let x = 2; x < 16; x += 5) { px(x, 12, "rgba(96,62,38,1)"); px(x, 13, "rgba(52,32,18,1)"); }         // slats
+  });
+  R(String(BED_EXT), () => {
+    // pillow end of the quilt
+    fbmFill((x, y, nn) => nn * 0.04 + 0.02);
+    for (let i = 0; i < 16; i++) { px(i, 0, "rgba(60,26,24,1)"); px(i, 15, "rgba(60,26,24,1)"); px(0, i, "rgba(60,26,24,1)"); px(15, i, "rgba(60,26,24,1)"); }
+    for (let y = 3; y <= 11; y++) for (let x = 2; x <= 13; x++) {                                            // plump pillow
+      const edge = x === 2 || x === 13 || y === 3 || y === 11;
+      px(x, y, edge ? "rgba(200,192,176,1)" : `rgba(226,220,206,1)`);
+      if (y === 4 && x > 3 && x < 11) px(x, y, "rgba(240,236,226,1)");                                      // crease highlight
+    }
+    px(4, 6, "rgba(208,200,184,1)"); px(10, 9, "rgba(208,200,184,1)");                                      // stitch dimples
+    for (let x = 0; x < 16; x++) { px(x, 12, "rgba(90,40,36,1)"); }
+  });
+  R(String(GRASS), () => {
+    // icon tile: crusty green over soil, same read as the side face
+    const n = fbmFill((x, y, nn) => nn * 0.12 - (y > 4 ? 0.16 : 0.02));
+    for (let x = 0; x < 16; x++) {
+      const h = 2 + Math.round((n[x] + 1) * 1.5);
+      for (let y = 0; y < h; y++) px(x, y, col(nz(0.1) + (y === 0 ? 0.1 : 0)));
+      if (rng.next() > 0.6) px(x, h + 1, col(-0.2));                                                        // root tangle
+    }
+    for (let x = 0; x < 16; x += 3) { const y = 7 + (x % 5); px(x, y, col(0.2)); }                           // dry tips
+  });
+  R("grass_top", () => {
+    fbmFill((x, y, n) => n * 0.08 - 0.02);
+    for (let i = 0; i < 40; i++) {                                                                          // blades as short streaks
+      const x = rng.int(0, 15), y = rng.int(0, 14), l = rng.int(1, 3);
+      for (let j = 0; j < l; j++) px(x, y + j, col(j === 0 ? 0.14 : -0.02 + nz(0.08)));
+    }
+    for (let i = 0; i < 5; i++) px(rng.int(0, 15), rng.int(0, 15), col(-0.3));                               // bare patches
+  });
+  R("grass_side", () => {
+    const n = fbmFill((x, y, nn) => nn * 0.12 + (y < 3 ? 0.06 : -0.1));                                                 // soil body, greener crust
+    for (let x = 0; x < 16; x++) {
+      const h = 1 + Math.round((n[x + 16] + 1) * 1.5);
+      for (let y = 0; y < h; y++) px(x, y, col(0.08 + nz(0.08)));
+    }
+    for (let x = 0; x < 16; x++) for (let y = 3; y < 16; y++) if (rng.next() > 0.9) px(x, y, col(0.16, 1, -0.04, -0.02, -0.04)); // roots
+  });
+  R(String(WOOD), () => {
+    // bark: deep vertical fissures, a knot
+    const n = fbmFill((x, y, nn) => nn * 0.05);
+    for (let x = 0; x < 16; x++) {
+      const ph = n[x] * 2;
+      for (let y = 0; y < 16; y++) {
+        const fiss = Math.sin(x * 1.9 + ph + Math.sin(y * 0.35) * 1.5);
+        px(x, y, col(fiss > 0.75 ? -0.26 : fiss > 0.2 ? -0.1 : 0.06 + nz(0.04)));
+      }
+    }
+    for (let r = 1; r <= 2; r++) for (let i = 0; i < 10; i++) {                                             // knot ring
+      const a = (i / 10) * Math.PI * 2;
+      px(9 + Math.round(Math.cos(a) * r * 1.4), 7 + Math.round(Math.sin(a) * r), col(r === 2 ? -0.3 : -0.2));
+    }
+    px(9, 7, col(-0.34)); px(10, 7, col(-0.28));
+  });
+  R("wood_top", () => {
+    fbmFill((x, y, n) => n * 0.04);
+    for (let i = 0; i < 44; i++) {                                                                          // annual rings
+      const a = (i / 44) * Math.PI * 2;
+      for (let r = 1; r < 7; r += 2) {
+        const jr = r + (r % 4 === 1 ? 0.6 : 0);                                                            // uneven growth
+        px(8 + Math.round(Math.cos(a) * jr), 8 + Math.round(Math.sin(a) * jr), col(r > 4 ? -0.12 : 0.05));
+      }
+    }
+    px(8, 8, col(-0.3)); px(8, 7, col(-0.2));                                                              // pith
+    for (let i = 0; i < 16; i++) { px(i, 0, col(-0.3)); px(i, 15, col(-0.3)); px(0, i, col(-0.3)); px(15, i, col(-0.3)); } // bark rim
+  });
+  R(String(LEAVES), () => {
+    fbmFill((x, y, nn) => nn * 0.14);                                                            // dense mottle
+    for (let i = 0; i < 26; i++) {                                                                         // leaf clumps
+      const x = rng.int(0, 14), y = rng.int(0, 14);
+      px(x, y, col(0.16)); px(x + 1, y, col(0.06)); px(x, y + 1, col(-0.1)); px(x + 1, y + 1, col(-0.2));
+    }
+    for (let i = 0; i < 10; i++) { const x = rng.int(1, 14), y = rng.int(1, 14); px(x, y, col(-0.4)); px(x + 1, y, col(-0.25)); } // pinholes of shade
+  });
+  R(String(SAPLING), () => {
+    fill("rgba(0,0,0,0)");                                                                                 // crossed-quad, transparent bg
+    for (let y = 6; y < 16; y++) px(8, y, col(-0.28));                                                     // bare stalk
+    px(7, 15, col(-0.2)); px(9, 15, col(-0.2));                                                            // root flare
+    px(7, 5, col(0.1)); px(8, 5, col(0.15)); px(9, 5, col(0.1));
+    px(6, 4, col(0.05)); px(7, 4, col(0.12)); px(8, 4, col(0.18)); px(9, 4, col(0.12)); px(10, 4, col(0.05));
+    px(7, 3, col(0.08)); px(8, 3, col(0.14)); px(9, 3, col(0.08));
+    px(8, 2, col(0.1));
+    px(6, 5, col(0.02)); px(10, 5, col(0.02));                                                             // side leaves
+  });
+
+  // paint every registered tile into its slot
+  const paint = (key: string, t: number, rgb: readonly number[]) => {
+    if (!recipes[key]) return;
+    tx = (t % ATLAS_COLS) * TILE_PX; ty = ((t / ATLAS_COLS) | 0) * TILE_PX;
+    [br, bg, bb] = rgb as [number, number, number];
+    recipes[key]();
+  };
+  for (const [i, id] of TILE_LIST.entries()) paint(String(id), i, BLOCKS[id].color);
+  for (const [name, base] of VARIANTS) paint(name, VI[name], BLOCKS[base].color);
+
   atlasCv = cv;
   return cv;
 }
@@ -362,6 +649,29 @@ export const TILE_SRC = (id: number): [number, number] => {
   const t = TILE[id] ?? 0;
   return [(t % ATLAS_COLS) * TILE_PX, ((t / ATLAS_COLS) | 0) * TILE_PX];
 };
+
+// per-face tile for the mesher: FACES order is +y, -y, +x, -x, +z, -z
+export const FACE_T: number[] = [];
+const setFaces = (id: number, top: number, bottom: number, side: number) => {
+  FACE_T[id * 6] = top; FACE_T[id * 6 + 1] = bottom;
+  for (let f = 2; f < 6; f++) FACE_T[id * 6 + f] = side;
+};
+for (const id of TILE_LIST) setFaces(id, TILE[id], TILE[id], TILE[id]);
+setFaces(GRASS, VI.grass_top, TILE[DIRT], VI.grass_side);
+setFaces(WOOD, VI.wood_top, VI.wood_top, TILE[WOOD]);
+setFaces(FARMLAND, TILE[FARMLAND], TILE[DIRT], VI.farmland_side);
+setFaces(SANDSTONE, VI.sandstone_top, TILE[SANDSTONE], TILE[SANDSTONE]);
+setFaces(HULL, VI.hull_top, TILE[HULL], TILE[HULL]);
+setFaces(BED, TILE[BED], TILE[BED], VI.bed_side);
+setFaces(BED_EXT, TILE[BED_EXT], TILE[BED_EXT], VI.bed_side);
+setFaces(CHEST, VI.chest_top, TILE[CHEST], TILE[CHEST]);
+setFaces(BENCH, VI.bench_top, TILE[BENCH], TILE[BENCH]);
+setFaces(BENCH_EXT, VI.bench_ext_top, TILE[BENCH_EXT], TILE[BENCH_EXT]);
+setFaces(CAMPFIRE, VI.campfire_top, TILE[CAMPFIRE], TILE[CAMPFIRE]);
+setFaces(CACTUS, VI.cactus_top, TILE[CACTUS], TILE[CACTUS]);
+setFaces(CACTUS_FRUIT, VI.cactus_top, TILE[CACTUS], TILE[CACTUS_FRUIT]);
+for (const w of [WATER, WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1])
+  setFaces(w, TILE[w], TILE[w], VI.water_side);
 
 // ---------------- sky-mode shader ----------------
 // Baked-light chunk material: vertex `light` (0..1) is the flood-filled
@@ -742,6 +1052,28 @@ export class Renderer {
         this.emitDoor(pos, col, idx, uvs, lite, dl / MAX_LIGHT, world, x, y, z, cx * CS, cz * CS, id);
         continue;
       }
+      if (CROSS_BLOCKS.has(id)) {
+        // a stand of blades on two crossed quads; crops are non-opaque, so
+        // the plant's own cell carries light and shades the blades
+        const ft = TILE[id];
+        const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
+        const lv = Lb ? Lb[lidx(x, z, y)] / MAX_LIGHT : 0;
+        const quad = (x0: number, z0: number, x1: number, z1: number) => {
+          const base = tpos.length / 3;
+          tpos.push(x0, y, z0, x1, y, z1, x1, y + 1, z1, x0, y + 1, z0);
+          for (let i = 0; i < 4; i++) { tcol.push(0.92, 0.92, 0.92); tlite.push(lv); }
+          tuv.push(
+            (tx0 + 0.5) / ATLAS_PX, (ty0 + 15.5) / ATLAS_PX,
+            (tx0 + 15.5) / ATLAS_PX, (ty0 + 15.5) / ATLAS_PX,
+            (tx0 + 15.5) / ATLAS_PX, (ty0 + 0.5) / ATLAS_PX,
+            (tx0 + 0.5) / ATLAS_PX, (ty0 + 0.5) / ATLAS_PX,
+          );
+          tidx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+        };
+        quad(x, z, x + 1, z + 1);
+        quad(x + 1, z, x, z + 1);
+        continue;
+      }
       const def = BLOCKS[id];
       const useE = def.emissive, useT = def.transparent;
       const P = useT ? tpos : useE ? epos : pos;
@@ -749,10 +1081,12 @@ export class Renderer {
       const I = useT ? tidx : useE ? eidx : idx;
       const U = useT ? tuv : useE ? euvs : uvs;
       const LM = useT ? tlite : useE ? null : lite;
-      const [tx0, ty0] = TILE_SRC(id);
-      for (const f of FACES) {
+      for (let fi = 0; fi < FACES.length; fi++) {
+        const f = FACES[fi];
         const nx = x + f.dir[0], ny = y + f.dir[1], nz = z + f.dir[2];
         if (!faceVisible(world, cx * CS + nx, ny, cz * CS + nz, id)) continue;
+        const ft = FACE_T[id * 6 + fi];
+        const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
         const base = P.length / 3;
         const sh = useE ? 1 : f.shade;
         const lv = LM ? faceLight(nx, ny, nz) : 0;

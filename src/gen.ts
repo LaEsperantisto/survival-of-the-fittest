@@ -68,8 +68,8 @@ export class Structures {
 
   /** Is there a Town on lattice cell (tx,tz)? Never near the crash, never in a pool. */
   townAt(tx: number, tz: number): boolean {
+    if (tx === this.gtx && tz === this.gtz) return true; // guaranteed before any exclusion
     if (Math.abs(tx) < 2 && Math.abs(tz) < 2) return false;
-    if (tx === this.gtx && tz === this.gtz) return true;
     if (hash2(tx, tz, this.seed + 51) >= 0.4) return false;
     const c = this.townCenter(tx, tz);
     for (const o of this.oases)
@@ -352,29 +352,41 @@ function paintOasis(set: (x: number, y: number, z: number, id: number) => void, 
 }
 
 function paintTown(set: (x: number, y: number, z: number, id: number) => void, t: Town, seed: number) {
-  for (const [bx, bz] of [[-4, -3], [2, 2], [-2, 4]] as const) {
+  // 5x5 huts dug a foot into the sand: floor at h-1, interior air h..h+2,
+  // roof at h+3 — a person walks in upright through the doorway and stands
+  // inside with room to spare. The shell is filled in around the hollow.
+  for (const [bx, bz] of [[-4, -3], [3, 2], [-3, 5]] as const) {
     const h = Math.round(heightAt(seed, t.x + bx, t.z + bz));
-    for (let x = 0; x < 4; x++) for (let z = 0; z < 4; z++) {
-      for (let y = h + 1; y <= h + 3; y++) {
-        const shell = x === 0 || x === 3 || z === 0 || z === 3 || y === h + 1 || y === h + 3;
-        if (!shell) { set(t.x + bx + x, y, t.z + bz + z, AIR); continue; }
-        if (!(x === 0 && z === 1 && y <= h + 2)) set(t.x + bx + x, y, t.z + bz + z, ADOBE);
+    for (let x = 0; x < 5; x++) for (let z = 0; z < 5; z++) {
+      for (let y = h - 1; y <= h + 3; y++) {
+        const floor = y === h - 1;
+        const wall = (x === 0 || x === 4 || z === 0 || z === 4) && y >= h && y <= h + 2;
+        const roof = y === h + 3;
+        // doorway on the -x face: two cells wide so turning inside is easy
+        const door = x === 0 && (z === 2 || z === 3) && y >= h && y <= h + 2;
+        if (!(floor || wall || roof) || door) { set(t.x + bx + x, y, t.z + bz + z, AIR); continue; }
+        set(t.x + bx + x, y, t.z + bz + z, ADOBE);
       }
     }
     // every hut left behind a Supply Chest and a Bed; the good loot is decided
     // when the chest is first opened (seeded, game.ts)
-    set(t.x + bx + 1, h + 2, t.z + bz + 1, CHEST);
-    set(t.x + bx + 1, h + 2, t.z + bz + 2, BED);
-    set(t.x + bx + 2, h + 2, t.z + bz + 2, BED_EXT);
+    set(t.x + bx + 1, h, t.z + bz + 1, CHEST);
+    set(t.x + bx + 3, h, t.z + bz + 1, BED);
+    set(t.x + bx + 4, h, t.z + bz + 1, BED_EXT);
   }
   // a pocket of greenery the town once watered: a GRASS/DIRT patch 5-9 wide
   // with 3-6 mature Living Trees rooted in and around it
   const gx = t.x + 3 + Math.round((hash2(t.x, t.z, seed + 83) - 0.5) * 8);
   const gz = t.z - 3 + Math.round((hash2(t.z, t.x, seed + 85) - 0.5) * 8);
   const pr = 2.5 + hash2(t.x, t.z, seed + 87) * 2; // radius 2.5-4.5 → 5-9 wide
+  // keep greenery clear of the hut footprints (with a block of margin so tree
+  // canopies never poke through a roof)
+  const inHut = (x: number, z: number) =>
+    [[-4, -3], [3, 2], [-3, 5]].some(([bx, bz]) => x >= bx - 1 + t.x && x <= bx + 5 + t.x && z >= bz - 1 + t.z && z <= bz + 5 + t.z);
   for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) {
     if (Math.sqrt(dx * dx + dz * dz) > pr) continue;
     const x = gx + dx, z = gz + dz;
+    if (inHut(x, z)) continue;
     const h = Math.round(heightAt(seed, x, z));
     for (let y = h - 2; y <= h; y++) set(x, y, z, y === h ? GRASS : DIRT);
   }
@@ -383,14 +395,15 @@ function paintTown(set: (x: number, y: number, z: number, id: number) => void, t
     const a = i * (Math.PI * 2 / nTree) + hash2(t.x + i, t.z - i, seed + 91) * 1.3;
     const rr = 1 + hash2(t.x - i, t.z + i, seed + 93) * pr;
     const tx = gx + Math.round(Math.cos(a) * rr), tz = gz + Math.round(Math.sin(a) * rr);
+    if (inHut(tx, tz)) continue;
     stampTree(set, tx, Math.round(heightAt(seed, tx, tz)), tz, seed, 95);
   }
   // someone's farm, gone to seed: a plot of Farmland with a few survivors standing
-  const fh = Math.round(heightAt(seed, t.x, t.z + 9));
-  for (let x = 0; x < 5; x++) for (let z = 0; z < 3; z++) set(t.x - 6 + x, fh, t.z + 8 + z, FARMLAND);
-  set(t.x - 5, fh + 1, t.z + 9, WHEAT_2);
-  set(t.x - 3, fh + 1, t.z + 8, WHEAT_2);
-  set(t.x - 2, fh + 1, t.z + 10, MELON_2);
+  const fh = Math.round(heightAt(seed, t.x, t.z + 11));
+  for (let x = 0; x < 5; x++) for (let z = 0; z < 3; z++) set(t.x - 8 + x, fh, t.z + 10 + z, FARMLAND);
+  set(t.x - 7, fh + 1, t.z + 11, WHEAT_2);
+  set(t.x - 5, fh + 1, t.z + 10, WHEAT_2);
+  set(t.x - 4, fh + 1, t.z + 12, MELON_2);
 }
 
 export function genChunk(seed: number, st: Structures, cx: number, cz: number): Uint8Array {
