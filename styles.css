@@ -112,8 +112,8 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 #cheats { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
 #cheats button { flex: 1 1 auto; padding: 6px 10px; font-size: 13px; min-width: 0; }
 .cheat-lab { width: 100%; margin-top: 6px; color: #9aa0aa; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
-#cheat-item-row { display: flex; gap: 6px; }
-#cheat-item { flex: 1; background: #22262e; color: #e8e0d0; border: 1px solid #6b7280;
+#cheat-item-row, #cheat-quest-row { display: flex; gap: 6px; }
+#cheat-item, #cheat-quest { flex: 1; background: #22262e; color: #e8e0d0; border: 1px solid #6b7280;
   border-radius: 6px; padding: 6px 8px; font-size: 13px; }
 #death-stats, #death-cause { margin: 8px 0; }
 
@@ -144,6 +144,12 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
   color: #fff; text-shadow: 0 1px 2px #000; background-size: 100% 100%; image-rendering: pixelated; }
 #inv-temp.filled { border-style: solid; }
 #btn-drop-temp { margin-top: 2px; }
+#inv-bin-wrap { border-left: 1px solid #333a45; padding-left: 22px; display: flex;
+  flex-direction: column; gap: 8px; align-items: stretch; min-width: 130px; }
+#inv-bin { width: 64px; height: 64px; background: #23262e; border: 1px dashed #7a3b3b; border-radius: 4px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b46a6a' stroke-width='1.6'%3E%3Cpath d='M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6'/%3E%3C/svg%3E");
+  background-size: 34px 34px; background-position: center; background-repeat: no-repeat; }
+#inv-bin.hot { border-style: solid; background-color: #33231f; }
 /* Armour Slots: Backpack / Head / Body / Regulator / Light — equipped gear lives outside the grid */
 #equip-row { display: flex; align-items: flex-end; gap: 14px; margin: 2px 0 12px; }
 .equip-slot { text-align: center; }

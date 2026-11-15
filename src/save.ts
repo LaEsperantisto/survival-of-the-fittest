@@ -63,7 +63,7 @@ export interface RunSave {
             charges?: { regulator?: number; light?: number } };
   beaconMarks: { x: number; y: number; z: number }[];
   collected: number[];
-  entities: { x: number; y: number; z: number; itemId: string; count?: number }[];
+  entities: { x: number; y: number; z: number; itemId: string; count?: number; age?: number }[];
   pods?: { x: number; z: number; t: number; itemId: string; n: number; ringEid?: number; beamEid?: number }[];
   won?: boolean;
   caches: { x: number; y: number; z: number; kind?: "death" | "chest" | "reward"; items: { itemId: string; count: number }[] }[];

@@ -231,6 +231,14 @@ _Avoid_: equip slot, paper doll
 The parked state of an item lifted out of the Inventory Grid by a drag that wasn't completed. An item at rest in Temporary Storage blocks closing the inventory until it is placed back or dropped.
 _Avoid_: held item, cursor slot
 
+**Bin**:
+A slot in the inventory that destroys whatever is sent to it — by click or by drag. There is no undo and no recovery: unlike dropping, the Bin leaves nothing behind.
+_Avoid_: trash can, delete button
+
+**Dropped Item**:
+An item thrown out of the pack (the R key, a botched drag, death). Loose items rot away in the open desert within minutes; a Death Cache does not rot.
+_Avoid_: ground item, loose loot
+
 **Weight Limit**:
 How much mass the Inventory Grid may hold. Exceedable by at most 10% — while Overencumbered the player is incredibly slow and Water drains. Weight itself never affects Water or Heat except through Overencumbrance.
 

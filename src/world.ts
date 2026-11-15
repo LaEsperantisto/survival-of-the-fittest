@@ -155,6 +155,9 @@ export class World {
    * fall straight down; flow keeps the feed alive downstream and drains away when
    * its feed vanishes. One propagation step per call — water placed during this
    * call is queued for the next, so a spill crawls outward a cell at a time.
+   * A flow cell sitting under any water refills to a full block; flow spreads
+   * sideways only when it stands on something — water falls to the ground
+   * before it wanders, and never rests on air.
    */
   processWater(budget = 4000): number {
     let ops = 0;
@@ -192,7 +195,9 @@ export class World {
   private waterSupported(x: number, y: number, z: number, s: number): boolean {
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const)
       if (waterStrength(this.get(x + dx, y, z + dz)) > s) return true; // fed sideways by a Source or stronger flow
-    return waterStrength(this.get(x, y + 1, z)) >= s;                   // falling in from above
+    // falling in from above: water directly overhead feeds this cell and
+    // refills it to a full block, so it stays while that feed stands
+    return waterStrength(this.get(x, y + 1, z)) > 0;
   }
 
   private floodFrom(sx: number, sy: number, sz: number, budget: number): number {
@@ -202,13 +207,21 @@ export class World {
     const q: [number, number, number][] = [[sx, sy, sz]];
     while (q.length && ops++ < budget) {
       const [x, y, z] = q.shift()!;
-      const s = waterStrength(this.get(x, y, z));
+      const below = this.get(x, y - 1, z);
+      // a flow cell under any water is a full block: its level resets
+      let s = waterStrength(this.get(x, y, z));
+      if (s && s !== 8 && s < 7 && waterStrength(this.get(x, y + 1, z)) > 0) {
+        this.set(x, y, z, flowId(7));
+        s = 7;
+      }
       if (!s) continue;
       if (y > 0) { // fall straight down: a Source sends level 7, flow keeps its level
-        const below = this.get(x, y - 1, z);
         if ((below === AIR || isWater(below)) && waterStrength(below) < s)
           this.set(x, y - 1, z, flowId(s === 8 ? 7 : s));
       }
+      // flow only spreads sideways when it stands on something — water must
+      // reach the ground first, instead of floating across open air
+      if (below === AIR || isWater(below)) continue;
       const out = s === 8 ? 7 : s - 1; // Sources spread 7; flow decays by 1 per cell
       if (out < 1) continue;
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {

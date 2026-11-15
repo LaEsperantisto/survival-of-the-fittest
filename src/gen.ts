@@ -606,6 +606,9 @@ function paintOasis(set: (x: number, y: number, z: number, id: number) => void, 
         for (let y = h; y > hb - dep; y--) set(x, y, z, AIR);
         set(x, hb - dep, z, SAND);
         for (let y = hb - dep + 1; y <= hb; y++) set(x, y, z, WATER);
+        // nothing stands in the pool: the terrain pass may have set a boulder,
+        // a dead tree or a cactus at h+1 before the water was painted
+        for (let y = hb + 1; y <= hb + 12; y++) set(x, y, z, AIR);
       } else if (d <= o.r + 1) {
         for (let y = h; y < hb + 1; y++) set(x, y, z, SAND);
       }
@@ -629,7 +632,11 @@ function paintOasis(set: (x: number, y: number, z: number, id: number) => void, 
     const rr = o.r + 1.5 + hash2(o.x - i, o.z + i, seed + 79) * (gring + 2);
     const tx = o.x + Math.round(Math.cos(a) * rr), tz = o.z + Math.round(Math.sin(a) * rr);
     const top = Math.max(Math.round(heightAt(seed, tx, tz)), hb);
-    stampTree(set, tx, top, tz, seed, 81);
+    // the canopy hangs over the water's edge but never above the pool itself
+    stampTree((px, py, pz, b) => {
+      if (py > hb && Math.hypot(px - o.x, pz - o.z) <= o.r) return;
+      set(px, py, pz, b);
+    }, tx, top, tz, seed, 81);
   }
   // ripe Dune Melons ripen on the sand at the water's edge — the desert's free drink
   for (let i = 0; i < 5; i++) {
@@ -637,7 +644,7 @@ function paintOasis(set: (x: number, y: number, z: number, id: number) => void, 
     const a = i * 1.27 + hash2(o.z, o.x, seed + 67 + i) * 0.8;
     const rr = o.r + 0.5;
     const tx = o.x + Math.round(Math.cos(a) * rr), tz = o.z + Math.round(Math.sin(a) * rr);
-    if (Math.hypot(tx - o.x, tz - o.z) < o.r) continue; // never in the pool
+    if (Math.hypot(tx - o.x, tz - o.z) < o.r + 1) continue; // never in the pool or its sand rim
     set(tx, Math.max(Math.round(heightAt(seed, tx, tz)), hb) + 1, tz, MELON_2);
   }
 }

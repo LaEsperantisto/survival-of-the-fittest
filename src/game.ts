@@ -11,7 +11,7 @@ import { hashStr, hash2 } from "./noise";
 import { heightAt, biomeAt, TOWN_L, CAMP_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
 import { offersFor, Offer } from "./trades";
 import { RECIPES, SMELT, canCraft, doCraft } from "./crafting";
-import { currentQuest, loadQuestState, questEvent, type QuestDef, type QuestState } from "./quests";
+import { QUESTS, currentQuest, loadQuestState, questEvent, type QuestDef, type QuestState } from "./quests";
 import { Tutorial, INTRO_CINE, type CineSeg } from "./tutorial";
 import { WorldMeta, RunSave, saveRun, exportRun, bestScore, submitBest, Settings } from "./save";
 import { itemTiles, itemArtUrl } from "./icons";
@@ -23,6 +23,7 @@ export interface DroppedItem {
   id: number; x: number; y: number; z: number; itemId: string;
   buried?: boolean; buriedAt?: [number, number, number]; srcIndex?: number; fall?: number;
   repickAt?: number; // game time before which auto-pickup is suppressed (manual drops)
+  age?: number; // seconds since the item hit the sand; loose items rot away (buried ones never do)
 }
 export interface DeathCache { id: number; x: number; y: number; z: number; kind: "death" | "reward"; items: { itemId: string; count: number }[]; markerEid?: number }
 export interface Mob {
@@ -370,7 +371,7 @@ export class Game {
     for (const e of run.entities) {
       // old saves may hold stacked drops; split them — one item per entity
       const n = e.count ?? 1;
-      for (let i = 0; i < n; i++) fresh.push({ id: this.entitySeq++, x: e.x, y: e.y, z: e.z, itemId: e.itemId });
+      for (let i = 0; i < n; i++) fresh.push({ id: this.entitySeq++, x: e.x, y: e.y, z: e.z, itemId: e.itemId, age: e.age });
     }
     this.entities = fresh;
     // chest grids: split any legacy stacked slots into individual items
@@ -435,7 +436,7 @@ export class Game {
       },
       beaconMarks: this.beaconMarks,
       collected: this.collectedCanisterIndices(),
-      entities: this.entities.filter((e) => !e.buried).map((e) => ({ x: e.x, y: e.y, z: e.z, itemId: e.itemId })),
+      entities: this.entities.filter((e) => !e.buried).map((e) => ({ x: e.x, y: e.y, z: e.z, itemId: e.itemId, age: Math.floor(e.age ?? 0) })),
       pods: this.pods,
       won: this.won || undefined,
       caches: this.caches.map((c) => ({ x: c.x, y: c.y, z: c.z, kind: c.kind, items: c.items.map((i) => ({ ...i })) })),
@@ -748,6 +749,18 @@ export class Game {
     }
   }
 
+  /** Cheat-menu shortcut: jump the quest chain to index (== QUESTS.length
+   *  finishes the chain). Skipped quests keep no progress and pay no rewards. */
+  questJump(index: number) {
+    if (this.tut) this.tut.finish(); // the guided tour owns the chain until it ends
+    const i = Math.max(0, Math.min(QUESTS.length, index | 0));
+    this.quests.i = i;
+    this.questShown = "";
+    this.renderQuest();
+    hud.toast(i >= QUESTS.length ? "Quest chain skipped — every quest is done."
+      : `Skipped to “${QUESTS[i].title}”.`);
+  }
+
   private renderQuest() {
     const el = document.getElementById("quest");
     if (!el) return;
@@ -798,6 +811,17 @@ export class Game {
           if (s && !tgt.rotate(s)) { hud.toast("No room to rotate."); this.audio.error(); }
         }
         this.renderInv();
+      }
+      if (ke.code === "KeyR" && !this.ui && !this.paused && !this.cine && !this.liftoff) {
+        // in the field: R tosses the held item away
+        const s = this.inv.selectedSlot();
+        if (s) {
+          this.inv.slots.splice(this.inv.selected, 1);
+          this.inv.selected = Math.min(this.inv.selected, Math.max(0, this.inv.slots.length - 1));
+          this.dropEntity(s.itemId, 1, 1);
+          this.renderHeld();
+          this.audio.place();
+        }
       }
       if (ke.code === "Escape") {
         if (this.liftoff) return; // the Ship is mid-flight; nothing to close
@@ -946,6 +970,33 @@ export class Game {
       this.paused = true;
       document.getElementById("screen-pause")!.classList.remove("hidden");
     }, document);
+    // The Bin: click it to destroy the selected item, or drag anything onto it.
+    document.getElementById("inv-bin")!.onclick = () => this.binDiscard();
+  }
+
+  /** Send one item down the Bin: gone for good, no drop, no undo. */
+  private binDiscard() {
+    if (this.temp) {
+      const n = ITEMS[this.temp.itemId].name;
+      this.temp = null; this.tempOrigin = null;
+      hud.toast(`${n} goes into the Bin — gone for good.`);
+      this.audio.place();
+      this.renderInv(); this.renderHeld();
+      return;
+    }
+    const tgt = this.gridFocus === "chest" && this.chestInv ? this.chestInv : this.inv;
+    const s = tgt.selectedSlot();
+    if (!s) { hud.toast("Select an item, then send it to the Bin."); this.audio.error(); return; }
+    tgt.slots.splice(tgt.slots.indexOf(s), 1);
+    this.inv.selected = Math.min(this.inv.selected, Math.max(0, this.inv.slots.length - 1));
+    hud.toast(`${ITEMS[s.itemId].name} goes into the Bin — gone for good.`);
+    this.audio.place();
+    this.renderInv(); this.renderHeld();
+  }
+
+  private overBin(cx: number, cy: number): boolean {
+    const r = document.getElementById("inv-bin")!.getBoundingClientRect();
+    return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
   }
 
   // Pause-menu submenus (Settings, Catalog): closing them returns to the pause
@@ -1101,7 +1152,17 @@ export class Game {
       : BLOCKS[this.world.get(target.hit.x, target.hit.y, target.hit.z)].name);
     hud.setSubmerged(this.player.headUnder);
 
-    for (const e of this.entities) {
+    for (let ei = this.entities.length - 1; ei >= 0; ei--) {
+      const e = this.entities[ei];
+      if (!e.buried) {
+        e.age = (e.age ?? 0) + dt;
+        if (e.age >= 300) {
+          // five minutes on the sand and the desert reclaims the thing
+          this.renderer.removeEntityMesh(e.id);
+          this.entities.splice(ei, 1);
+          continue;
+        }
+      }
       if (e.fall !== undefined) {
         const step = Math.min(e.fall, 14 * dt);
         e.y -= step; e.fall -= step;
@@ -1823,7 +1884,9 @@ export class Game {
     const t = this.raycastTarget();
     if (!t?.hit) return;
     const bx = t.hit.x + t.face.x, by = t.hit.y + t.face.y, bz = t.hit.z + t.face.z;
-    if (this.world.get(bx, by, bz) !== AIR) return;
+    // blocks go into flowing water and push it out; still Sources stay whole
+    const at = this.world.get(bx, by, bz);
+    if (at !== AIR && !(isWater(at) && at !== WATER)) return;
     if (isSolid(def.block)) {
       // refuse placing a solid block inside the player
       const p = this.player.pos;
@@ -2797,11 +2860,14 @@ export class Game {
     const move = (ev: MouseEvent) => {
       ghost.style.left = ev.clientX - D.gx + "px";
       ghost.style.top = ev.clientY - D.gy + "px";
+      document.getElementById("inv-bin")!.classList.toggle("hot", this.overBin(ev.clientX, ev.clientY));
     };
     const up = (ev: MouseEvent) => {
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
       ghost.remove();
+      document.getElementById("inv-bin")!.classList.remove("hot");
+      if (this.overBin(ev.clientX, ev.clientY)) { this.binDiscard(); return; } // the item is already in temp
       const dd = slotDims(s);
       let target: Inventory | null = null, ax = 0, ay = 0;
       for (const [el, inv] of this.gridsEls()) {
@@ -2888,11 +2954,14 @@ export class Game {
     const move = (ev: MouseEvent) => {
       ghost.style.left = ev.clientX - d.w * STEP / 2 + "px";
       ghost.style.top = ev.clientY - d.h * STEP / 2 + "px";
+      document.getElementById("inv-bin")!.classList.toggle("hot", this.overBin(ev.clientX, ev.clientY));
     };
     const up = (ev: MouseEvent) => {
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
       ghost.remove();
+      document.getElementById("inv-bin")!.classList.remove("hot");
+      if (this.overBin(ev.clientX, ev.clientY)) { this.binDiscard(); return; } // the item is already in temp
       const hw = (d.w * STEP - GAP) / 2, hh = (d.h * STEP - GAP) / 2;
       let target: Inventory | null = null, ax = 0, ay = 0;
       for (const [el, inv] of this.gridsEls()) {

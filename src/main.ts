@@ -2,6 +2,7 @@ import { Game } from "./game";
 import { DAY_SECONDS, BLOCKS } from "./blocks";
 import { Audio } from "./audio";
 import { ITEMS } from "./items";
+import { QUESTS } from "./quests";
 import { RECIPES, SMELT } from "./crafting";
 import { itemArtUrl, blockTileUrl } from "./icons";
 import {
@@ -324,6 +325,21 @@ $("btn-cheat-add").onclick = () => {
   const id = cheatItemSel.value;
   if (game.inv.addItem(id, 1)) hud.toast("No room in your pack.");
   else hud.toast(`Added ${ITEMS[id].name}.`);
+};
+const cheatQuestSel = $("cheat-quest") as HTMLSelectElement;
+QUESTS.forEach((q, i) => {
+  const o = document.createElement("option");
+  o.value = String(i); o.textContent = `${i + 1}. ${q.title}`;
+  cheatQuestSel.appendChild(o);
+});
+{
+  const o = document.createElement("option");
+  o.value = String(QUESTS.length); o.textContent = "Finish the whole chain";
+  cheatQuestSel.appendChild(o);
+}
+$("btn-cheat-quest").onclick = () => {
+  if (!game) return;
+  game.questJump(Number(cheatQuestSel.value));
 };
 for (const b of Array.from($("cheats").querySelectorAll<HTMLButtonElement>("button[data-speed], button[data-immortal], button[data-frac]"))) {
   b.onclick = () => {
