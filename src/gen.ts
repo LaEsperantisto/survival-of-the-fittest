@@ -1,7 +1,7 @@
 import {
-  AIR, SAND, SANDSTONE, ROCK, GRAVEL, SALT, DEADWOOD, DIRT, HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL_PLATING, BEACON,
+  AIR, SAND, SANDSTONE, ROCK, GRAVEL, SALT, DEADWOOD, DIRT, HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL_PLATING, BEACON, CAMPFIRE,
   WATER, ADOBE, INSGLASS, BENCH, BENCH_EXT, ENGINECORE, CS, CH, REGULATOR, CACTUS, CACTUS_FRUIT,
-  DOOR_INNER, DOOR_INNER_UPPER, CHEST, BED, BED_EXT, MELON_2, WHEAT_2, FARMLAND, GRASS, WOOD, LEAVES,
+  DOOR_INNER, DOOR_INNER_UPPER, CHEST, BED, BED_EXT, MELON_2, WHEAT_1, WHEAT_2, FARMLAND, GRASS, WOOD, LEAVES,
   CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, THRUSTER,
 } from "./blocks";
 import { fbm2, ridge2, value2, hash2, Rng } from "./noise";
@@ -18,10 +18,20 @@ export interface Oasis { x: number; z: number; r: number; }
 export interface TreePart { x: number; y: number; z: number; b: number; stage: number }
 export interface Town { x: number; z: number; }
 export interface CanisterSpawn { x: number; z: number; buried: boolean; }
+/** A trader camp on the CAMP_L lattice: 0 windmill, 1 hut, 2 farmstead. */
+export interface Camp { x: number; z: number; type: 0 | 1 | 2; }
 
 /** Towns sit on this lattice: one sparse, jittered settlement per cell, forever —
  *  the desert never runs out of towns. */
 export const TOWN_L = 320;
+
+/** Trader camps sit on their own sparse lattice — a flattened site with a
+ *  windmill, hut or farmstead and a market stall, never near the crash. */
+export const CAMP_L = 380;
+
+/** Cave mouths sit on this lattice: an arched tunnel dug into a hillside that
+ *  descends into the cave band and opens on a small rock chamber. */
+export const CAVE_MOUTH_L = 150;
 
 export class Structures {
   oases: Oasis[] = [];
@@ -103,6 +113,71 @@ export class Structures {
     }
     return best ?? this.homeTown;
   }
+
+  /** Is there a cave mouth on lattice cell (tx,tz)? Bare desert only: never
+   *  near an oasis or a town. */
+  mouthAt(tx: number, tz: number): boolean {
+    if (!mouthAtSeed(this.seed, tx, tz)) return false;
+    const c = this.mouthCenter(tx, tz);
+    if (this.nearOasis(c.x, c.z)) return false;
+    if (this.townNear(c.x, c.z, 20)) return false;
+    return true;
+  }
+
+  /** Jittered centre of the cave mouth on lattice cell (tx,tz). */
+  mouthCenter(tx: number, tz: number): { x: number; z: number } {
+    return mouthCenterSeed(this.seed, tx, tz);
+  }
+
+  /** The nearest cave mouth within `rad` of (x,z), or null. */
+  mouthNear(x: number, z: number, rad: number): { x: number; z: number } | null {
+    let best: { x: number; z: number } | null = null, bd = rad;
+    const t0 = Math.floor((x - rad) / CAVE_MOUTH_L), t1 = Math.floor((x + rad) / CAVE_MOUTH_L);
+    const s0 = Math.floor((z - rad) / CAVE_MOUTH_L), s1 = Math.floor((z + rad) / CAVE_MOUTH_L);
+    for (let tx = t0; tx <= t1; tx++) for (let tz = s0; tz <= s1; tz++) {
+      if (!this.mouthAt(tx, tz)) continue;
+      const c = this.mouthCenter(tx, tz), d = Math.hypot(c.x - x, c.z - z);
+      if (d <= bd) { bd = d; best = c; }
+    }
+    return best;
+  }
+
+  /** Is there a trader camp on lattice cell (tx,tz)? Pure in the seed — the
+   *  oasis/wreck/town exclusions run through the seed's canonical Structures,
+   *  so every caller (heightAt included) sees the same site list. */
+  campAt(tx: number, tz: number): boolean { return campAtSeed(this.seed, tx, tz); }
+
+  /** Jittered centre of the camp on lattice cell (tx,tz). */
+  campCenter(tx: number, tz: number): { x: number; z: number } { return campCenterSeed(this.seed, tx, tz); }
+
+  /** What stands on the camp at (tx,tz): 0 windmill, 1 hut, 2 farmstead. */
+  campType(tx: number, tz: number): 0 | 1 | 2 { return campTypeSeed(this.seed, tx, tz); }
+
+  /** The nearest camp within `rad` of (x,z), or null. */
+  campNear(x: number, z: number, rad: number): Camp | null {
+    let best: Camp | null = null, bd = rad;
+    const t0 = Math.floor((x - rad) / CAMP_L), t1 = Math.floor((x + rad) / CAMP_L);
+    const s0 = Math.floor((z - rad) / CAMP_L), s1 = Math.floor((z + rad) / CAMP_L);
+    for (let tx = t0; tx <= t1; tx++) for (let tz = s0; tz <= s1; tz++) {
+      if (!this.campAt(tx, tz)) continue;
+      const c = this.campCenter(tx, tz), d = Math.hypot(c.x - x, c.z - z);
+      if (d <= bd) { bd = d; best = { x: c.x, z: c.z, type: this.campType(tx, tz) }; }
+    }
+    return best;
+  }
+
+  /** Nearest camp in the lattice neighbourhood of (x,z), or null if there is
+   *  none close by (unlike nearestTown there is no guaranteed camp). */
+  nearestCamp(x: number, z: number): Camp | null {
+    let best: Camp | null = null, bd = Infinity;
+    const cx = Math.floor(x / CAMP_L), cz = Math.floor(z / CAMP_L);
+    for (let tx = cx - 3; tx <= cx + 3; tx++) for (let tz = cz - 3; tz <= cz + 3; tz++) {
+      if (!this.campAt(tx, tz)) continue;
+      const c = this.campCenter(tx, tz), d = Math.hypot(c.x - x, c.z - z);
+      if (d < bd) { bd = d; best = { x: c.x, z: c.z, type: this.campType(tx, tz) }; }
+    }
+    return best;
+  }
 }
 
 /**
@@ -132,25 +207,62 @@ export function biomeAt(x: number, z: number, seed: number): number {
 function heightRaw(seed: number, x: number, z: number): number {
   const w = biomeWeights(x, z, seed);
   const hs = [
-    30 + fbm2(x / 140, z / 140, seed + 7) * 8 + Math.sin(x / 9 + z / 13) * 0.9,                    // dunes
-    29 + fbm2(x / 160, z / 160, seed + 9) * 6 + Math.max(0, value2(x / 26, z / 26, seed + 11) - 0.72) * 10, // rocky
-    28 + fbm2(x / 220, z / 220, seed + 5) * 3,                                                     // salt flats
-    33 + Math.floor(fbm2(x / 170, z / 170, seed + 13) * 4.99) * 5,                                 // badlands mesas
-    29 - ridge2(x / 210, z / 210, seed + 17) * 9,                                                  // canyons
+    30 + fbm2(x / 140, z / 140, seed + 7) * 12 + fbm2(x / 45, z / 45, seed + 8) * 3 + Math.sin(x / 9 + z / 13) * 0.9, // dunes
+    29 + fbm2(x / 160, z / 160, seed + 9) * 12 + Math.max(0, value2(x / 55, z / 55, seed + 11) - 0.5) * 18,          // rocky buttes: broad low domes
+    28 + fbm2(x / 220, z / 220, seed + 5) * 3,                                                                       // salt flats (calm)
+    33 + Math.floor(fbm2(x / 170, z / 170, seed + 13) * 7.99) * 6,                                                   // badlands mesas
+    27 - ridge2(x / 210, z / 210, seed + 17) * 13 - Math.max(0, fbm2(x / 500, z / 500, seed + 19) - 0.55) * 10,      // deep canyons
   ];
   let h = 0;
   for (let i = 0; i < 5; i++) h += w[i] * hs[i];
   return h;
 }
 
-/** Flat crash-site plateau under the wreck, feathered out to natural terrain by r=30. */
+/**
+ * Flat crash-site plateau under the wreck, feathered out to natural terrain
+ * by r=30 (EXACT: r<=14 is always 30 — the ship is painted at absolute y).
+ * Camp sites also level the sand: inside Chebyshev 9 of a camp centre the
+ * ground sits at the site's base level, feathering out to natural by 12.
+ */
 export function heightAt(seed: number, x: number, z: number): number {
   const r = Math.max(Math.abs(x), Math.abs(z));
-  const nat = heightRaw(seed, x, z);
-  if (r >= 30) return nat;
   if (r <= 14) return 30;
-  const t = (r - 14) / 16, s = t * t * (3 - 2 * t);
-  return 30 + (nat - 30) * s;
+  let h = heightRaw(seed, x, z);
+  if (r < 30) {
+    const t = (r - 14) / 16, s = t * t * (3 - 2 * t);
+    return 30 + (h - 30) * s; // no camp can be this close to the crash: plateau wins
+  }
+  const site = campSiteAt(seed, x, z);
+  if (site) {
+    const base = Math.round(heightRaw(seed, site.cx, site.cz));
+    const s = Math.min(1, (12 - site.d) / 3), sm = s * s * (3 - 2 * s);
+    h += (base - h) * sm;
+  }
+  return h;
+}
+
+/** The camp site holding (x,z) — Chebyshev <=12 from a camp centre — with the
+ *  distance, or null. Jitter is at most 30 << CAMP_L, so scanning the 3x3
+ *  lattice ring around the column's own cell is exact. Pure in the seed. */
+function campSiteAt(seed: number, x: number, z: number): { cx: number; cz: number; d: number } | null {
+  const tx = Math.floor(x / CAMP_L), tz = Math.floor(z / CAMP_L);
+  let best: { cx: number; cz: number; d: number } | null = null;
+  for (let ax = tx - 1; ax <= tx + 1; ax++) for (let az = tz - 1; az <= tz + 1; az++) {
+    if (Math.abs(x - ax * CAMP_L) > 42 || Math.abs(z - az * CAMP_L) > 42) continue; // centre can't reach
+    if (!campAtSeed(seed, ax, az)) continue;
+    const c = campCenterSeed(seed, ax, az);
+    const d = Math.max(Math.abs(c.x - x), Math.abs(c.z - z));
+    if (d <= 12 && (best === null || d < best.d)) best = { cx: c.x, cz: c.z, d };
+  }
+  return best;
+}
+
+/** The flattened base level of the camp site under (x,z) — Chebyshev <=11 of
+ *  a camp centre — or null when (x,z) stands on ordinary ground. */
+export function campFloorAt(seed: number, x: number, z: number): number | null {
+  const s = campSiteAt(seed, x, z);
+  if (!s || s.d > 11) return null;
+  return Math.round(heightRaw(seed, s.cx, s.cz));
 }
 
 function surfaceBlock(seed: number, x: number, z: number, y: number, h: number): number {
@@ -195,11 +307,14 @@ function noise3(x: number, y: number, z: number, seed: number): number {
  *  surface stay rock (roof rule), and mesas don't drag the band above y 30. */
 const caveTop = (h: number) => Math.min(h - 4, 30);
 
-const oasisCache = new Map<number, Oasis[]>();
-const oasesOf = (seed: number): Oasis[] => {
-  let o = oasisCache.get(seed);
-  if (!o) { o = new Structures(seed).oases; oasisCache.set(seed, o); }
-  return o;
+const structuresCache = new Map<number, Structures>();
+/** The canonical Structures for a seed: oases, the second wreck and Towns are
+ *  all pure functions of it, so lattice guards inside module fns agree with
+ *  whatever live Structures the caller holds. */
+export const structuresOf = (seed: number): Structures => {
+  let s = structuresCache.get(seed);
+  if (!s) { s = new Structures(seed); structuresCache.set(seed, s); }
+  return s;
 };
 
 /** Is (x,y,z) cave air? One big-cheese 3D-noise field: two scales mixed, the
@@ -211,7 +326,7 @@ function caveAt(seed: number, x: number, y: number, z: number, h?: number): bool
   if (x * x + z * z < 240) return false; // the crash site's footing stays solid
   const hs = h ?? Math.round(heightAt(seed, x, z));
   let top = caveTop(hs);
-  for (const o of oasesOf(seed))
+  for (const o of structuresOf(seed).oases)
     if (Math.abs(x - o.x) <= o.r + 1 && Math.abs(z - o.z) <= o.r + 1)
       top = Math.min(top, Math.round(heightAt(seed, o.x, o.z)) - 5); // keep pools sealed
   if (y > top) return false;
@@ -582,6 +697,232 @@ function paintTown(set: (x: number, y: number, z: number, id: number) => void, t
   set(t.x - 4, fh + 1, t.z + 12, MELON_2);
 }
 
+/* ── Cave mouths ─────────────────────────────────────────────────────────────
+ * One lattice (CAVE_MOUTH_L) of arched tunnels cut into hillsides: an opening
+ * on the side where the ground falls away, a diagonal descent into the cave
+ * band, and a small rock chamber at the bottom. The whole layout is a pure
+ * function of (centre, seed), so every chunk that overlaps it paints the same
+ * cells. */
+
+function mouthAtSeed(seed: number, tx: number, tz: number): boolean {
+  if (Math.abs(tx) <= 1 && Math.abs(tz) <= 1) return false; // the crash's surroundings stay unmarked
+  return hash2(tx, tz, seed + 311) < 0.55;
+}
+
+function mouthCenterSeed(seed: number, tx: number, tz: number): { x: number; z: number } {
+  const jx = (hash2(tx, tz, seed + 313) - 0.5) * 60;
+  const jz = (hash2(tx, tz, seed + 315) - 0.5) * 60;
+  return { x: Math.round(tx * CAVE_MOUTH_L + jx), z: Math.round(tz * CAVE_MOUTH_L + jz) };
+}
+
+const MDIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]] as const;
+
+/** Cut one cave mouth into the world. Only columns at y>=6 are ever carved;
+ *  the tunnel is lined with ROCK so it reads as dug into stone even where
+ *  natural caves wander past it. */
+function paintCaveMouth(set: (x: number, y: number, z: number, id: number) => void, m: { x: number; z: number }, seed: number) {
+  if (m.x * m.x + m.z * m.z < 1600) return; // never within 40 of the crash
+  const [dx, dz] = MDIRS[hash2(m.x, m.z, seed + 317) * 4 | 0];
+  const [px, pz] = [-dz, dx]; // perpendicular: the tunnel is 2 wide across
+  const hm = Math.round(heightAt(seed, m.x, m.z));
+  // mouths belong on slopes: the ground must fall away in direction d —
+  // scan 1..3 out and take the first column at least 1 lower, else skip
+  let kk = -1;
+  for (let k = 1; k <= 3; k++) {
+    if (Math.round(heightAt(seed, m.x + dx * k, m.z + dz * k)) <= hm - 2) { kk = k; break; }
+  }
+  if (kk < 0) return;
+  // the opening stands on column s, its face open toward the lower cell m+kk*d
+  const sx = m.x + dx * (kk - 1), sz = m.z + dz * (kk - 1);
+  const hOut = Math.round(heightAt(seed, m.x + dx * kk, m.z + dz * kk));
+  const hS = Math.round(heightAt(seed, sx, sz));
+  const y0 = Math.max(Math.min(hOut + 1, hS), 8); // tunnel floor at the mouth
+  if (hS < y0 + 2) return; // the hill must stand over the arched entry
+  const len = 12 + (hash2(m.x, m.z, seed + 319) * 5 | 0); // 12..16 cells deep
+  const ex = sx + dx * len, ez = sz + dz * len;
+  const yEnd = caveTop(Math.round(heightAt(seed, ex, ez))) - 1; // land in the cave band
+  if (yEnd < 6 || yEnd > y0 - 4) return; // not enough rock to dig into
+
+  // the tunnel must stay buried along its whole path, or its lining and
+  // ceiling would breach the surface as floating stone
+  for (let k = 2; k < len; k++) {
+    const x = sx + dx * k, z = sz + dz * k;
+    const y = y0 - Math.round((k * (y0 - yEnd)) / len);
+    if (Math.round(heightAt(seed, x, z)) < y + 2 || Math.round(heightAt(seed, x + px, z + pz)) < y + 2) return;
+  }
+  const air = new Set<string>();
+  const carve = (x: number, y: number, z: number) => {
+    if (y < 6) return;
+    air.add(x + "," + y + "," + z);
+    set(x, y, z, AIR);
+  };
+  // diagonal descent: 1 cell per step, dropping ~1 y every 2 steps, from the
+  // mouth floor y0 down to the cave band at yEnd
+  for (let k = 0; k <= len; k++) {
+    const x = sx + dx * k, z = sz + dz * k;
+    const y = k === len ? yEnd : y0 - Math.round((k * (y0 - yEnd)) / len);
+    for (const s of [0, 1]) {
+      carve(x + px * s, y, z + pz * s);
+      carve(x + px * s, y + 1, z + pz * s);
+      if (k <= 1) carve(x + px * s, y + 2, z + pz * s); // arched entry: 3 tall at the mouth
+    }
+  }
+  // terminal chamber: 5x3x5 of open rock with a stone floor and roof
+  for (let x = ex - 2; x <= ex + 2; x++) for (let z = ez - 2; z <= ez + 2; z++) {
+    for (let y = yEnd; y <= yEnd + 2; y++) carve(x, y, z);
+    set(x, yEnd - 1, z, ROCK);
+    set(x, yEnd + 3, z, ROCK);
+  }
+  // stone lining: any buried air touching the tunnel becomes ROCK — the
+  // tunnel keeps its own shape wherever caves or loose sand would bleed in
+  for (const key of air) {
+    const c = key.split(",");
+    const x = +c[0], y = +c[1], z = +c[2];
+    for (const [nx, ny, nz] of [[x + 1, y, z], [x - 1, y, z], [x, y + 1, z], [x, y - 1, z], [x, y, z + 1], [x, y, z - 1]] as const) {
+      if (ny < 5 || air.has(nx + "," + ny + "," + nz)) continue;
+      if (ny <= Math.round(heightAt(seed, nx, nz))) set(nx, ny, nz, ROCK);
+    }
+  }
+  // rim: a ROCK collar around the surface opening, open toward the downhill face
+  for (const [rx, rz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]] as const) {
+    if (rx === dx && rz === dz) continue;
+    const x = sx + rx, z = sz + rz;
+    set(x, Math.round(heightAt(seed, x, z)), z, ROCK);
+  }
+  for (const s of [0, 1]) { // solid floor under the arched opening
+    set(sx + px * s, y0 - 1, sz + pz * s, ROCK);
+  }
+  set(sx + dx, y0 + 3, sz + dz, ROCK); // lintel above the entry
+  // rubble scattered in front of the opening
+  const nR = 2 + (hash2(m.x + 7, m.z - 3, seed + 321) * 3 | 0); // 2..4
+  for (let i = 0; i < nR; i++) {
+    const back = 1 + (hash2(m.x + i, m.z, seed + 323) * 3 | 0);
+    const side = (hash2(m.x - i, m.z, seed + 325) * 3 | 0) - 1;
+    const x = m.x + dx * (kk + back) + px * side, z = m.z + dz * (kk + back) + pz * side;
+    set(x, Math.round(heightAt(seed, x, z)) + 1, z, hash2(x, z, seed + 327) > 0.5 ? GRAVEL : ROCK);
+  }
+}
+
+/* ── Trader camps ────────────────────────────────────────────────────────────
+ * A sparser lattice (CAMP_L) than Towns: a windmill, hut or farmstead with a
+ * market stall, campfire and trader you can barter with. Each camp's site is
+ * flattened — heightAt levels the sand under it — and no camp can spawn near
+ * the crash, an oasis, the second wreck or a Town. */
+
+export function campAtSeed(seed: number, tx: number, tz: number): boolean {
+  if (Math.abs(tx) <= 1 && Math.abs(tz) <= 1) return false; // keeps camps ~300 clear of the crash
+  if (hash2(tx, tz, seed + 401) >= 0.8) return false;
+  const c = campCenterSeed(seed, tx, tz);
+  const st = structuresOf(seed); // pure in the seed — the same world any live Structures holds
+  for (const o of st.oases)
+    if (Math.hypot(o.x - c.x, o.z - c.z) < o.r + 20) return false;
+  if (Math.hypot(st.secondShip.x - c.x, st.secondShip.z - c.z) < 40) return false;
+  if (st.townNear(c.x, c.z, 25) !== null) return false;
+  return true;
+}
+
+export function campCenterSeed(seed: number, tx: number, tz: number): { x: number; z: number } {
+  const jx = (hash2(tx, tz, seed + 403) - 0.5) * 60;
+  const jz = (hash2(tx, tz, seed + 405) - 0.5) * 60;
+  return { x: Math.round(tx * CAMP_L + jx), z: Math.round(tz * CAMP_L + jz) };
+}
+
+export function campTypeSeed(seed: number, tx: number, tz: number): 0 | 1 | 2 {
+  return (hash2(tx, tz, seed + 407) * 3 | 0) as 0 | 1 | 2;
+}
+
+/** The open cell in front of a camp's trader stall — the spot game.ts parks
+ *  the trader on. That column is kept free of any structure. */
+export function campTraderSpot(c: { x: number; z: number }): { x: number; z: number } {
+  return { x: c.x + 1.5, z: c.z - 1.5 };
+}
+
+/** Build one camp on its flattened site (ground level f from heightAt). */
+function paintCamp(set: (x: number, y: number, z: number, id: number) => void, c: Camp, seed: number) {
+  const f = Math.round(heightAt(seed, c.x, c.z));
+
+  // the trader stall, 2 cells east of the centre: adobe counter, awning on
+  // wood posts, plated roof with a lamp set into the awning over the counter
+  set(c.x + 2, f + 1, c.z + 1, ADOBE); // counter
+  for (const [px2, pz2] of [[3, 1], [2, 2], [3, 2]] as const)
+    for (let y = f + 1; y <= f + 2; y++) set(c.x + px2, y, c.z + pz2, WOOD); // awning posts
+  set(c.x + 3, f + 3, c.z + 1, METAL_PLATING);
+  set(c.x + 2, f + 3, c.z + 2, METAL_PLATING);
+  set(c.x + 3, f + 3, c.z + 2, METAL_PLATING);
+  set(c.x + 2, f + 3, c.z + 1, LAMP); // lamp under the awning, over the counter
+
+  // campfire — for the hut camps the main house owns (c.x-2,c.z), so its fire
+  // burns a little wider out
+  set(c.x - 2, f + 1, c.type === 1 ? c.z + 3 : c.z, CAMPFIRE);
+
+  // a camp hut: floor at f, interior air f+1..f+3, adobe walls f+1..f+3, roof f+4
+  const hut = (hx: number, hz: number, w: number, dp: number) => {
+    const x0 = hx - (w >> 1), x1 = hx + (w >> 1), z0 = hz - (dp >> 1), z1 = hz + (dp >> 1);
+    for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++)
+      for (let y = f; y <= f + 4; y++) {
+        const edge = x === x0 || x === x1 || z === z0 || z === z1;
+        const solid = y === f || y === f + 4 || (edge && y <= f + 3);
+        set(x, y, z, solid ? ADOBE : AIR);
+      }
+    // doorway on the +x face: a proper door in one cell, an open gap beside it
+    set(x1, f + 1, hz, DOOR_CLOSED); set(x1, f + 2, hz, DOOR_UPPER);
+    set(x1, f + 1, hz + 1, AIR); set(x1, f + 2, hz + 1, AIR);
+    set(x0 + 1, f + 1, hz + 1, CHEST);
+    set(x1 - 2, f + 1, hz - 1, BED); set(x1 - 2, f + 1, hz, BED_EXT);
+    set(x1 - 1, f + 3, z0 + 1, LAMP); // lamp on the wall
+  };
+
+  if (c.type === 0) {
+    // windmill: a round stone drum 10 tall, its western side notched so the
+    // campfire sits snug at the foot; axle and blade wheel face west
+    for (let dx2 = -2; dx2 <= 2; dx2++) for (let dz2 = -2; dz2 <= 2; dz2++) {
+      if (dx2 * dx2 + dz2 * dz2 > 4.5) continue;
+      if (dx2 === 2 && dz2 === 0) continue; // the nook the campfire burns in
+      const bx = c.x - 4 + dx2, bz = c.z + dz2;
+      const b = hash2(bx * 3 + 1, bz * 5 - 2, seed + 411) > 0.62 ? ADOBE : SANDSTONE;
+      for (let y = f; y <= f + 9; y++) set(bx, y, bz, b);
+    }
+    for (let i = 2; i <= 3; i++) set(c.x - 4 - i, f + 7, c.z, WOOD); // axle poking west
+    set(c.x - 7, f + 7, c.z, METAL_PLATING); // hub
+    for (let i = 1; i <= 3; i++) { // four-blade cross, 1 wide, 3 long, in the west-facing plane
+      set(c.x - 7, f + 7 + i, c.z, DEADWOOD);
+      set(c.x - 7, f + 7 - i, c.z, DEADWOOD);
+      set(c.x - 7, f + 7, c.z + i, DEADWOOD);
+      set(c.x - 7, f + 7, c.z - i, DEADWOOD);
+    }
+    // a 3x3 store with a chest and an open doorway facing the camp
+    const sx = c.x - 7, sz = c.z + 2;
+    for (let x = sx - 1; x <= sx + 1; x++) for (let z = sz - 1; z <= sz + 1; z++)
+      for (let y = f; y <= f + 3; y++) {
+        const door = x === sx + 1 && z === sz && (y === f + 1 || y === f + 2);
+        const solid = y === f || y === f + 3 ||
+          (Math.abs(x - sx) === 1 || Math.abs(z - sz) === 1) && y <= f + 2;
+        if (!solid || door) set(x, y, z, AIR); else set(x, y, z, ADOBE);
+      }
+    set(sx, f + 1, sz, CHEST); // one step inside the doorway
+  } else if (c.type === 1) {
+    hut(c.x - 4, c.z, 5, 5);
+  } else {
+    // farmstead: a 7x5 house, a walled wheat-and-melon plot, and a rock-ringed water trough
+    hut(c.x - 5, c.z - 3, 7, 5);
+    for (let x = c.x + 4; x <= c.x + 9; x++) for (let z = c.z - 4; z <= c.z - 1; z++) {
+      set(x, f, z, FARMLAND);
+      const melon = (x === c.x + 4 && z === c.z - 4) || (x === c.x + 9 && z === c.z - 1);
+      if (melon) set(x, f + 1, z, MELON_2);
+      else set(x, f + 1, z, (x + z) % 2 ? WHEAT_1 : WHEAT_2);
+    }
+    // deadwood fence posts around the plot, one every two cells
+    const post = (x: number, z: number) => { set(x, f + 1, z, DEADWOOD); set(x, f + 2, z, DEADWOOD); };
+    for (let x = c.x + 3; x <= c.x + 10; x += 2) { post(x, c.z - 5); post(x, c.z); }
+    for (let z = c.z - 3; z <= c.z - 1; z += 2) { post(c.x + 3, z); post(c.x + 10, z); }
+    // water trough: a 2x1 pool with a rock rim, sitting on the flat ground
+    for (let x = c.x; x <= c.x + 3; x++) for (let z = c.z + 3; z <= c.z + 5; z++) {
+      const inner = x >= c.x + 1 && x <= c.x + 2 && z === c.z + 4;
+      set(x, f + 1, z, inner ? WATER : ROCK);
+    }
+  }
+}
+
 export function genChunk(seed: number, st: Structures, cx: number, cz: number): Uint8Array {
   const c = new Uint8Array(CS * CS * CH);
   const setW = (wx: number, wy: number, wz: number, id: number) => {
@@ -660,13 +1001,11 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number): 
           for (let dy = 1; dy <= mh; dy++) setW(wx, h + dy, wz, ROCK);
           if (x > 0 && hash2(wx, wz, seed + 27) > 0.5) setW(wx - 1, h + 1, wz, ROCK);
         } else if (bi === B_ROCKY) {
-          // leaning slab: 2-3 blocks stacked over by one at the top
+          // leaning slab: 2-3 blocks stacked, the cap jutting one to the side
           const n = 2 + (hash2(wx, wz, seed + 24) * 2 | 0);
           const ld = [[1, 0], [-1, 0], [0, 1], [0, -1]][hash2(wx, wz, seed + 25) * 4 | 0];
-          for (let i = 0; i < n; i++) {
-            const o = i === n - 1 ? 1 : 0;
-            if (inR(x + ld[0] * o, z + ld[1] * o)) setW(wx + ld[0] * o, h + 1 + i, wz + ld[1] * o, ROCK);
-          }
+          for (let i = 0; i < n; i++) setW(wx, h + 1 + i, wz, ROCK);
+          if (inR(x + ld[0], z + ld[1])) setW(wx + ld[0], h + n, wz + ld[1], ROCK);
         } else if (bi === B_SALT) {
           // salt raft: a flat plate of SALT standing proud of the crust
           for (const [ox, oz] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const)
@@ -719,6 +1058,25 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number): 
     // the dungeon and its stair shaft reach ~30 cells from the town centre —
     // paintDungeon early-bails for the ~40% of towns without one
     if (cx * CS <= t.x + 30 && cx * CS + CS - 1 >= t.x - 30 && cz * CS <= t.z + 30 && cz * CS + CS - 1 >= t.z - 30) paintDungeon(setW, t, seed);
+  }
+  // Trader camps on their own lattice (centres jitter ±30; site + buildings
+  // reach ~15 cells, the trough and fence a little more — hence the slack).
+  const kx0 = Math.floor((cx * CS - 48 - CAMP_L) / CAMP_L), kx1 = Math.floor((cx * CS + CS - 1 + 48 + CAMP_L) / CAMP_L);
+  const kz0 = Math.floor((cz * CS - 48 - CAMP_L) / CAMP_L), kz1 = Math.floor((cz * CS + CS - 1 + 48 + CAMP_L) / CAMP_L);
+  for (let tx = kx0; tx <= kx1; tx++) for (let tz = kz0; tz <= kz1; tz++) {
+    if (!st.campAt(tx, tz)) continue;
+    const cc = st.campCenter(tx, tz);
+    if (cx * CS <= cc.x + 12 && cx * CS + CS - 1 >= cc.x - 12 && cz * CS <= cc.z + 6 && cz * CS + CS - 1 >= cc.z - 10)
+      paintCamp(setW, { x: cc.x, z: cc.z, type: st.campType(tx, tz) }, seed);
+  }
+  // Cave mouths: the tunnel + rim reach ~24 cells from the (jittered) centre
+  const nx0 = Math.floor((cx * CS - 54 - CAVE_MOUTH_L) / CAVE_MOUTH_L), nx1 = Math.floor((cx * CS + CS - 1 + 54 + CAVE_MOUTH_L) / CAVE_MOUTH_L);
+  const nz0 = Math.floor((cz * CS - 54 - CAVE_MOUTH_L) / CAVE_MOUTH_L), nz1 = Math.floor((cz * CS + CS - 1 + 54 + CAVE_MOUTH_L) / CAVE_MOUTH_L);
+  for (let tx = nx0; tx <= nx1; tx++) for (let tz = nz0; tz <= nz1; tz++) {
+    if (!st.mouthAt(tx, tz)) continue;
+    const mo = st.mouthCenter(tx, tz);
+    if (cx * CS <= mo.x + 24 && cx * CS + CS - 1 >= mo.x - 24 && cz * CS <= mo.z + 24 && cz * CS + CS - 1 >= mo.z - 24)
+      paintCaveMouth(setW, mo, seed);
   }
   if (Math.abs(cx * CS + 8 - st.secondShip.x) < 12 && Math.abs(cz * CS + 8 - st.secondShip.z) < 12)
     paintSecondShip(setW, st.secondShip, seed);

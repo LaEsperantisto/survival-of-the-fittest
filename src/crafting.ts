@@ -28,6 +28,7 @@ export const RECIPES: Recipe[] = [
   // ---- what the underground unlocks ----
   { out: "backpack2", count: 1, needs: { deadwood: 10, metal: 4, snake_skin: 2 }, bench: true },
   { out: "wurmsuit", count: 1, needs: { wurm_hide: 3, chitin: 1 }, bench: true },
+  { out: "tortoise_cuirass", count: 1, needs: { tortoise_shell: 3, metal: 1 }, bench: true },
   { out: "stinger_blade", count: 1, needs: { metal: 2, stinger: 1, deadwood: 1 }, bench: true },
   { out: "body_regulator", count: 1, needs: { metal: 4, copperrod: 2, cobaltrod: 1, catalyst: 1 }, bench: true },
   { out: "coolant_cell", count: 1, needs: { salt: 2, canister_empty: 1, copperrod: 1 }, bench: true },
@@ -65,6 +66,7 @@ export const SMELT: { in: string; out: string; n?: number }[] = [
   { in: "sandstone", out: "rock" },
   { in: "rock", out: "ironrod" },
   { in: "rat_raw", out: "rat_cooked" },
+  { in: "vulture_raw", out: "vulture_cooked" },
   { in: "wheat", out: "cooked_wheat" },
   // Ore yields double: the dig is the expensive part, not the fire.
   { in: "iron_ore", out: "ironrod", n: 2 },

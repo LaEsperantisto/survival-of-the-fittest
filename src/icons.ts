@@ -249,6 +249,94 @@ function drawArt(id: string, w: number, h: number, color: string): HTMLCanvasEle
       g.fillStyle = "#c8a878"; g.fillRect(15, 25, 2, 1);
       return cv;
     }
+    case "vulture_raw": {                                // raw dark-red fillet with a bone end
+      poly(g, [[3, 9], [4, 5], [8, 3], [12, 4], [13, 8], [11, 12], [6, 12]], "#8a332c");
+      poly(g, [[4, 5], [8, 3], [12, 4], [10, 7], [5, 7]], "#a8453a");      // lit top face
+      poly(g, [[6, 12], [11, 12], [9, 13], [6, 13]], "#571f1b");           // shadow belly
+      rect(g, 12, 6, 3, 3, "#d8cbb0");                                     // bone end
+      rect(g, 14, 5, 1, 1, "#d8cbb0"); rect(g, 14, 9, 1, 1, "#d8cbb0");    // condyle knobs
+      rect(g, 13, 6, 1, 3, "#8a7a5c"); rect(g, 12, 6, 2, 1, "#f0e6d0");
+      g.fillStyle = "#c8705e";                                             // marbling
+      g.fillRect(5, 7, 3, 1); g.fillRect(9, 6, 2, 1); g.fillRect(6, 10, 4, 1);
+      g.fillStyle = "#e8a08a"; g.fillRect(6, 7, 1, 1); g.fillRect(8, 10, 1, 1);
+      return cv;
+    }
+    case "vulture_cooked": {                             // roasted fillet: sear marks + steam
+      g.fillStyle = "#c8d2da"; g.fillRect(5, 2, 1, 2); g.fillRect(8, 1, 1, 2); g.fillRect(11, 2, 1, 2);
+      g.fillStyle = "#eef3f8"; g.fillRect(5, 1, 1, 1); g.fillRect(8, 0, 1, 1); g.fillRect(11, 1, 1, 1);
+      poly(g, [[3, 10], [4, 6], [8, 4], [12, 5], [13, 9], [11, 13], [6, 13]], "#9a6132");
+      poly(g, [[4, 6], [8, 4], [12, 5], [10, 8], [5, 8]], "#c08348");      // browned crust
+      poly(g, [[6, 13], [11, 13], [9, 14], [6, 14]], "#5c3a1c");           // char belly
+      line(g, 6, 6, 8, 12, "#4a2c14", 1); line(g, 9, 5, 11, 11, "#4a2c14", 1); // sear marks
+      g.fillStyle = "#d8a05e"; g.fillRect(6, 5, 3, 1); g.fillRect(10, 6, 2, 1); // crisp lit bits
+      g.fillStyle = "#f0c89a"; g.fillRect(7, 5, 1, 1);
+      return cv;
+    }
+    case "tortoise_shell": {                             // Thornback dome: scute plates, spiked rim
+      poly(g, [[3, 22], [5, 12], [11, 6], [17, 4], [24, 7], [29, 14], [30, 22]], "#5f5a4e");
+      poly(g, [[11, 6], [17, 4], [24, 7], [20, 13], [12, 12]], "#7d7768"); // lit crown
+      poly(g, [[3, 22], [30, 22], [29, 25], [4, 25]], "#46423a");          // rim band
+      g.strokeStyle = "#46423a"; g.lineWidth = 1;                          // scute seams
+      g.beginPath(); g.moveTo(17, 5); g.lineTo(9, 22); g.moveTo(17, 5); g.lineTo(17, 23);
+      g.moveTo(17, 5); g.lineTo(25, 22); g.stroke();
+      g.beginPath(); g.moveTo(6, 15); g.lineTo(28, 15); g.stroke();
+      g.fillStyle = "#6e6858"; g.fillRect(14, 8, 5, 1); g.fillRect(8, 17, 6, 1); g.fillRect(20, 18, 5, 1);
+      g.fillStyle = "#8a8474"; g.fillRect(15, 6, 2, 1);                    // crown highlight
+      g.fillStyle = "#cfc7b2";                                             // thorns along the rim
+      for (const [x, y, w, dy] of [[3, 24, 4, 5], [9, 25, 4, 6], [15, 25, 4, 5], [21, 24, 4, 6], [26, 22, 4, 5]] as const)
+        poly(g, [[x, y], [x + w, y], [x + w / 2, y + dy]], "#cfc7b2");
+      poly(g, [[3, 16], [6, 16], [1, 19]], "#cfc7b2"); poly(g, [[26, 15], [29, 15], [31, 18]], "#cfc7b2");
+      g.fillStyle = "#8f8874";
+      for (const [x, y, w] of [[3, 24, 4], [9, 25, 4], [15, 25, 4], [21, 24, 4]] as const) g.fillRect(x, y, w, 1);
+      return cv;
+    }
+    case "fennec_pelt": {                                // hung pelt: little head, huge ears, tail
+      poly(g, [[6, 11], [2, 1], [9, 7]], "#c99a62");                       // huge ears
+      poly(g, [[6, 10], [3, 3], [8, 7]], "#8f6a44");
+      poly(g, [[10, 11], [14, 1], [7, 7]], "#c99a62");
+      poly(g, [[10, 10], [13, 3], [8, 7]], "#8f6a44");
+      g.fillStyle = "#ead4b0"; g.fillRect(2, 3, 1, 3); g.fillRect(13, 3, 1, 3);
+      g.fillStyle = "#d8b488"; g.beginPath(); g.ellipse(8, 12, 5, 4, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#8a6540"; g.lineWidth = 1; g.beginPath(); g.ellipse(8, 12, 5, 4, 0, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = "#ead4b0"; g.beginPath(); g.ellipse(8, 14, 2.5, 2, 0, 0, Math.PI * 2); g.fill(); // muzzle
+      g.fillStyle = "#3a2a1c"; g.fillRect(6, 11, 1, 1); g.fillRect(9, 11, 1, 1);
+      g.fillStyle = "#6a4a30"; g.fillRect(7, 14, 2, 1);
+      rect(g, 4, 15, 8, 12, "#d8b488"); outline(g, 4, 15, 8, 12, "#8a6540"); // pelt body
+      rect(g, 5, 16, 6, 9, "#e8d0a8");                                      // pale belly side
+      rect(g, 2, 16, 2, 3, "#c99a62"); rect(g, 12, 16, 2, 3, "#c99a62");    // paw nubs
+      rect(g, 2, 21, 2, 3, "#c99a62"); rect(g, 12, 21, 2, 3, "#c99a62");
+      g.fillStyle = "#8f6a44";                                             // ragged hide edge
+      for (let y = 17; y <= 25; y += 2) { g.fillRect(4, y, 1, 1); g.fillRect(11, y, 1, 1); }
+      rect(g, 6, 27, 4, 3, "#c99a62"); rect(g, 6, 30, 4, 2, "#ead4b0");     // tail, pale tip
+      outline(g, 6, 27, 4, 5, "#8a6540");
+      return cv;
+    }
+    case "tortoise_cuirass": {                           // shell-plate breastplate, metal trim + rivets
+      rect(g, 6, 6, 20, 23, "#3b372f"); outline(g, 6, 6, 20, 23, "#2a2722"); // chest form underlayer
+      const plate = (x: number, y: number, w: number) => {                  // layered shell dome plates
+        rect(g, x, y, w, 6, "#5f5a4e");
+        rect(g, x, y, w, 2, "#7d7768");
+        rect(g, x, y + 5, w, 1, "#3b372f");
+        g.fillStyle = "#48443a";
+        g.fillRect(x + Math.round(w / 3), y + 1, 1, 4); g.fillRect(x + Math.round(2 * w / 3), y + 1, 1, 4);
+      };
+      plate(8, 8, 16); plate(6, 14, 20); plate(7, 20, 18);
+      rect(g, 10, 4, 12, 4, "#8a98a8"); rect(g, 10, 4, 12, 1, "#aab4c0");   // steel collar
+      outline(g, 10, 4, 12, 4, "#3c4650");
+      rect(g, 5, 13, 1, 14, "#8a98a8"); rect(g, 26, 13, 1, 14, "#8a98a8");  // side trim
+      rect(g, 6, 26, 20, 4, "#8a98a8"); rect(g, 6, 26, 20, 1, "#aab4c0");   // steel belt
+      rect(g, 6, 29, 20, 1, "#5c6670"); outline(g, 6, 26, 20, 4, "#3c4650");
+      rect(g, 14, 26, 4, 4, "#c98a56"); rect(g, 14, 26, 4, 1, "#f0c89a");   // bronze buckle
+      outline(g, 14, 26, 4, 4, "#5c3d22");
+      g.fillStyle = "#cfc7b2";                                             // thornback spikes
+      poly(g, [[3, 16], [6, 16], [1, 19]], "#cfc7b2"); poly(g, [[26, 16], [29, 16], [31, 19]], "#cfc7b2");
+      poly(g, [[9, 29], [12, 29], [10, 31]], "#cfc7b2"); poly(g, [[19, 29], [22, 29], [21, 31]], "#cfc7b2");
+      for (const [rx, ry] of [[7, 15], [23, 15], [7, 21], [23, 21], [9, 27], [21, 27], [11, 5], [18, 5]] as const) {
+        rect(g, rx, ry, 2, 2, "#5c3d22"); rect(g, rx, ry, 2, 1, "#c98a56"); // two-tone rivets
+        g.fillStyle = "#f0c89a"; g.fillRect(rx, ry, 1, 1);
+      }
+      return cv;
+    }
     case "stinger_blade": {
       poly(g, [[8, 0], [10, 3], [6, 3]], "#a84a3a");                         // stinger barb tip
       poly(g, [[8, 0], [9, 2], [7, 2]], "#e0705a");

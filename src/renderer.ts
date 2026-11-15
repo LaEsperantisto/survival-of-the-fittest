@@ -916,6 +916,7 @@ const _dir = new THREE.Vector3();
 const _p3 = new THREE.Vector3();
 const _dayAmb = new THREE.Color(1.0, 0.97, 0.9);     // linear: bright warm-neutral noon
 const _nightAmb = new THREE.Color(0.2, 0.27, 0.45);  // linear: dim blue moonlight
+const _dustCol = new THREE.Color(0.72, 0.55, 0.35);  // a wall of airborne sand
 
 export class Renderer {
   scene = new THREE.Scene();
@@ -928,6 +929,9 @@ export class Renderer {
   hemi: THREE.HemisphereLight;
   private stars: THREE.Points;
   private sunDisc: THREE.Mesh;
+  private dust: THREE.Points;
+  private stormI = 0;       // sandstorm intensity 0..1 (setStorm)
+  private stormOpen = true; // is the player under open sky (dust rides only there)
   private moonDisc: THREE.Mesh;
   private highlight: THREE.LineSegments;
   renderDistance = 7;
@@ -1013,6 +1017,17 @@ export class Renderer {
     this.moonDisc = new THREE.Mesh(new THREE.CircleGeometry(15, 24),
       new THREE.MeshBasicMaterial({ color: 0xd8e2f5, fog: false, side: THREE.DoubleSide, toneMapped: false }));
     this.scene.add(this.sunDisc, this.moonDisc);
+    // sandstorm dust: a tumbling cloud of grit that rides along with the camera
+    const dustGeo = new THREE.BufferGeometry();
+    const dp: number[] = [];
+    for (let i = 0; i < 700; i++) {
+      const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 16;
+      dp.push(Math.cos(a) * r, (Math.random() - 0.35) * 14, Math.sin(a) * r);
+    }
+    dustGeo.setAttribute("position", new THREE.Float32BufferAttribute(dp, 3));
+    this.dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xd6b98c, size: 0.3, transparent: true, opacity: 0, depthWrite: false }));
+    this.dust.frustumCulled = false;
+    this.scene.add(this.dust);
 
     const hl = new THREE.BoxGeometry(1.002, 1.002, 1.002);
     this.highlight = new THREE.LineSegments(new THREE.EdgesGeometry(hl), new THREE.LineBasicMaterial({ color: 0x000000 }));
@@ -1083,6 +1098,14 @@ export class Renderer {
     this.scene.background = kf.sky;
     (this.scene.fog as THREE.Fog).color.copy(kf.sky);
     (this.scene.fog as THREE.Fog).far = this.renderDistance * CS * 0.98;
+    // sandstorm: the world goes rust, the view closes in, the light drowns
+    if (this.stormI > 0.01) {
+      const f = this.scene.fog as THREE.Fog;
+      f.color.lerp(_dustCol, Math.min(1, this.stormI * 0.85));
+      f.near = THREE.MathUtils.lerp(40, 4, this.stormI);
+      f.far = Math.min(f.far, THREE.MathUtils.lerp(this.renderDistance * CS, 24, this.stormI));
+      this.scene.background = f.color;
+    }
     const a = (frac - 0.25) * Math.PI * 2;
     // light direction: the sun's arc by day, the mirrored moon arc at night
     _dir.set(Math.cos(a), kf.sunElev, 0.4).normalize();
@@ -1109,6 +1132,19 @@ export class Renderer {
     this.moonDisc.lookAt(this.camera.position);
     this.sunDisc.visible = Math.sin(a) > -0.12;
     this.moonDisc.visible = Math.sin(a) < 0.12;
+    if (this.stormI > 0.01) {
+      this.sun.intensity *= 1 - this.stormI * 0.75;
+      this.hemi.intensity *= 1 - this.stormI * 0.55;
+      this.sunDisc.visible &&= this.stormI < 0.5;
+      this.moonDisc.visible &&= this.stormI < 0.5;
+      (this.stars.material as THREE.PointsMaterial).opacity *= 1 - this.stormI;
+      // grit swirls only where the storm itself is — not in your shelter or down a mineshaft
+      (this.dust.material as THREE.PointsMaterial).opacity = this.stormOpen ? this.stormI * 0.75 : 0;
+      this.dust.position.set(this.camera.position.x, this.camera.position.y + 2, this.camera.position.z);
+      this.dust.rotation.y = worldTime * 0.7;
+    } else if ((this.dust.material as THREE.PointsMaterial).opacity > 0) {
+      (this.dust.material as THREE.PointsMaterial).opacity = 0;
+    }
     this.torch.intensity = 0.12 + (1 - Math.min(1, kf.sunI)) * 0.85;
     for (const d of this.dynLights)
       if (d.flame) d.light.intensity = 0.9 + noise1(worldTime * 5.3 + d.x * 3.1 + d.z, 7) * 0.45;
@@ -1150,6 +1186,10 @@ export class Renderer {
     }
     u.uNumLights.value = n;
   }
+
+  /** Sandstorm: fog, sky and light follow the Survival intensity (0..1);
+   *  the grit cloud only rides when the player is under open sky. */
+  setStorm(i: number, openSky: boolean): void { this.stormI = i; this.stormOpen = openSky; }
 
   /**
    * Switch lighting at runtime (default "sky"). Flips the mode and shadow

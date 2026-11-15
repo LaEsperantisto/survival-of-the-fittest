@@ -18,6 +18,7 @@ export class Survival {
   surgeCooldown = 0;           // sweat surge lockout seconds
   causeOfDeath: string | null = null;
   vision = 0; // 0 fine .. 1 worst (low-water visual)
+  storm = 0;   // Sandstorm intensity 0..1 — raw outdoors: amplified air, hard sweat, sand blast
   lastAmbient = 0; lastAmbientEff = 0; lastShelterR = 0; lastTarget = 36.6; lastOpenSky = false;
   lastRoom: { size: number; sealed: boolean; regulators: number } = { size: 0, sealed: false, regulators: 0 };
 
@@ -40,6 +41,13 @@ export class Survival {
     // 10-s stepped weather fluctuation, deterministic timeline (±8°C)
     const w = noise1(Math.floor(tSec / 10) / 60, this.weatherSeed) * 2 - 1;
     return T + w * 8;
+  }
+
+  /** Sandstorm regime: slow deterministic 5-min steps; about a third of
+   *  regimes blow, easing in and out through the noise itself. */
+  stormAt(tSec: number): number {
+    const s = noise1(Math.floor(tSec / 300) / 15, this.weatherSeed + 911);
+    return s > 0.7 ? Math.min(1, (s - 0.7) / 0.15) : 0;
   }
 
   /** body-temp target from shelter + sun; nothing hardcoded "inside ship". */
@@ -101,6 +109,14 @@ export class Survival {
     let shelter = here.shelter;
     let ambEff = here.ambEff;
     const room = here.room;
+    // Sandstorm: a slow regime that amplifies whatever the open air already
+    // is — a scorching noon becomes murderous, a freezing night bites harder.
+    // Walls, caves and sealed shade ride it out untouched.
+    const stormTarget = this.stormAt(opts.tSec);
+    this.storm += (stormTarget - this.storm) * Math.min(1, dt * 0.08);
+    const storm = this.storm;
+    if (storm > 0.02 && !here.deep && here.shelter < 0.6)
+      ambEff = 36.6 + (ambEff - 36.6) * (1 + 0.35 * storm);
     this.lastRoom = room;
     if (opts.inWater) {
       // desert water is cold: it pulls hard against midday heat, and is a little
@@ -125,6 +141,7 @@ export class Survival {
     if (this.body > 37) drain += (this.body - 37) * 0.02;
     if (opts.sprinting) drain *= 1.7;
     if (opts.overencumbered) drain += 0.05;
+    if (storm > 0.05 && here.shelter < 0.8) drain *= 1 + 0.7 * storm; // the wind drinks you
     this.water = Math.max(0, this.water - drain * dt);
 
     // Damage — penalties are gentle: dying takes sustained, deep exposure
@@ -132,6 +149,8 @@ export class Survival {
     if (this.body < COLD_LIMIT) this.hurt((COLD_LIMIT - this.body) * 0.175, "hypothermia");
     if (this.water <= 0) this.hurt(0.3, "dehydration");
     else if (this.water < WATER_LIMIT) this.hurt((WATER_LIMIT - this.water) * 0.0375, "dehydration");
+    // full-strength storm on bare ground: endless scouring — a cut-short visit, not a killer
+    if (storm > 0.35 && here.openSky) this.hurt((storm - 0.35) * 0.55 * dt, "sand blast");
 
     // Regen: only when Water AND Heat are in their zones
     if (this.water > 25 && this.body >= SAFE_LO && this.body <= SAFE_HI && this.health > 0)

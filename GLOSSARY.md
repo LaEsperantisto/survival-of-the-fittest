@@ -263,8 +263,19 @@ _Avoid_: unbuild, demolish
 A station that breaks down crafted items (tools, gear — not placed blocks) into ~75% of their ingredients, always at least one unit of each.
 _Avoid_: scrap bin
 
-**Wanderer**:
-A rare traveling trader in Towns: barters rare loot for Water Canisters; finite stock per spawn, respawns rarely with new stock.
+**Trader**:
+A desert merchant who keeps a stall at a Trader Camp. Traders do not travel, do not fight, and cannot be killed — barter is the only exchange, and there is no coin anywhere in the desert.
+_Avoid_: NPC (generic), merchant, vendor, wanderer (the abandoned Town-based idea)
+
+**Trader Camp**:
+A homestead on the trade roads — a windmill tower, a waystation hut, or a farmstead with a water trough — each kept by a single Trader and their stall.
+
+**Trade Table**:
+A Trader's offers: five straight goods-for-goods swaps per Camp, fixed for that Camp for the whole in-game day and reshuffled at every dawn.
+
+**Sandstorm**:
+A passing state of the open desert: wind-borne sand that amplifies whatever the Air Temperature already is, drinks the player's Water faster, and scours bare skin. Walls, shade and Caves ride it out; only the open air changes.
+_Avoid_: dust storm, weather (there is nothing else)
 
 **Engine Core**:
 The single quest-exclusive item — the final quest artifact. Everything else in the game is eventually craftable.
@@ -275,6 +286,10 @@ _Avoid_: tunnel, hole, mine (as the natural hollow)
 
 **Cave Pool**:
 A rare standing Water Source deep underground: drinkable supply, paid for in danger and darkness.
+
+**Cave Mouth**:
+An arched opening into the Caves, gaping in the side of a rocky slope — the natural way down. Distinct from a Dungeon's built, sealed entrance.
+_Avoid_: sinkhole, mine entrance
 
 **Ore Vein**:
 A visible seam of a Mineral embedded in cave stone. Mining a vein yields its Raw Ore.
@@ -343,6 +358,19 @@ Sand Wurm skin — thick, heat-tempered plating for the toughest Body gear.
 
 **Wurmsuit**:
 Body-slot armour stitched from Wurm Hide and Chitin; shrugs off more of every hit than Reptile Armour.
+
+**Sand Vulture**:
+A bold scavenger that follows misfortune: it keeps its distance from the healthy and dives only at prey that is already hurt. Its meat is food once cooked.
+
+**Thornback Tortoise**:
+A slow, high-tempered grazer armored in a spiked dome; it neither hunts nor flees. Its Shell is heavy armour material, and Traders covet it.
+
+**Tortoise Cuirass**:
+Body armour of layered Thornback shell plates — shrugs off more than Reptile Armour, less than a Wurmsuit.
+
+**Fennec Fox**:
+A small, enormous-eared desert fox that outruns everything and fights nothing; its Pelt is soft, warm and prized in trade.
+_Avoid_: fennec (bare, in prose)
 
 **Head Lantern**:
 The Portable Light worn in the Light slot: toggled at will, it burns fuel charges and must be refueled — the only way to carry a Cave's worth of darkness back out.

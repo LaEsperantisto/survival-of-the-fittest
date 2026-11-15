@@ -80,10 +80,18 @@ export class Audio {
 
   setVolume(v: number) {
     this.volume = v;
-    if (this.windGain) this.windGain.gain.value = 0.06 * v;
+    if (this.windGain) this.windGain.gain.value = (0.06 + this.stormI * 0.28) * v;
     if (this.ctx && this.musicGain)
       this.musicGain.gain.setTargetAtTime((this.musicOn ? 0.16 : 0) * v, this.ctx.currentTime, 0.4);
   }
+
+  /** Sandstorm: the wind bed roars with the storm (driven every frame). */
+  setStorm(i: number) {
+    if (i === this.stormI) return;
+    this.stormI = i;
+    if (this.windGain) this.windGain.gain.value = (0.06 + i * 0.28) * this.volume;
+  }
+  private stormI = 0;
 
   /** On/off ambient score (Settings > Music). */
   setMusic(on: boolean) {

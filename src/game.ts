@@ -8,7 +8,8 @@ import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, type ItemDef, type Slot } fr
 import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, CS, CH, DAY_SECONDS, isSolid, isWater } from "./blocks";
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
-import { heightAt, biomeAt, TOWN_L, treePlan, TreePart } from "./gen";
+import { heightAt, biomeAt, TOWN_L, CAMP_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
+import { offersFor, Offer } from "./trades";
 import { RECIPES, SMELT, canCraft, doCraft } from "./crafting";
 import { currentQuest, loadQuestState, questEvent, type QuestDef, type QuestState } from "./quests";
 import { Tutorial, INTRO_CINE, type CineSeg } from "./tutorial";
@@ -49,6 +50,10 @@ export class Game {
   beaconMarks: { x: number; y: number; z: number }[] = [];
   // living desert: mobs are runtime-only (never saved); they respawn near the player
   private mobs: Mob[] = [];
+  private traderAt = new Map<string, Mob>();      // camp lattice cell -> its resident Trader
+  private tradeOffers: Offer[] = [];
+  private tradeCamp: { x: number; z: number } | null = null;
+  private stormToast = false;
   private mobSpawnAcc = 9;
   private attackCd = 0;
   // Armour Slots: equipped gear lives here, not in the inventory grid
@@ -67,7 +72,7 @@ export class Game {
   private prevHp = 100;
   private lastHitFlash = -10;
   private lastDmgAt = -10;
-  ui: null | "inv" | "bench" | "smelt" | "cache" | "liftoff" = null;
+  ui: null | "inv" | "bench" | "smelt" | "cache" | "liftoff" | "trade" = null;
   openCacheId: number | null = null;
   openStation: [number, number, number] | null = null;
   private breaking: { x: number; y: number; z: number; need: number; elapsed: number } | null = null;
@@ -1037,6 +1042,14 @@ export class Game {
         regulator: (this.equip.regulator?.charges ?? 0) > 0,
         terrainH: (x, z) => heightAt(this.seed, x, z),
       });
+      // sandstorm: visuals follow the Survival intensity; announce the turn
+      this.renderer.setStorm(this.survival.storm, this.survival.lastOpenSky);
+      this.audio.setStorm(this.survival.storm);
+      if (this.survival.storm > 0.5 && !this.stormToast) {
+        this.stormToast = true; hud.toast("A Sandstorm rolls in — get out of the open."); this.audio.error();
+      } else if (this.survival.storm < 0.3 && this.stormToast) {
+        this.stormToast = false; hud.toast("The Sandstorm passes.");
+      }
       // worn gear burns its charges: a coolant cell holds 2 game days, a lantern charge 4 hours
       const reg = this.equip.regulator;
       if (reg && (reg.charges ?? 0) > 0) {
@@ -1186,6 +1199,7 @@ export class Game {
   }
 
   private promptFor(t: Raycast | null): string | null {
+    if (this.nearestTrader()) return "E: Trade with the Trader";
     if (!t) return null;
     if (t.hit && this.world.get(t.hit.x, t.hit.y, t.hit.z) === CHEST) return "E: Open Supply Chest";
     const near = this.nearestCache();
@@ -1456,21 +1470,23 @@ export class Game {
     hud.toast(`${def.name} killed.`);
   }
 
-  /** Keep the desert stocked: 4 snakes, 8 rats tops above ground; the Caves
-   *  keep their own fauna — up to 4 Dust Scorpions and a lone Sand Wurm,
-   *  spawned only while you are down in them. */
+  /** Keep the desert stocked: a stable surface community (snakes, rats,
+   *  vultures, tortoises, fennecs) and the Caves' own fauna — up to 4 Dust
+   *  Scorpions and a lone Sand Wurm, spawned only while you are down in
+   *  them. Traders are not spawned by chance: each Trader Camp within reach
+   *  gets exactly one, and it never despawns while you keep coming back. */
   private topUpMobs() {
-    const targets: Record<MobKind, number> = { snake: 4, rat: 8, scorpion: 4, wurm: 1 };
-    const counts: Record<MobKind, number> = { snake: 0, rat: 0, scorpion: 0, wurm: 0 };
-    // anything strayed far from the player gives its slot back
+    const targets: Record<MobKind, number> = { snake: 4, rat: 8, scorpion: 4, wurm: 1, trader: 0, vulture: 3, tortoise: 2, fennec: 2 };
+    const counts: Record<MobKind, number> = { snake: 0, rat: 0, scorpion: 0, wurm: 0, trader: 0, vulture: 0, tortoise: 0, fennec: 0 };
+    // anything strayed far from the player gives its slot back — except a Trader
     const p0 = this.player.pos;
     this.mobs = this.mobs.filter((m) => {
-      if (Math.abs(m.x - p0.x) + Math.abs(m.z - p0.z) > 190) { this.renderer.removeSceneObject(m.vis.group); return false; }
+      if (m.kind !== "trader" && Math.abs(m.x - p0.x) + Math.abs(m.z - p0.z) > 190) { this.renderer.removeSceneObject(m.vis.group); return false; }
       return true;
     });
     for (const m of this.mobs) counts[m.kind]++;
     const p = this.player.pos;
-    for (const kind of ["snake", "rat", "scorpion", "wurm"] as MobKind[]) {
+    for (const kind of ["snake", "rat", "scorpion", "wurm", "vulture", "tortoise", "fennec"] as MobKind[]) {
       const underground = kind === "scorpion" || kind === "wurm";
       if (underground && p.y > 27) continue; // the deep fauna only stirs when you are down there
       while (counts[kind] < targets[kind]) {
@@ -1480,6 +1496,8 @@ export class Game {
         if (!underground) {
           if (Math.hypot(x, z) < 24) continue; // keep the crash site quiet
           if (this.beaconMarks.some((b) => Math.hypot(b.x + 0.5 - x, b.z + 0.5 - z) < 16)) continue; // save points stay safe
+          const camp = structuresOf(this.seed).nearestCamp(x, z);
+          if (camp && Math.hypot(camp.x - x, camp.z - z) < 34) continue; // camps are the Trader's patch
           const gy = this.mobSurface(x, z);
           if (gy <= 1 || this.world.get(Math.floor(x), gy, Math.floor(z)) !== AIR ||
               this.world.get(Math.floor(x), gy + 1, Math.floor(z)) !== AIR) continue;
@@ -1492,6 +1510,95 @@ export class Game {
         }
       }
     }
+    this.ensureTraders();
+  }
+
+  /** One immovable Trader standing in front of each nearby camp's stall. */
+  private ensureTraders() {
+    const stx = structuresOf(this.seed);
+    const p = this.player.pos, R = 110;
+    const tx0 = Math.floor((p.x - R) / CAMP_L), tx1 = Math.floor((p.x + R) / CAMP_L);
+    const tz0 = Math.floor((p.z - R) / CAMP_L), tz1 = Math.floor((p.z + R) / CAMP_L);
+    for (let tx = tx0; tx <= tx1; tx++) for (let tz = tz0; tz <= tz1; tz++) {
+      if (!stx.campAt(tx, tz)) continue;
+      const c = stx.campCenter(tx, tz);
+      if (Math.hypot(c.x - p.x, c.z - p.z) > R) continue;
+      const key = tx + "," + tz;
+      const cur = this.traderAt.get(key);
+      if (cur && this.mobs.includes(cur)) continue;
+      const spot = campTraderSpot(c);
+      const gy = this.mobSurface(spot.x, spot.z);
+      if (gy <= 1) continue; // camp chunks not streamed in yet — next round
+      this.spawnMob("trader", spot.x, gy, spot.z);
+      this.traderAt.set(key, this.mobs[this.mobs.length - 1]);
+    }
+    if (this.traderAt.size) {
+      for (const [key, m] of this.traderAt) if (!this.mobs.includes(m)) this.traderAt.delete(key);
+    }
+  }
+
+  /** The Trader you are standing in front of, if any. */
+  private nearestTrader(): Mob | null {
+    const p = this.player.pos;
+    let best: Mob | null = null, bd = 3.6;
+    for (const m of this.mobs) {
+      if (m.kind !== "trader") continue;
+      const d = Math.hypot(m.x - p.x, m.z - p.z);
+      if (d < bd) { bd = d; best = m; }
+    }
+    return best;
+  }
+
+  // ---------- Trader barter ----------
+  // No coin: every offer swaps goods, five per camp per day, deterministic —
+  // leave and come back the same in-game day and the table is identical.
+
+  private openTrade(trader: Mob) {
+    const camp = structuresOf(this.seed).nearestCamp(trader.x, trader.z);
+    this.tradeCamp = camp ? { x: camp.x, z: camp.z } : { x: trader.x, z: trader.z };
+    this.tradeOffers = offersFor(this.seed, this.tradeCamp.x, this.tradeCamp.z, this.dayNumber());
+    this.ui = "trade";
+    this.unlockPointer();
+    this.renderTrade();
+    document.getElementById("ui-trade")!.classList.remove("hidden");
+    this.audio.pickup();
+  }
+
+  private renderTrade() {
+    const box = document.getElementById("trade-offers")!;
+    box.innerHTML = "";
+    for (let i = 0; i < this.tradeOffers.length; i++) {
+      const o = this.tradeOffers[i];
+      const row = document.createElement("div");
+      row.className = "trade-row";
+      const side = (list: { itemId: string; count: number }[]) =>
+        list.map((w) => `<span class="trade-item">${ITEMS[w.itemId].name}${w.count > 1 ? " ×" + w.count : ""}</span>`).join(" + ");
+      row.innerHTML = `<span class="trade-side want">${side(o.want)}</span><span class="trade-arrow">→</span><span class="trade-side give">${side(o.give)}</span>`;
+      const b = document.createElement("button");
+      b.textContent = "Trade";
+      b.onclick = () => this.trade(i);
+      row.appendChild(b);
+      box.appendChild(row);
+    }
+    (document.getElementById("trade-note")!).textContent =
+      `Day ${this.dayNumber()} — the Trader restocks the table at every dawn.`;
+  }
+
+  private trade(i: number) {
+    if (this.ui !== "trade") return;
+    const o = this.tradeOffers[i];
+    for (const w of o.want) {
+      if (!this.inv.has(w.itemId, w.count)) {
+        hud.toast(`You don't have ${w.count} × ${ITEMS[w.itemId].name}.`);
+        this.audio.error();
+        return;
+      }
+    }
+    for (const w of o.want) this.inv.removeItem(w.itemId, w.count);
+    for (const g of o.give) this.giveOrDrop(g.itemId, g.count);
+    hud.toast("Traded.");
+    this.audio.drink();
+    this.renderTrade();
   }
 
   /** A floor cell inside a Cave between lo..hi: solid ground, two clear head
@@ -1523,6 +1630,7 @@ export class Game {
       : Infinity;
     let best: Mob | null = null, bestT = Infinity;
     for (const m of this.mobs) {
+      if (m.kind === "trader") continue; // you cannot pick a fight with the Trader
       const def = MOB_DEFS[m.kind];
       const cx = m.x - o.x, cy = m.y + def.height / 2 - o.y, cz = m.z - o.z;
       const t = cx * dir.x + cy * dir.y + cz * dir.z;
@@ -1551,6 +1659,8 @@ export class Game {
     const p = this.player.pos, t = this.timeSec;
     for (const m of this.mobs.slice()) {
       const def = MOB_DEFS[m.kind];
+      // a Trader stands its ground: it never moves, never despawns, never bites
+      if (m.kind === "trader") { m.vis.animate(t, 0); continue; }
       const dx = p.x - m.x, dz = p.z - m.z;
       const dist = Math.hypot(dx, dz);
       if (dist > 110) { this.renderer.removeSceneObject(m.vis.group); this.mobs = this.mobs.filter((x) => x !== m); continue; }
@@ -1558,7 +1668,11 @@ export class Game {
       // a snake can only reach you through open column between its head and your
       // feet: one lurking under the floor you stand on stays lurking
       const canReach = this.columnClear(m.x, m.z, m.y + 0.2, p.y + 1.4);
-      if (def.aggroR > 0 && dist < def.aggroR && dist > 0.01 && canReach) {
+      // Vultures are cowards: they only commit to prey that is already bleeding
+      const prey = m.kind === "vulture" && this.survival.health < 60;
+      const aggroR = m.kind === "vulture" ? (prey ? def.aggroR : 0) : def.aggroR;
+      const fleeR = m.kind === "vulture" && !prey ? def.fleeR : (m.kind === "vulture" ? 0 : def.fleeR);
+      if (aggroR > 0 && dist < aggroR && dist > 0.01 && canReach) {
         vx = (dx / dist) * def.speed; vz = (dz / dist) * def.speed;
         m.yaw = Math.atan2(vx, vz);
         if (dist < 1.2 + def.hitR && m.biteCd <= 0) {
@@ -1567,7 +1681,7 @@ export class Game {
           this.survival.hurt(def.biteDmg * armor, `${def.name.toLowerCase()} bite`);
           hud.toast(armor < 1 ? `A ${def.name.toLowerCase()} bites you — the armour soaks some of it.` : `A ${def.name.toLowerCase()} bites you!`);
         }
-      } else if (def.fleeR > 0 && dist < def.fleeR && dist > 0.01) {
+      } else if (fleeR > 0 && dist < fleeR && dist > 0.01) {
         vx = (-dx / dist) * def.speed; vz = (-dz / dist) * def.speed;
         m.yaw = Math.atan2(vx, vz);
       } else {
@@ -1786,6 +1900,8 @@ export class Game {
   private act() {
     if (this.ui || this.paused || this.cine) return;
     const t = this.raycastTarget();
+    const trader = this.nearestTrader();
+    if (trader) { this.openTrade(trader); return; }
     if (t?.hit && this.world.get(t.hit.x, t.hit.y, t.hit.z) === CHEST) { this.openChest(t.hit.x, t.hit.y, t.hit.z); return; }
     const cache = this.nearestCache();
     if (cache) { this.openCacheId = cache.id; this.ui = "cache"; this.unlockPointer(); this.renderCache(); document.getElementById("ui-cache")!.classList.remove("hidden"); return; }
@@ -2347,7 +2463,7 @@ export class Game {
     }
     this.ui = null; this.openStation = null; this.openCacheId = null;
     this.chestInv = null; this.gridFocus = "inv";
-    for (const id of ["ui-inventory", "ui-craft", "ui-cache"]) document.getElementById(id)!.classList.add("hidden");
+    for (const id of ["ui-inventory", "ui-craft", "ui-cache", "ui-trade"]) document.getElementById(id)!.classList.add("hidden");
     // closing any in-game menu also drops the pause menu, if one was open
     if (this.paused) {
       this.paused = false;

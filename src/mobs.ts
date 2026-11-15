@@ -2,7 +2,7 @@ import * as THREE from "three";
 
 // ---------------------------------------------------------------- definitions
 
-export type MobKind = "snake" | "rat" | "scorpion" | "wurm";
+export type MobKind = "snake" | "rat" | "scorpion" | "wurm" | "trader" | "vulture" | "tortoise" | "fennec";
 
 export interface MobDef {
   kind: MobKind;
@@ -45,6 +45,33 @@ export const MOB_DEFS: Record<MobKind, MobDef> = {
     hitR: 0.8, height: 0.9,
     drops: [{ itemId: "wurm_hide", count: 2 }, { itemId: "chitin", count: 1 }],
     dropChance: [1, 0.5],
+  },
+  trader: {
+    kind: "trader", name: "Trader", hp: 9999, speed: 0,
+    aggroR: 0, fleeR: 0, biteDmg: 0, biteCd: 0,
+    hitR: 0.5, height: 1.8,
+    drops: [],
+  },
+  vulture: {
+    kind: "vulture", name: "Sand Vulture", hp: 14, speed: 2.6,
+    aggroR: 5, fleeR: 8, biteDmg: 5, biteCd: 2.2,
+    hitR: 0.55, height: 0.9,
+    drops: [{ itemId: "vulture_raw", count: 1 }, { itemId: "vulture_raw", count: 1 }],
+    dropChance: [1, 0.5],
+  },
+  tortoise: {
+    kind: "tortoise", name: "Thornback Tortoise", hp: 40, speed: 0.7,
+    aggroR: 0, fleeR: 0, biteDmg: 0, biteCd: 0,
+    hitR: 0.9, height: 0.8,
+    drops: [{ itemId: "tortoise_shell", count: 1 }, { itemId: "rat_raw", count: 1 }],
+    dropChance: [1, 0.4],
+  },
+  fennec: {
+    kind: "fennec", name: "Fennec Fox", hp: 6, speed: 4.2,
+    aggroR: 0, fleeR: 9, biteDmg: 0, biteCd: 0,
+    hitR: 0.4, height: 0.45,
+    drops: [{ itemId: "fennec_pelt", count: 1 }, { itemId: "rat_raw", count: 1 }],
+    dropChance: [1, 0.3],
   },
 };
 
@@ -195,15 +222,116 @@ function wurmTex(): THREE.CanvasTexture {
   });
 }
 
+/** Vulture plumage: dusty tan-grey base, dark ragged feather streaks, pale neck frill band. */
+function vultureTex(): THREE.CanvasTexture {
+  return canvasTex((g, rnd) => {
+    g.fillStyle = "#a8906a";
+    g.fillRect(0, 0, 64, 64);
+    for (let i = 0; i < 640; i++) {
+      g.fillStyle = rnd() > 0.5 ? "#b9a179" : "#8f7854";
+      g.fillRect((rnd() * 64) | 0, (rnd() * 64) | 0, 1, 1);
+    }
+    // ragged feather streaks
+    for (let i = 0; i < 70; i++) {
+      g.fillStyle = "#75603f";
+      g.fillRect((rnd() * 64) | 0, (rnd() * 50) | 0, 2, 4);
+    }
+    // pale frill band (top rows)
+    for (let y = 0; y < 6; y++) {
+      g.fillStyle = y >= 3 ? "#c9b68e" : "#b8a37b";
+      g.fillRect(0, y, 64, 1);
+    }
+  });
+}
+
+/** Tortoise shell: olive-grey base, dark scute seams, worn pale scute centers. */
+function tortoiseTex(): THREE.CanvasTexture {
+  return canvasTex((g, rnd) => {
+    g.fillStyle = "#77744f";
+    g.fillRect(0, 0, 64, 64);
+    for (let i = 0; i < 520; i++) {
+      g.fillStyle = rnd() > 0.5 ? "#86825c" : "#65613f";
+      g.fillRect((rnd() * 64) | 0, (rnd() * 64) | 0, 1, 1);
+    }
+    // scute seams: dark grid
+    g.fillStyle = "#4c4930";
+    for (const x of [10, 31, 52]) g.fillRect(x, 0, 2, 64);
+    for (const y of [12, 33, 54]) g.fillRect(0, y, 64, 2);
+    // pale worn centers inside the scutes
+    for (const x of [16, 37]) {
+      for (const y of [3, 22, 43]) {
+        g.fillStyle = "#8f8b63";
+        g.fillRect(x, y, 11, 7);
+      }
+    }
+  });
+}
+
+/** Fennec fur: pale sand base, light speckle, darker spine band, pale belly. */
+function fennecTex(): THREE.CanvasTexture {
+  return canvasTex((g, rnd) => {
+    g.fillStyle = "#d8bd8e";
+    g.fillRect(0, 0, 64, 64);
+    for (let i = 0; i < 700; i++) {
+      g.fillStyle = rnd() > 0.5 ? "#e6cfa6" : "#c2a271";
+      g.fillRect((rnd() * 64) | 0, (rnd() * 64) | 0, 1, 1);
+    }
+    // darker spine band (top rows)
+    for (let y = 0; y < 8; y++) {
+      g.fillStyle = y >= 4 ? "#b18f5c" : "#a68351";
+      g.fillRect(0, y, 64, 1);
+    }
+    // pale belly (bottom rows; flipY makes v=0 the canvas bottom)
+    for (let y = 54; y < 64; y++) {
+      g.fillStyle = y >= 58 ? "#f0e4c8" : "#e3d3ac";
+      g.fillRect(0, y, 64, 1);
+    }
+  });
+}
+
+/** Trader robe: deep teal woven base, plum hem/chest bands, pale gold trim. */
+function traderTex(): THREE.CanvasTexture {
+  return canvasTex((g, rnd) => {
+    g.fillStyle = "#27474a";
+    g.fillRect(0, 0, 64, 64);
+    // woven vertical grain
+    for (let i = 0; i < 520; i++) {
+      g.fillStyle = rnd() > 0.5 ? "#2e5254" : "#1f3b3e";
+      g.fillRect((rnd() * 64) | 0, (rnd() * 64) | 0, 1, 2);
+    }
+    // plum bands (flipY makes v=0 the canvas bottom -> hem at low rows)
+    g.fillStyle = "#5c2e46";
+    g.fillRect(0, 0, 64, 8);
+    g.fillRect(0, 46, 64, 8);
+    // pale gold trim lines
+    g.fillStyle = "#b99a5e";
+    g.fillRect(0, 8, 64, 1);
+    g.fillRect(0, 45, 64, 1);
+    // stitch speckle between the bands
+    for (let i = 0; i < 34; i++) {
+      g.fillStyle = "#6f4a5c";
+      g.fillRect((rnd() * 64) | 0, 16 + ((rnd() * 26) | 0), 2, 2);
+    }
+  });
+}
+
 interface SnakeMats { body: THREE.MeshLambertMaterial; ridge: THREE.MeshLambertMaterial; eye: THREE.MeshLambertMaterial; }
 interface RatMats { fur: THREE.MeshLambertMaterial; pale: THREE.MeshLambertMaterial; dark: THREE.MeshLambertMaterial; pink: THREE.MeshLambertMaterial; }
 interface ScorpionMats { shell: THREE.MeshLambertMaterial; claw: THREE.MeshLambertMaterial; stinger: THREE.MeshLambertMaterial; eye: THREE.MeshLambertMaterial; }
 interface WurmMats { hide: THREE.MeshLambertMaterial; ridge: THREE.MeshLambertMaterial; eye: THREE.MeshLambertMaterial; }
+interface VultureMats { plumage: THREE.MeshLambertMaterial; skin: THREE.MeshLambertMaterial; feather: THREE.MeshLambertMaterial; beak: THREE.MeshLambertMaterial; eye: THREE.MeshLambertMaterial; }
+interface TortoiseMats { shell: THREE.MeshLambertMaterial; skin: THREE.MeshLambertMaterial; thorn: THREE.MeshLambertMaterial; beak: THREE.MeshLambertMaterial; eye: THREE.MeshLambertMaterial; }
+interface FennecMats { fur: THREE.MeshLambertMaterial; pale: THREE.MeshLambertMaterial; dark: THREE.MeshLambertMaterial; pink: THREE.MeshLambertMaterial; }
+interface TraderMats { robe: THREE.MeshLambertMaterial; sash: THREE.MeshLambertMaterial; skin: THREE.MeshLambertMaterial; scarf: THREE.MeshLambertMaterial; pouch: THREE.MeshLambertMaterial; coin: THREE.MeshLambertMaterial; eye: THREE.MeshLambertMaterial; }
 
 let snakeMats: SnakeMats | null = null;
 let ratMats: RatMats | null = null;
 let scorpionMats: ScorpionMats | null = null;
 let wurmMats: WurmMats | null = null;
+let vultureMats: VultureMats | null = null;
+let tortoiseMats: TortoiseMats | null = null;
+let fennecMats: FennecMats | null = null;
+let traderMats: TraderMats | null = null;
 
 function getSnakeMats(): SnakeMats {
   if (!snakeMats) {
@@ -249,6 +377,59 @@ function getWurmMats(): WurmMats {
     };
   }
   return wurmMats;
+}
+
+function getVultureMats(): VultureMats {
+  if (!vultureMats) {
+    vultureMats = {
+      plumage: new THREE.MeshLambertMaterial({ map: vultureTex() }),
+      skin: new THREE.MeshLambertMaterial({ color: 0xc78d7c }),
+      feather: new THREE.MeshLambertMaterial({ color: 0x5f4c33 }),
+      beak: new THREE.MeshLambertMaterial({ color: 0x35343a }),
+      eye: new THREE.MeshLambertMaterial({ color: 0x16100a }),
+    };
+  }
+  return vultureMats;
+}
+
+function getTortoiseMats(): TortoiseMats {
+  if (!tortoiseMats) {
+    tortoiseMats = {
+      shell: new THREE.MeshLambertMaterial({ map: tortoiseTex() }),
+      skin: new THREE.MeshLambertMaterial({ color: 0x938a5e }),
+      thorn: new THREE.MeshLambertMaterial({ color: 0x57513a }),
+      beak: new THREE.MeshLambertMaterial({ color: 0xb0a26e }),
+      eye: new THREE.MeshLambertMaterial({ color: 0x16100a }),
+    };
+  }
+  return tortoiseMats;
+}
+
+function getFennecMats(): FennecMats {
+  if (!fennecMats) {
+    fennecMats = {
+      fur: new THREE.MeshLambertMaterial({ map: fennecTex() }),
+      pale: new THREE.MeshLambertMaterial({ color: 0xefe2c6 }),
+      dark: new THREE.MeshLambertMaterial({ color: 0x6b4e2c }),
+      pink: new THREE.MeshLambertMaterial({ color: 0xd8a0a0 }),
+    };
+  }
+  return fennecMats;
+}
+
+function getTraderMats(): TraderMats {
+  if (!traderMats) {
+    traderMats = {
+      robe: new THREE.MeshLambertMaterial({ map: traderTex() }),
+      sash: new THREE.MeshLambertMaterial({ color: 0x9c5a33 }),
+      skin: new THREE.MeshLambertMaterial({ color: 0xc79366 }),
+      scarf: new THREE.MeshLambertMaterial({ color: 0xd8cbb0 }),
+      pouch: new THREE.MeshLambertMaterial({ color: 0x6e4b2c }),
+      coin: new THREE.MeshLambertMaterial({ color: 0xc9a94f }),
+      eye: new THREE.MeshLambertMaterial({ color: 0x16100a }),
+    };
+  }
+  return traderMats;
 }
 
 // ---------------------------------------------------------------- visuals
@@ -553,11 +734,247 @@ function makeWurm(): MobVisual {
   return { group, animate };
 }
 
+// sand vulture: ~0.9 m tall hunched scavenger; faces +Z (head at +Z)
+function makeVulture(): MobVisual {
+  const mats = getVultureMats();
+  const group = new THREE.Group();
+  const pivot = new THREE.Group(); // hunch bob + forward lean
+  group.add(pivot);
+
+  // hunched plump body, tilted forward
+  const body = sph(0.52, 0.5, 0.68, mats.plumage, 0, 0.44, -0.06);
+  body.rotation.x = -0.12;
+  pivot.add(body);
+
+  // bald pinkish neck leaning forward-up into a small head
+  const neck = new THREE.Group();
+  neck.position.set(0, 0.60, 0.20);
+  neck.rotation.x = 0.25;
+  neck.add(box(0.13, 0.22, 0.13, mats.skin, 0, 0.09, 0));
+  neck.add(box(0.26, 0.09, 0.26, mats.plumage, 0, -0.02, -0.01)); // pale frill collar
+  const headRoot = new THREE.Group();
+  headRoot.position.set(0, 0.22, 0.02);
+  headRoot.add(sph(0.19, 0.17, 0.2, mats.skin, 0, 0, 0.03));
+  headRoot.add(box(0.09, 0.09, 0.13, mats.beak, 0, -0.01, 0.14)); // hooked dark beak
+  const hook = box(0.05, 0.07, 0.06, mats.beak, 0, -0.06, 0.20);
+  hook.rotation.x = 0.5;
+  headRoot.add(hook);
+  headRoot.add(box(0.03, 0.03, 0.02, mats.eye, -0.08, 0.04, 0.10));
+  headRoot.add(box(0.03, 0.03, 0.02, mats.eye, 0.08, 0.04, 0.10));
+  neck.add(headRoot);
+  pivot.add(neck);
+
+  // ragged folded wings: flattened layered boxes slumped at the sides
+  const wings: THREE.Group[] = [];
+  for (const side of [-1, 1]) {
+    const wing = new THREE.Group();
+    wing.position.set(side * 0.26, 0.52, -0.04);
+    wing.rotation.z = side * 0.35;
+    wing.add(box(0.08, 0.34, 0.5, mats.plumage, 0, -0.08, 0));
+    wing.add(box(0.05, 0.28, 0.42, mats.feather, side * 0.04, -0.2, -0.06)); // darker folded tips
+    wings.push(wing);
+    pivot.add(wing);
+  }
+
+  // stubby scaled legs + dark talon feet
+  const legs: THREE.Mesh[] = [];
+  for (const side of [-1, 1]) {
+    const leg = box(0.09, 0.2, 0.09, mats.feather, side * 0.13, 0.1, 0.02);
+    legs.push(leg);
+    pivot.add(leg, box(0.1, 0.04, 0.16, mats.beak, side * 0.13, 0.02, 0.08));
+  }
+
+  const animate = (t: number, moving: number): void => {
+    const mv = Math.max(0, Math.min(1, moving));
+    // idle hunch bob; walking adds a hopped bob + forward lean
+    pivot.position.y = Math.sin(t * 1.6) * 0.008 + Math.abs(Math.sin(t * (3 + 2.6 * mv))) * 0.02 * mv;
+    pivot.rotation.x = 0.12 * mv + Math.sin(t * 1.3) * 0.012 * (1 - mv);
+    // ragged wings flutter when moving, sag at rest
+    for (let i = 0; i < 2; i++) {
+      const side = i === 0 ? -1 : 1;
+      const flap = Math.sin(t * (4.5 + 3 * mv) + i * 0.9) * (0.05 + 0.22 * mv);
+      wings[i].rotation.z = side * (0.35 + flap);
+    }
+    // head tucks into the hunch at rest, peers out while walking
+    headRoot.rotation.x = -0.18 + 0.28 * mv + Math.sin(t * 1.1) * 0.04 * (1 - mv);
+    const lp = t * (3.4 + 3 * mv);
+    for (let i = 0; i < legs.length; i++) legs[i].rotation.x = Math.sin(lp + i * Math.PI) * 0.4 * mv;
+  };
+  return { group, animate };
+}
+
+// thornback tortoise: ~1.1 m long, ~0.75 m tall domed shell rimmed with thorns; faces +Z
+function makeTortoise(): MobVisual {
+  const mats = getTortoiseMats();
+  const group = new THREE.Group();
+  const pivot = new THREE.Group(); // slow plod bob
+  group.add(pivot);
+
+  const legH = 0.14;
+
+  // domed shell: flattened sphere
+  pivot.add(sph(1.05, 0.75, 1.15, mats.shell, 0, legH + 0.31, -0.02));
+
+  // thorns poking up around the shell rim (skip the front where the head exits)
+  for (const a of [0.9, 1.4, 1.9, 2.4, 2.9, Math.PI, 3.3, 3.8, 4.3, 4.8, 5.3]) {
+    const thorn = box(0.09, 0.16, 0.09, mats.thorn, Math.sin(a) * 0.52, legH + 0.44, Math.cos(a) * 0.57 - 0.02);
+    thorn.rotation.z = -Math.sin(a) * 0.45; // lean outward
+    thorn.rotation.x = Math.cos(a) * 0.45;
+    pivot.add(thorn);
+  }
+
+  // four stout column legs
+  const legs: THREE.Mesh[] = [];
+  for (const side of [-1, 1]) {
+    for (const z of [0.33, -0.35]) {
+      const leg = box(0.16, legH + 0.06, 0.18, mats.skin, side * 0.32, (legH + 0.06) / 2, z);
+      legs.push(leg);
+      pivot.add(leg);
+    }
+  }
+
+  // small head with a beaky front; headRoot breathing in/out
+  const headRoot = new THREE.Group();
+  headRoot.position.set(0, legH + 0.17, 0.66);
+  headRoot.add(box(0.2, 0.17, 0.18, mats.skin, 0, 0, 0));
+  headRoot.add(box(0.12, 0.09, 0.1, mats.beak, 0, -0.03, 0.13));
+  headRoot.add(box(0.035, 0.035, 0.02, mats.eye, -0.08, 0.04, 0.09));
+  headRoot.add(box(0.035, 0.035, 0.02, mats.eye, 0.08, 0.04, 0.09));
+  pivot.add(headRoot);
+
+  // short stubby tail at the rear
+  pivot.add(box(0.09, 0.09, 0.16, mats.skin, 0, legH + 0.12, -0.66));
+
+  const animate = (t: number, moving: number): void => {
+    const mv = Math.max(0, Math.min(1, moving));
+    // slow plod: tiny body bob, legs shuffle in diagonal pairs
+    pivot.position.y = Math.abs(Math.sin(t * (1.4 + 1.2 * mv))) * 0.008 * mv;
+    const lp = t * (1.6 + 1.4 * mv);
+    for (let i = 0; i < legs.length; i++) legs[i].rotation.x = Math.sin(lp + (i % 2) * Math.PI + (i < 2 ? 0 : 0.6)) * 0.3 * mv;
+    // head breathes in/out at rest, extends forward while walking
+    const breath = Math.sin(t * 0.9);
+    headRoot.position.z = 0.66 + breath * 0.05 * (1 - mv) + 0.05 * mv;
+    headRoot.rotation.x = 0.05 * mv + breath * 0.03 * (1 - mv);
+  };
+  return { group, animate };
+}
+
+// fennec fox: ~0.55 m long, sandy body with huge triangular ears; faces +Z
+function makeFennec(): MobVisual {
+  const mats = getFennecMats();
+  const group = new THREE.Group();
+  const pivot = new THREE.Group(); // trot bob
+  group.add(pivot);
+
+  pivot.add(box(0.2, 0.2, 0.36, mats.fur, 0, 0.24, -0.02));
+
+  // wedge head with pointed pale snout
+  const headRoot = new THREE.Group();
+  headRoot.position.set(0, 0.3, 0.24);
+  headRoot.add(box(0.16, 0.15, 0.14, mats.fur, 0, 0, 0));
+  headRoot.add(box(0.07, 0.06, 0.13, mats.pale, 0, -0.04, 0.12));
+  headRoot.add(box(0.03, 0.025, 0.02, mats.dark, -0.06, 0.03, 0.075));
+  headRoot.add(box(0.03, 0.025, 0.02, mats.dark, 0.06, 0.03, 0.075));
+  headRoot.add(box(0.028, 0.022, 0.02, mats.pink, 0, -0.03, 0.185));
+  pivot.add(headRoot);
+
+  // huge triangular ears with pink inner panels
+  const earL = box(0.09, 0.2, 0.025, mats.fur, -0.09, 0.48, 0.18);
+  const earR = box(0.09, 0.2, 0.025, mats.fur, 0.09, 0.48, 0.18);
+  const earInL = box(0.055, 0.13, 0.02, mats.pink, -0.09, 0.47, 0.196);
+  const earInR = box(0.055, 0.13, 0.02, mats.pink, 0.09, 0.47, 0.196);
+  earL.rotation.z = 0.28;
+  earR.rotation.z = -0.28;
+  pivot.add(earL, earR, earInL, earInR);
+
+  // slender legs
+  const legs: THREE.Mesh[] = [];
+  for (const side of [-1, 1]) {
+    for (const z of [0.13, -0.15]) {
+      const leg = box(0.05, 0.16, 0.05, mats.fur, side * 0.08, 0.08, z);
+      legs.push(leg);
+      pivot.add(leg);
+    }
+  }
+
+  // long tail with a pale tuft; tailRoot sways from the base
+  const tailRoot = new THREE.Group();
+  tailRoot.position.set(0, 0.25, -0.2);
+  tailRoot.add(box(0.06, 0.06, 0.24, mats.fur, 0, -0.02, -0.12));
+  tailRoot.add(box(0.09, 0.09, 0.12, mats.pale, 0, -0.03, -0.3));
+  pivot.add(tailRoot);
+
+  const animate = (t: number, moving: number): void => {
+    const mv = Math.max(0, Math.min(1, moving));
+    // quick trot: bob + leg pump
+    pivot.position.y = Math.abs(Math.sin(t * (4 + 3 * mv))) * 0.02 * mv + Math.sin(t * 2.2) * 0.003;
+    const lp = t * (6 + 4 * mv);
+    for (let i = 0; i < legs.length; i++) legs[i].rotation.x = Math.sin(lp + (i % 2) * Math.PI + (i < 2 ? 0 : 0.7)) * 0.55 * mv;
+    // tail sways, raises while running
+    tailRoot.rotation.y = Math.sin(t * (2.2 + 3.2 * mv)) * (0.14 + 0.22 * mv);
+    tailRoot.rotation.x = -0.1 + 0.25 * mv + Math.sin(t * (2.6 + 2.4 * mv)) * 0.05 * mv;
+    // idle ear twitch
+    const twL = Math.max(0, Math.sin(t * 5.7)) ** 8 * (1 - mv);
+    const twR = Math.max(0, Math.sin(t * 5.7 + 2.3)) ** 8 * (1 - mv);
+    earL.rotation.z = 0.28 + twL * 0.3;
+    earR.rotation.z = -0.28 - twR * 0.3;
+    headRoot.rotation.x = Math.sin(t * 1.6) * 0.04 * (1 - mv) - 0.06 * mv;
+  };
+  return { group, animate };
+}
+
+// trader: 1.8 m tall robed humanoid merchant; stationary, faces +Z
+function makeTrader(): MobVisual {
+  const mats = getTraderMats();
+  const group = new THREE.Group();
+  const pivot = new THREE.Group(); // slow weight-shift sway
+  group.add(pivot);
+
+  // tall floor-length robe with a flared hem
+  pivot.add(box(0.62, 1.42, 0.42, mats.robe, 0, 0.71, 0));
+  pivot.add(box(0.72, 0.18, 0.5, mats.robe, 0, 0.09, 0));
+  // sash at the waist
+  pivot.add(box(0.66, 0.14, 0.46, mats.sash, 0, 0.86, 0));
+
+  // arms hang at the sides, hands clasped low in front
+  for (const side of [-1, 1]) {
+    pivot.add(box(0.14, 0.8, 0.16, mats.robe, side * 0.38, 0.8, 0.02));
+    pivot.add(box(0.1, 0.1, 0.1, mats.skin, side * 0.16, 0.7, 0.18));
+  }
+
+  // coin-pouch bulge at the left hip, gold tie
+  pivot.add(sph(0.2, 0.22, 0.16, mats.pouch, 0.28, 0.82, 0.24));
+  pivot.add(box(0.06, 0.05, 0.05, mats.coin, 0.28, 0.94, 0.24));
+
+  // head with wrapped scarf/hood: band above the forehead + neck wrap
+  const headRoot = new THREE.Group();
+  headRoot.position.set(0, 1.56, 0);
+  headRoot.add(box(0.26, 0.26, 0.24, mats.skin, 0, 0, 0));
+  headRoot.add(box(0.3, 0.1, 0.28, mats.scarf, 0, 0.15, 0));
+  headRoot.add(box(0.3, 0.09, 0.3, mats.scarf, 0, 0.21, -0.05));
+  headRoot.add(box(0.3, 0.1, 0.3, mats.scarf, 0, -0.16, -0.02));
+  headRoot.add(box(0.04, 0.04, 0.03, mats.eye, -0.07, 0.02, 0.12));
+  headRoot.add(box(0.04, 0.04, 0.03, mats.eye, 0.07, 0.02, 0.12));
+  pivot.add(headRoot);
+
+  const animate = (t: number, moving: number): void => {
+    // stationary merchant: never walks, only a slow weight shift and head bob
+    pivot.rotation.z = Math.sin(t * 0.6) * 0.01;
+    headRoot.position.y = 1.56 + Math.sin(t * 0.9) * 0.012;
+    headRoot.rotation.y = Math.sin(t * 0.35) * 0.08;
+  };
+  return { group, animate };
+}
+
 export function makeMobMesh(kind: MobKind): MobVisual {
   switch (kind) {
     case "snake": return makeSnake();
     case "rat": return makeRat();
     case "scorpion": return makeScorpion();
     case "wurm": return makeWurm();
+    case "trader": return makeTrader();
+    case "vulture": return makeVulture();
+    case "tortoise": return makeTortoise();
+    case "fennec": return makeFennec();
   }
 }

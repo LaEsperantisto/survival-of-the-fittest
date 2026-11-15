@@ -78,7 +78,7 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "cactus", name: "Cactus", desc: "Tall desert column. Replantable anywhere on sand or farm land; with water it fruits on its own. Break a fruit-topped one for the Prickly Pear.", w: 1, h: 2, mass: 1.5, block: CACTUS, color: "#3d8042" }),
   I({ id: "prickly_pear", name: "Prickly Pear", desc: "Cactus fruit. Eat it: +8 Water, +1 Health.", w: 1, h: 1, mass: 0.2, eat: { water: 8, health: 1 }, color: "#d64a82" }),
   I({ id: "snake_skin", name: "Snake Skin", desc: "Tough desert hide. Three of them stitch into Reptile Armour at a Crafting Bench.", w: 1, h: 2, mass: 0.6, color: "#b3946a" }),
-  I({ id: "reptile_armor", name: "Reptile Armour", desc: "Equipped in the Body slot: scales shrug off 40% of all damage.", w: 2, h: 2, mass: 3.0, equip: "body", color: "#8a6f4d" }),
+  I({ id: "reptile_armor", name: "Reptile Armour", desc: "Equipped in the Body slot: scales shrug off 40% of all damage.", w: 2, h: 2, mass: 3.0, equip: "body", armor: 0.4, color: "#8a6f4d" }),
   I({ id: "rat_raw", name: "Kangaroo Rat (raw)", desc: "Raw meat. Cook it at a Campfire before eating.", w: 1, h: 1, mass: 0.8, color: "#a86a5a" }),
   I({ id: "rat_cooked", name: "Cooked Rat", desc: "Roasted meat. Eat it: +25 Health.", w: 1, h: 1, mass: 0.7, eat: { health: 25 }, color: "#c07a3a" }),
   // ---- farming ----
@@ -116,6 +116,11 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "chitin", name: "Chitin", desc: "Dust Scorpion armor plate. Tough, thin, and very hard to burn.", w: 1, h: 1, mass: 0.3, color: "#6a4a3a" }),
   I({ id: "stinger", name: "Stinger", desc: "A Dust Scorpion's barb. Tipped onto a blade, it makes the deadliest weapon in the desert.", w: 1, h: 1, mass: 0.2, color: "#a84a3a" }),
   I({ id: "wurm_hide", name: "Wurm Hide", desc: "Sand Wurm skin - heat-tempered plating for the toughest Body gear.", w: 1, h: 2, mass: 1.2, color: "#8a6a48" }),
+  I({ id: "vulture_raw", name: "Vulture Fillet (raw)", desc: "Raw meat off a Sand Vulture. Cook it at a Campfire before eating.", w: 1, h: 1, mass: 0.7, color: "#7a5a4a" }),
+  I({ id: "vulture_cooked", name: "Roasted Fillet", desc: "Cooked Vulture meat. Eat it: +25 Health.", w: 1, h: 1, mass: 0.6, eat: { health: 25 }, color: "#b0764a" }),
+  I({ id: "tortoise_shell", name: "Thornback Shell", desc: "The spiked dome of a Thornback Tortoise. Three plate a Cuirass; Traders always want them.", w: 2, h: 2, mass: 6.0, color: "#5f5a4e" }),
+  I({ id: "fennec_pelt", name: "Fennec Pelt", desc: "Soft pale fur off a Fennec Fox. Worth a real price at any Trader.", w: 1, h: 2, mass: 0.5, color: "#c99a62" }),
+  I({ id: "tortoise_cuirass", name: "Thornback Cuirass", desc: "Body-slot breastplate of layered Shell and Metal: shrugs off 48% of every blow. Heavy going.", w: 2, h: 2, mass: 9.0, equip: "body", armor: 0.48, color: "#6a6255" }),
   I({ id: "wurmsuit", name: "Wurmsuit", desc: "Body-slot armour of Wurm Hide and Chitin: shrugs off 55% of every blow. Warmer against the cold night too.", w: 2, h: 2, mass: 5.0, equip: "body", armor: 0.55, color: "#7a5c40" }),
   I({ id: "stinger_blade", name: "Stinger Blade", desc: "A Metal Sword tipped with a Scorpion Stinger: hits harder and farther than anything above ground.", w: 1, h: 2, mass: 2.4, weapon: { reach: 5.2, dmg: 12 }, color: "#c9b048" }),
   // ---- the Ship's wings ----
