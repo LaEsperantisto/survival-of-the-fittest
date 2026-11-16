@@ -186,7 +186,7 @@ export class Survival {
     if (this.water < 20) return "thirsty";
     this.water -= 10;
     this.body = Math.max(30, this.body - 1.5);
-    this.surgeCooldown = 10;
+    this.surgeCooldown = 5;
     return "ok";
   }
 

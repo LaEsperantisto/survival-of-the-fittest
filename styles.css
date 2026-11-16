@@ -23,7 +23,7 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
 #crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
   color: rgba(255,255,255,0.8); font-size: 20px; }
-#breakbar { position: absolute; left: 50%; top: 54%; width: 120px; height: 6px; transform: translateX(-50%);
+#breakbar { position: absolute; left: 50%; top: 57%; width: 120px; height: 6px; transform: translateX(-50%);
   background: rgba(0,0,0,0.5); border: 1px solid #999; border-radius: 3px; }
 #breakfill { height: 100%; width: 0%; background: #d8b74f; border-radius: 3px; }
 #surge-btn { position: absolute; left: 50%; bottom: 66px; transform: translateX(-50%);
@@ -35,7 +35,7 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 #clockbox { position: absolute; right: 12px; top: 10px; font-size: 16px; background: rgba(0,0,0,0.4);
   padding: 5px 10px; border-radius: 6px; }
 #clockbox span { margin: 0 6px; }
-#quest { position: absolute; right: 12px; top: 44px; width: 250px; background: rgba(0,0,0,0.4);
+#quest { position: absolute; right: 12px; top: 56px; width: 250px; background: rgba(0,0,0,0.4);
   border-radius: 6px; padding: 6px 10px; }
 #quest:empty { display: none; }
 .q-title { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: #e6c96a; }
@@ -58,7 +58,7 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
   border-radius: 6px; font-size: 14px; }
 #weight { position: absolute; right: 12px; bottom: 48px; background: rgba(0,0,0,0.5); padding: 4px 10px;
   border-radius: 6px; font-size: 13px; }
-#waypoint { position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%);
+#waypoint { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%);
   background: rgba(0,0,0,0.5); padding: 4px 12px; border-radius: 6px; font-size: 14px; color: #9adcff; }
 #wp-arrow { display: inline-block; }
 

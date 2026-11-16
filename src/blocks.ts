@@ -33,6 +33,18 @@ export interface BlockDef {
 
 const def = (d: BlockDef) => d;
 
+// Variant halves and decorative twins read as their main block wherever the
+// player sees a name (block-name tooltip); the raw state names stay in the
+// defs for anything that needs the exact half.
+export const BLOCK_DISPLAY: Record<number, string> = {
+  [BENCH_EXT]: "Crafting Bench",
+  [DOOR_INNER_UPPER]: "Inside Door",
+  [DOOR_INNER_OPEN]: "Inside Door",
+  [BED_EXT]: "Bed",
+  [HULL_SLOPE]: "Curved Hull Plating",
+};
+export function blockDisplayName(id: number): string { return BLOCK_DISPLAY[id] ?? BLOCKS[id].name; }
+
 export const BLOCKS: BlockDef[] = [
   def({ id: AIR, name: "Air", solid: false, opaque: false, transparent: false, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0, 0, 0] }),
   def({ id: SAND, name: "Sand", solid: true, opaque: true, transparent: false, emissive: false, R: 0.8, breakTime: 0.6, tool: "shovel", minTier: 0, placeable: true, color: [0.83, 0.72, 0.50] }),

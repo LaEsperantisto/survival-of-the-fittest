@@ -5,7 +5,7 @@ import { Survival, REGULATOR_ROOM_MAX } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, type ItemDef, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, CS, CH, DAY_SECONDS, isSolid, isWater } from "./blocks";
+import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName } from "./blocks";
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
 import { heightAt, biomeAt, TOWN_L, CAMP_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
@@ -1149,7 +1149,7 @@ export class Game {
     this.renderer.setHighlight((this.ui || this.cine) ? null : (target?.hit ?? null));
     hud.setPrompt((this.ui || this.cine) ? null : this.promptFor(target));
     hud.setBlockName((this.ui || this.cine) || !target?.hit ? null
-      : BLOCKS[this.world.get(target.hit.x, target.hit.y, target.hit.z)].name);
+      : blockDisplayName(this.world.get(target.hit.x, target.hit.y, target.hit.z)));
     hud.setSubmerged(this.player.headUnder);
 
     for (let ei = this.entities.length - 1; ei >= 0; ei--) {
@@ -1267,8 +1267,8 @@ export class Game {
     if (near) return near.kind === "reward" ? "E: Claim Reward Cache" : "E: Open death cache";
     if (t.hit) {
       const id = this.world.get(t.hit.x, t.hit.y, t.hit.z);
-      if (id === DOOR_CLOSED || id === DOOR_UPPER) return "E: Open door";
-      if (id === DOOR_OPEN) return "E: Close door";
+      if (id === DOOR_CLOSED || id === DOOR_UPPER || id === DOOR_INNER || id === DOOR_INNER_UPPER) return "E: Open door";
+      if (id === DOOR_OPEN || id === DOOR_INNER_OPEN) return "E: Close door";
       if (id === BEACON) return "E: Save game (respawn point)";
       if (id === BENCH || id === BENCH_EXT) return "E: Craft";
       if (id === CAMPFIRE) return "E: Smelt";
