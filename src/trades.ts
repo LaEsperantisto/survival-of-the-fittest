@@ -19,7 +19,7 @@ export const OFFER_POOL: Offer[] = [
   { want: [{ itemId: "snake_skin", count: 2 }], give: [{ itemId: "coolant_cell", count: 1 }] },
   { want: [{ itemId: "wurm_hide", count: 1 }], give: [{ itemId: "cobaltrod", count: 2 }] },
   { want: [{ itemId: "chitin", count: 4 }], give: [{ itemId: "catalyst", count: 1 }] },
-  { want: [{ itemId: "ironrod", count: 4 }], give: [{ itemId: "copperrod", count: 2 }] },
+  { want: [{ itemId: "metal", count: 4 }], give: [{ itemId: "copperrod", count: 2 }] },
   { want: [{ itemId: "fennec_pelt", count: 2 }], give: [{ itemId: "metal", count: 1 }] },
   { want: [{ itemId: "tortoise_shell", count: 1 }], give: [{ itemId: "canister_full", count: 2 }] },
   { want: [{ itemId: "deadwood", count: 5 }], give: [{ itemId: "adobe", count: 3 }] },

@@ -231,7 +231,7 @@ for (const t of Array.from($("catalog-tabs").querySelectorAll<HTMLButtonElement>
 const DESKTOP_KEYS: [string, string][] = [
   ["WASD", "move"], ["Shift", "sprint (sweats, costs water)"], ["Space", "jump one block"],
   ["Mouse", "look (click the world to capture the pointer)"], ["Left click, hold", "mine a block or hit a mob (right tool tier matters)"],
-  ["Metal Sword", "Crafting Bench: 2 Metal Rods + 1 Dead Wood — far harder hits, longer reach (snake dies in 2 swings, rat in 1)"],
+  ["Metal Sword", "Crafting Bench: 2 Iron Rods + 1 Dead Wood — far harder hits, longer reach (snake dies in 2 swings, rat in 1)"],
   ["Right click", "place the selected block"], ["E", "interact: doors, beacon save, bench, campfire, Heat Regulator (set body to 37 °C), oasis / water-station refill, death caches, trade with a camp Trader, Broken Thruster on a wingtip (needs a Thruster Nozzle)"],
   ["T", "toggle the Head Lantern — it burns one fuel charge per 4 game-minutes; refuel it at a Campfire"],
   ["Q", "use the held item: drink a full canister (+25 water, cools you a little), or eat food"], ["X", "sweat surge: spend 10 water to force your body cool (needs 20+ water, 5 s cooldown)"], ["I", "inventory — Equip gear"],

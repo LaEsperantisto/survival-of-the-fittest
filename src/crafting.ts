@@ -45,15 +45,14 @@ export const RECIPES: Recipe[] = [
   { out: "insglass", count: 2, needs: { sand: 2, catalyst: 1, metal: 1 }, bench: true },
   { out: "regulator", count: 1, needs: { metal: 4, glass: 1, salt: 2 }, bench: true },
   { out: "chest", count: 1, needs: { deadwood: 6, metal: 1 }, bench: true },
-  // the landlubber's metal chain: bake Rock into Iron Rods, forge them at a bench
-  { out: "metal", count: 1, needs: { ironrod: 2 }, bench: true },
   { out: "visor", count: 1, needs: { metal: 2, glass: 1, salt: 2 }, bench: true },
   { out: "reptile_armor", count: 1, needs: { snake_skin: 3 }, bench: true },
   // ---- farming & building ----
   { out: "farmland", count: 1, needs: { dirt: 1 }, bench: false },
+  { out: "deadwood", count: 2, needs: { wood_log: 1 }, bench: false },
   { out: "chest_connector", count: 1, needs: { deadwood: 2, metal: 1 }, bench: false },
   { out: "metal_plating", count: 1, needs: { metal: 1 }, bench: false },
-  { out: "door_inner", count: 1, needs: { metal: 1, deadwood: 1 }, bench: true },
+  { out: "door_inner", count: 1, needs: { metal: 1 }, bench: true },
   { out: "bucket", count: 1, needs: { metal: 2 }, bench: true },
   { out: "bed", count: 1, needs: { deadwood: 3, snake_skin: 2 }, bench: true },
 ];
@@ -64,12 +63,12 @@ export const SMELT: { in: string; out: string; n?: number }[] = [
   { in: "farmland", out: "glass" }, // Farm Land is packed dirt - the kiln doesn't care
   { in: "dirt", out: "adobe" },
   { in: "sandstone", out: "rock" },
-  { in: "rock", out: "ironrod" },
+  { in: "rock", out: "metal" }, // the landlubber's chain: one Rock bakes one Iron Rod
   { in: "rat_raw", out: "rat_cooked" },
   { in: "vulture_raw", out: "vulture_cooked" },
   { in: "wheat", out: "cooked_wheat" },
   // Ore yields double: the dig is the expensive part, not the fire.
-  { in: "iron_ore", out: "ironrod", n: 2 },
+  { in: "iron_ore", out: "metal", n: 2 },
   { in: "copper_ore", out: "copperrod", n: 2 },
   { in: "cobalt_ore", out: "cobaltrod", n: 2 },
 ];

@@ -125,7 +125,7 @@ A 2×1 block in every Town and a craftable comfort of one's own. Sleeping in a B
 _Avoid_: cot, sleep (as the block's name)
 
 **Metal Plating**:
-The Ship's structural metal — a placeable block with Metal Rod's properties. Rods themselves are crafting material and are never placed.
+The Ship's structural metal — a placeable block with Iron Rod's properties. Rods themselves are crafting material and are never placed.
 
 **Save Point**:
 A craftable, permanently placed block (the Save Beacon). Cannot be picked back up. The world persists only at Save Points; death respawns the player at the most recent intact one — if all are destroyed, at the crash site.

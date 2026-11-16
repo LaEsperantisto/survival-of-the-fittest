@@ -102,13 +102,6 @@ function drawArt(id: string, w: number, h: number, color: string): HTMLCanvasEle
       g.fillStyle = "#e8d6ff"; g.fillRect(5, 9, 1, 2); g.fillRect(10, 10, 1, 1); g.fillRect(8, 11, 1, 2);
       g.fillStyle = "#00000088"; g.fillRect(7, 10, 2, 1); g.fillRect(6, 11, 1, 2);
       return cv;
-    case "ironrod":
-      rect(g, 6, 1, 3, 14, "#8a4f2e");
-      rect(g, 7, 2, 1, 12, "#d08a52");
-      g.fillStyle = "#5c3319";
-      for (const [rx, ry] of [[6, 3], [8, 7], [6, 11], [8, 13]] as const) g.fillRect(rx, ry, 1, 1);
-      rect(g, 5, 1, 5, 1, "#5c3319"); rect(g, 5, 14, 5, 1, "#5c3319");
-      return cv;
     case "visor":
       rect(g, 1, 6, 14, 3, "#2e3a45");
       rect(g, 3, 4, 10, 6, "#123c44");
