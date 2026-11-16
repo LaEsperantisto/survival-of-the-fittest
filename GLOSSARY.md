@@ -55,7 +55,7 @@ A sub-space of the Ship or a Base separated by Insulating Blocks and a Door, sea
 The ship's insulating wall block.
 
 **Ship**:
-The small wreck at the world origin — a rounded hull with broken wings — split into sealable Compartments: a forward cockpit, a central hall, a Save Room whose stern Door is the wreck's only opening to the outside, a water compartment, and a regulator room. Fully customizable: any block can be broken or placed, so the Ship can be expanded anywhere.
+The small wreck at the world origin — a rounded hull with broken wings — split into sealable Compartments: a forward cockpit (its Chest and a pilot's Bed), a central hall, a Save Room whose stern Door is the wreck's only opening to the outside, a water compartment, and a regulator room. Fully customizable: any block can be broken or placed, so the Ship can be expanded anywhere.
 
 **Save Room**:
 The wreck's Compartment containing the starting Save Beacon, reachable only through the hall — the safest room in the crash site.

@@ -110,9 +110,11 @@ export const BLOCKS: BlockDef[] = [
   // it matures to stage 2, and breaking the mature crop gives food plus fresh seed.
   // Crops stand non-solid in tilled ground; Wheat tolerates cold, Melon loves heat,
   // and everything but Cactus stalls if the outdoor air leaves its band.
-  def({ id: MELON_1, name: "Melon Sprout", solid: false, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: false, color: [0.28, 0.52, 0.28] }),
+  // The stage-1 blocks are placeable: that is how a planted Seed stands. The
+  // raw-material gate in Game.place must not eat them; ripe stage 2 stays world-only.
+  def({ id: MELON_1, name: "Melon Sprout", solid: false, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: true, color: [0.28, 0.52, 0.28] }),
   def({ id: MELON_2, name: "Dune Melon", solid: false, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 0.3, tool: null, minTier: 0, placeable: false, color: [0.42, 0.56, 0.24] }),
-  def({ id: WHEAT_1, name: "Wheat Sprout", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: false, color: [0.66, 0.66, 0.34] }),
+  def({ id: WHEAT_1, name: "Wheat Sprout", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: true, color: [0.66, 0.66, 0.34] }),
   def({ id: WHEAT_2, name: "Desert Wheat", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.3, tool: null, minTier: 0, placeable: false, color: [0.84, 0.74, 0.32] }),
   // Fruit-topped cactus column block: harvest it for a Prickly Pear, the column
   // stays and regrows the fruit on its own.
@@ -141,7 +143,7 @@ export const BLOCKS: BlockDef[] = [
   // and crumble into Kindling.
   def({ id: LEAVES, name: "Leaves", solid: true, opaque: true, transparent: false, emissive: false, R: 0.7, breakTime: 0.25, tool: null, minTier: 0, placeable: false, color: [0.2, 0.45, 0.2] }),
   // A planted Tree Seed — a growing tree's first stage; see game.updateTrees.
-  def({ id: SAPLING, name: "Sapling", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: false, color: [0.3, 0.55, 0.3] }),
+  def({ id: SAPLING, name: "Sapling", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: true, color: [0.3, 0.55, 0.3] }),
   // Curved Hull Plating: the same insulating hull metal, drawn as real geometry —
   // a corner-cut elbow and a top-slope — used to round the Ship's corners and spine.
   def({ id: CURVED_HULL, name: "Curved Hull Plating", solid: true, opaque: true, transparent: false, emissive: false, R: 3, breakTime: 6, tool: "disassembler", minTier: 0, placeable: true, color: [0.52, 0.55, 0.6] }),

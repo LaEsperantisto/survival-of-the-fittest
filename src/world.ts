@@ -1,4 +1,4 @@
-import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, LEAVES, REGULATOR, INSGLASS, CS, CH, isOpaque, isWater, waterStrength, flowId } from "./blocks";
+import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, LEAVES, REGULATOR, INSGLASS, BENCH, BENCH_EXT, CURVED_HULL, HULL_SLOPE, CS, CH, isOpaque, isWater, waterStrength, flowId } from "./blocks";
 import { genChunk, Structures } from "./gen";
 
 export const ckey = (cx: number, cz: number) => cx + "," + cz;
@@ -288,6 +288,10 @@ export function faceVisible(world: World, x: number, y: number, z: number, selfI
   // a closed door is a thin slab, not a full cube: keep the neighbouring wall's
   // faces so no see-through gap opens at the door jamb
   if (n === DOOR_CLOSED || n === DOOR_UPPER || n === DOOR_INNER || n === DOOR_INNER_UPPER) return true;
+  // model-shaped blocks (the bench's legs and slab, the chamfered hulls'
+  // clipped corners) do not cover their cell faces: keeping the neighbour's
+  // face is the only thing that stops those gaps reading as holes in the ground
+  if (n === BENCH || n === BENCH_EXT || n === CURVED_HULL || n === HULL_SLOPE) return true;
   if (isOpaque(n)) return false;
   if (n === selfId) return false; // hide interior faces between same transparent block
   return true;

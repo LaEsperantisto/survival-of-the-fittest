@@ -445,7 +445,8 @@ export function dungeonEntrance(seed: number, townX: number, townZ: number): { x
 
 /** Paint the crashed ship: a small, rounded wreck with wings and a raised spine.
  *  Interior x -5..3, z -4..4, floor y=30, interior y 31..33, ceiling y=34.
- *  Layout: forward cockpit (x 2..3, insulating-glass windscreen); central hall
+ *  Layout: forward cockpit (x 2..3, insulating-glass windscreen, pilot's
+ *  bunk); central hall
  *  with the wreck's bench; aft row: save room (z -1..1, the ONLY door to the
  *  outside is at the stern), water compartment to the left (z 3..4, its tank is
  *  a pool dug into the ground), heat-regulator room to the right (z -4..-3).
@@ -507,6 +508,9 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
 
   // cockpit windscreen: insulating glass, rare but heat-safe
   for (let z = -2; z <= 2; z++) for (let y = 32; y <= 33; y++) set(4, y, z, INSGLASS);
+  // the pilot's bunk along the cockpit's port wall — the door approach at
+  // z 0 stays clear
+  set(2, 31, -2, BED); set(3, 31, -2, BED_EXT);
 
   // water compartment: the ship's tank is a pool sunk into the ground —
   // look at the water in the hole and press E to refill canisters
