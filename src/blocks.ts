@@ -9,7 +9,7 @@ export const AIR = 0, SAND = 1, SANDSTONE = 2, ROCK = 3, GRAVEL = 4, DIRT = 5, S
   CHEST_CONNECTOR = 39, METAL_PLATING = 40, DOOR_INNER = 41, DOOR_INNER_UPPER = 42,
   DOOR_INNER_OPEN = 43, BED = 44, BED_EXT = 45, GRASS = 46, WOOD = 47, LEAVES = 48, SAPLING = 49,
   CURVED_HULL = 50, HULL_SLOPE = 51, IRON_ORE = 52, COPPER_ORE = 53, ALABASTER = 54,
-  COBALT_ORE = 55, THRUSTER = 56, THRUSTER_LIT = 57, STORM_BREAKER = 58;
+  COBALT_ORE = 55, THRUSTER = 56, THRUSTER_LIT = 57, STORM_BREAKER = 58, ARMORY = 59;
 
 export type ToolType = "pickaxe" | "shovel" | "axe" | "disassembler";
 
@@ -145,10 +145,12 @@ export const BLOCKS: BlockDef[] = [
   def({ id: COPPER_ORE, name: "Copper Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 2.6, tool: "pickaxe", minTier: 1, placeable: false, color: [0.72, 0.42, 0.26] }),
   def({ id: ALABASTER, name: "Alabaster", solid: true, opaque: true, transparent: false, emissive: false, R: 1.4, breakTime: 1.8, tool: "pickaxe", minTier: 0, placeable: false, color: [0.86, 0.83, 0.74] }),
   def({ id: COBALT_ORE, name: "Cobalt Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.6, breakTime: 4.2, tool: "pickaxe", minTier: 3, placeable: false, color: [0.36, 0.46, 0.68] }),
-  // Broken Thruster: one of the wreck's four dead wingtip engines. Bolted to the
-  // Ship: nothing takes it down; its only interaction is a Thruster Nozzle (E).
-  def({ id: THRUSTER, name: "Broken Thruster", solid: true, opaque: true, transparent: false, emissive: false, R: 1, breakTime: -1, tool: null, minTier: 0, placeable: false, color: [0.42, 0.44, 0.5] }),
-  def({ id: THRUSTER_LIT, name: "Thruster (lit)", solid: true, opaque: true, transparent: false, emissive: true, R: 1, breakTime: -1, tool: null, minTier: 0, placeable: false, color: [0.9, 0.6, 0.3] }),
+  // Broken Thruster: one of the wreck's four dead wingtip engines.
+  // Thrusters come down with a Disassembler and go back up as items:
+  // a lit one keeps burning when re-placed.
+  def({ id: THRUSTER, name: "Broken Thruster", solid: true, opaque: true, transparent: false, emissive: false, R: 1, breakTime: 5, tool: "disassembler", minTier: 0, placeable: true, color: [0.42, 0.44, 0.5] }),
+  def({ id: THRUSTER_LIT, name: "Thruster (lit)", solid: true, opaque: true, transparent: false, emissive: true, R: 1, breakTime: 5, tool: "disassembler", minTier: 0, placeable: true, color: [0.9, 0.6, 0.3] }),
+  def({ id: ARMORY, name: "Armoury", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.45, 0.4, 0.36] }),
   // Sandstorm Breaker: a humming red pylon. Within STORM_BREAKER_R of it the
   // Sandstorm loses all teeth — no heat amplification, no wind-thirst, no blast.
   def({ id: STORM_BREAKER, name: "Sandstorm Breaker", solid: true, opaque: true, transparent: false, emissive: true, R: 0.3, breakTime: 5, tool: "disassembler", minTier: 0, placeable: true, color: [0.72, 0.28, 0.24] }),

@@ -1,11 +1,11 @@
 import * as THREE from "three";
 import { World } from "./world";
 import { Player } from "./player";
-import { Survival, REGULATOR_ROOM_MAX } from "./survival";
+import { Survival, REGULATOR_ROOM_MAX, SAFE_HI } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, type ItemDef, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName } from "./blocks";
+import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName } from "./blocks";
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
 import { heightAt, biomeAt, TOWN_L, CAMP_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
@@ -28,7 +28,7 @@ export interface DroppedItem {
   repickAt?: number; // game time before which auto-pickup is suppressed (manual drops)
   age?: number; // seconds since the item hit the sand; loose items rot away (buried ones never do)
 }
-export interface DeathCache { id: number; x: number; y: number; z: number; kind: "death" | "reward"; items: { itemId: string; count: number }[]; markerEid?: number }
+export interface DeathCache { id: number; x: number; y: number; z: number; kind: "death" | "reward"; items: { itemId: string; count: number }[]; markerEid?: number; beamEid?: number }
 export interface Mob {
   kind: MobKind; hp: number; x: number; y: number; z: number;
   yaw: number; biteCd: number; wanderT: number; wanderYaw: number; wanderOn: boolean;
@@ -412,8 +412,7 @@ export class Game {
       // old saves model Supply Chests as caches; they now live on as chest-block grids
       if (kind === "chest") { legacyChests.push(c); continue; }
       const cache: DeathCache = { id: this.entitySeq++, x: c.x, y: c.y, z: c.z, kind, items: c.items.map((i) => ({ ...i })) };
-      this.caches.push(cache);
-      if (cache.items.length) this.renderer.addEntityMesh(cache.id, this.cacheMeshPos(cache), this.cacheColor(cache), 0.7);
+      this.caches.push(cache); // crate, ring and beam get (re)built by the marker loop
     }
     this.campCharges = new Map(Object.entries(run.campfires ?? {}).map(([k, v]) => [k, v]));
     this.crops = new Map(run.crops ?? []);
@@ -1219,9 +1218,12 @@ export class Game {
         // every Cache is findable from far: a ground ring in its kind colour
         c.markerEid = this.renderer.addGroundRing(c.x + 0.5, c.y, c.z + 0.5,
           c.kind === "reward" ? 0xd8a24a : 0xcc3322, 1.4);
+        // a Death Cache also throws a beam up to the sky — gone the moment it runs dry
+        if (c.kind === "death") c.beamEid = this.renderer.addBeam(c.x + 0.5, c.y, c.z + 0.5, 0xcc3322);
       } else if (mesh && !c.items.length) {
         this.renderer.removeEntityMesh(c.id);
         if (c.markerEid !== undefined) { this.renderer.removeEntityMesh(c.markerEid); c.markerEid = undefined; }
+        if (c.beamEid !== undefined) { this.renderer.removeEntityMesh(c.beamEid); c.beamEid = undefined; }
       }
     }
     this.regulatorGlow();
@@ -1308,7 +1310,8 @@ export class Game {
       if (id === DOOR_OPEN || id === DOOR_INNER_OPEN) return "E: Close door";
       if (id === BEACON) return "E: Save game (respawn point)";
       if (id === BENCH || id === BENCH_EXT) return "E: Craft";
-      if (id === CAMPFIRE) return "E: Smelt";
+      if (id === ARMORY) return "E: Forge armour and gear";
+      if (id === CAMPFIRE) return this.canHeatWater(t.hit.x, t.hit.y, t.hit.z) ? "E: Heat the water" : "E: Smelt";
       if (id === REGULATOR) return "E: Draw neutral air (37 °C)";
       if (id === THRUSTER) return this.inv.has("thruster_nozzle", 1) ? "E: Install Thruster Nozzle" : null;
     }
@@ -1507,7 +1510,7 @@ export class Game {
       this.audio.blockBreak();
       return;
     }
-    if (id === LAMP || id === CAMPFIRE) this.renderer.removePointLight(x, y, z);
+    if (id === LAMP || id === CAMPFIRE || id === THRUSTER_LIT) this.renderer.removePointLight(x, y, z);
     if (id === STORM_BREAKER) this.breakers.delete(`${x},${y},${z}`);
     this.world.set(x, y, z, AIR);
     const item = this.blockItemId(id);
@@ -1987,6 +1990,7 @@ export class Game {
     }
     if (def.block === LAMP) this.renderer.addPointLight(bx, by, bz, "lamp");
     else if (def.block === CAMPFIRE) this.renderer.addPointLight(bx, by, bz, "fire");
+    else if (def.block === THRUSTER_LIT) this.renderer.addPointLight(bx, by, bz, "fire"); // a carried engine keeps burning
     if (def.block === STORM_BREAKER) this.breakers.add(`${bx},${by},${bz}`);
     if (def.block === CHEST) this.linkChests(bx, by, bz, chestOld);
     this.inv.slots.splice(this.inv.selected, 1);
@@ -2063,7 +2067,11 @@ export class Game {
         return;
       }
       if (id === BENCH || id === BENCH_EXT) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("bench"); return; }
-      if (id === CAMPFIRE) { this.openStation = [x, y, z]; this.ui = "smelt"; this.unlockPointer(); this.renderCraft("smelt"); return; }
+      if (id === ARMORY) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("armory"); return; }
+      if (id === CAMPFIRE) {
+        if (this.canHeatWater(x, y, z)) { this.heatWater(x, y, z); return; }
+        this.openStation = [x, y, z]; this.ui = "smelt"; this.unlockPointer(); this.renderCraft("smelt"); return;
+      }
       if (id === THRUSTER) {
         if (!this.inv.has("thruster_nozzle", 1)) {
           this.audio.error();
@@ -2284,6 +2292,17 @@ export class Game {
     if (!sel) { hud.toast("Select an item first."); this.audio.error(); return; }
     const d = ITEMS[sel.itemId];
     if (sel.itemId === "canister_full") { this.drink(); return; }
+    if (sel.itemId === "hot_water_pouch") {
+      // a heat pulse toward body-warm — it never overshoots the safe zone
+      this.inv.removeItem(sel.itemId, 1);
+      this.survival.body = Math.min(this.survival.body + 10, SAFE_HI);
+      this.giveOrDrop("canister_empty", 1);
+      this.audio.drink();
+      hud.toast("Hot water, straight down: a +10 °C warmth rolls through you. The empty canister comes back.");
+      this.renderHeld();
+      this.renderInv();
+      return;
+    }
     if (sel.itemId === "bucket") { this.bucketScoop(); return; }
     if (d.eat) { this.eat(sel, d); return; }
     if (d.tool?.type === "shovel") {
@@ -2330,6 +2349,24 @@ export class Game {
     this.inv.addItem("canister_empty", 1);
     this.audio.drink();
     this.tut?.notify("drink");
+    this.renderHeld();
+  }
+
+  /** Heating a full canister at a LIT Campfire: the held item must be the
+   *  canister itself, and the fire must have a fuel charge to spend. */
+  private canHeatWater(x: number, y: number, z: number): boolean {
+    return this.inv.selectedSlot()?.itemId === "canister_full" && (this.campCharges.get(`${x},${y},${z}`) ?? 0) > 0;
+  }
+
+  private heatWater(x: number, y: number, z: number) {
+    const key = `${x},${y},${z}`;
+    const fuel = this.campCharges.get(key) ?? 0;
+    if (!this.canHeatWater(x, y, z)) { this.audio.error(); return; }
+    this.campCharges.set(key, fuel - 1);
+    this.inv.removeItem("canister_full", 1);
+    this.giveOrDrop("hot_water_pouch", 1);
+    this.audio.drink();
+    hud.toast("The canister hisses over the coals — sealed hot for the cold hours.");
     this.renderHeld();
   }
 
@@ -3075,15 +3112,17 @@ export class Game {
     this.renderHeld();
   }
 
-  renderCraft(mode: "bench" | "smelt") {
+  renderCraft(mode: "bench" | "smelt" | "armory") {
     document.getElementById("ui-craft")!.classList.remove("hidden");
-    document.getElementById("craft-title")!.textContent = mode === "bench" ? "Crafting Bench" : "Campfire Smelting";
+    document.getElementById("craft-title")!.textContent =
+      mode === "bench" ? "Crafting Bench" : mode === "armory" ? "Armoury — gear that guards the body" : "Campfire Smelting";
     const list = document.getElementById("craft-list")!;
     list.innerHTML = "";
     const smeltUi = document.getElementById("smelt-ui")!;
     smeltUi.classList.toggle("hidden", mode !== "smelt");
-    if (mode === "bench") {
+    if (mode !== "smelt") {
       for (const r of RECIPES) {
+        if (mode === "armory" ? r.station !== "armory" : r.station === "armory") continue;
         const row = document.createElement("div");
         row.className = "craft-row";
         const label = `${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""}`;
@@ -3100,7 +3139,7 @@ export class Game {
           this.tut?.notify("craft");
           if (ITEMS[r.out]?.tool) this.questBump("tool");
           this.audio.place();
-          this.renderCraft("bench");
+          this.renderCraft(mode);
         };
         row.appendChild(b);
         list.appendChild(row);

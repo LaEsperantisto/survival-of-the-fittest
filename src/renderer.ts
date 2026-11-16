@@ -5,7 +5,7 @@ import {
   WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING,
-  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT, STORM_BREAKER, STORM_BREAKER_R,
+  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT, STORM_BREAKER, ARMORY, STORM_BREAKER_R,
   isSolid, isWater, waterStrength,
 } from "./blocks";
 import { World, ckey, faceVisible } from "./world";
@@ -111,7 +111,7 @@ export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, G
   WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING,
-  IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT, STORM_BREAKER];
+  IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT, STORM_BREAKER, ARMORY];
 
 // extra face tiles, appended after the base tiles; each recipe is shaded with
 // the named block's base colour
@@ -790,6 +790,22 @@ export function getAtlasCanvas(): HTMLCanvasElement {
       }
     }
     for (let i = 0; i < 6; i++) px(rng.int(3, 12), rng.int(3, 12), col(-0.05));                           // dents
+  });
+  R(String(ARMORY), () => {
+    fbmFill((x, y, nn) => nn * 0.04 - 0.18);                                                             // dark forge-room stone
+    for (let y = 0; y < 3; y++) for (let x = 0; x < 16; x++) px(x, y, col(0.1));                          // iron lintel
+    for (const x of [3, 12]) for (let y = 3; y <= 5; y++) px(x, y, col(-0.28));                           // hanging chains
+    px(3, 6, col(-0.1)); px(12, 6, col(-0.1));                                                           // hooks with gear
+    for (let x = 5; x <= 10; x++) px(x, 7, col(0.14));                                                   // anvil face
+    for (let x = 6; x <= 8; x++) { px(x, 8, col(-0.06)); px(x, 9, col(-0.22)); }                          // anvil body
+    for (let y = 11; y <= 14; y++) {                                                                     // forge mouth aglow
+      for (let x = 4; x <= 11; x++) {
+        const d = Math.abs(x - 7.5) + Math.abs(y - 12.5);
+        px(x, y, col(0.25 - d * 0.04 + (rng.next() * 0.08), 1, 0.55 - d * 0.03, 0.18 - d * 0.03, -0.5));
+      }
+    }
+    for (let x = 3; x <= 12; x++) px(x, 10, col(0.08)); px(3, 15, col(0.06)); px(12, 15, col(0.06));      // hearth lip
+    for (const [sx, sy] of [[6, 3], [9, 4], [7, 2]] as const) px(sx, sy, col(0.45, 1, 0.5, 0.12, -0.35)); // rising sparks
   });
 
   // paint every registered tile into its slot

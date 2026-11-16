@@ -217,7 +217,8 @@ function renderCatalog() {
     };
     for (const r of RECIPES) {
       const needs = Object.entries(r.needs).map(([id, n]) => `${n}× ${ITEMS[id].name}`).join(" + ");
-      row(itemArtUrl(r.out), needs, `${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""}`, r.bench ? "Crafting Bench" : "hands");
+      row(itemArtUrl(r.out), needs, `${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""}`,
+        r.station === null ? "hands" : r.station === "armory" ? "Armoury" : "Crafting Bench");
     }
     for (const s of SMELT)
       row(itemArtUrl(s.out), `1× ${ITEMS[s.in].name}`, `${ITEMS[s.out].name}${s.n && s.n > 1 ? " ×" + s.n : ""}`, "Campfire, 1 fuel charge");

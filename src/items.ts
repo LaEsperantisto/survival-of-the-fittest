@@ -3,7 +3,7 @@ import {
   DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, ADOBE, ENGINECORE, REGULATOR, CHEST, CACTUS,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, BED, BED_EXT, GRASS, LEAVES, WOOD, SAPLING,
-  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, STORM_BREAKER,
+  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, STORM_BREAKER, THRUSTER, THRUSTER_LIT, ARMORY,
 } from "./blocks";
 
 export interface ItemDef {
@@ -128,6 +128,11 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "curved_hull", name: "Curved Hull Plating", desc: "Hull Plating shaped as an elbow - insulates exactly like flat plating, and rounds any corner you build.", w: 1, h: 1, mass: 2.0, block: CURVED_HULL, color: "#7d8390" }),
   I({ id: "hull_slope", name: "Hull Slope", desc: "A beveled hull block for spines, roofs and shoulders. Same insulation, rounder silhouette.", w: 1, h: 1, mass: 2.0, block: HULL_SLOPE, color: "#767d88" }),
   I({ id: "thruster_nozzle", name: "Thruster Nozzle", desc: "Cobalt-and-Copper replacement engine part. Press E at a Broken Thruster to wake it. All four wake the Ship.", w: 1, h: 2, mass: 3.0, color: "#c88a50" }),
+  // ---- salvaged engine modules: a Disassembler pulls thrusters off their pylons ----
+  I({ id: "thruster_broken", name: "Broken Thruster", desc: "A dead wingtip engine torn off its pylon. Heavy, inert — set it down anywhere and it waits for a Thruster Nozzle.", w: 2, h: 2, mass: 22.0, block: THRUSTER, color: "#6b707c" }),
+  I({ id: "thruster_lit", name: "Thruster (lit)", desc: "A running engine lifted off its pylon. It keeps burning while you carry it, and burns where you set it down.", w: 2, h: 2, mass: 22.0, block: THRUSTER_LIT, color: "#c88a50" }),
+  I({ id: "armory", name: "Armoury", desc: "A forge bench for gear that guards the body: armour, backpacks, visors and the Body Heat Regulator. Built at the Crafting Bench.", w: 2, h: 2, mass: 14.0, block: ARMORY, color: "#6a6258" }),
+  I({ id: "hot_water_pouch", name: "Hot Water Pouch", desc: "A full canister heated at a lit Campfire. Use it (Q): a +10 °C heat pulse toward body-warm, and the empty canister comes back.", w: 1, h: 2, mass: 1.2, color: "#e08a4f" }),
 ];
 
 export const ITEMS: Record<string, ItemDef> = Object.fromEntries(ITEM_LIST.map((d) => [d.id, d]));

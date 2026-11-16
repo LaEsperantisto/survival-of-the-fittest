@@ -88,6 +88,18 @@ function drawArt(id: string, w: number, h: number, color: string): HTMLCanvasEle
       else { rect(g, 4, 14, 8, 4, "#c8d2da"); rect(g, 6, 15, 4, 2, "#3a4750"); }
       return cv;
     }
+    case "hot_water_pouch": {
+      rect(g, 6, 0, 4, 3, "#8a98a8");
+      rect(g, 7, 3, 2, 2, "#8a98a8");
+      rect(g, 4, 5, 8, 25, "#c26a38");                 // canister hot to the touch
+      outline(g, 4, 5, 8, 25, "#ffd9a8");
+      rect(g, 5, 10, 1, 17, "#ff9a4f");                // inner glow
+      rect(g, 4, 12, 8, 3, "#ff7a30");                 // heat band
+      rect(g, 4, 16, 8, 2, "#e05a20");
+      g.fillStyle = "#c8d2da";                          // steam off the cap
+      g.fillRect(4, 1, 2, 1); g.fillRect(7, 0, 2, 1); g.fillRect(11, 1, 2, 1);
+      return cv;
+    }
     case "sword": // forged blade: steel edge, crossguard, wrapped grip
       rect(g, 8, 0, 1, 1, "#eef3f8"); rect(g, 7, 1, 3, 17, "#c9d2dc");
       rect(g, 8, 1, 1, 17, "#eef3f8");

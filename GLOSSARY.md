@@ -135,6 +135,10 @@ _Avoid_: checkpoint
 the container holding a dead player's items at the death spot. It accepts no new items and vanishes only when emptied.
 _Avoid_: grave, drop bag
 
+**Death Indicator**:
+the pair of markers on any Cache with items in it: a ground ring in the Cache's kind-colour (red for a Death Cache, gold for a Reward Cache) and, for Death Caches only, a red beam of light rising from the spot. Both go dark the moment the Cache runs dry.
+_Avoid_: grave marker, beacon (reserved for the Save Beacon)
+
 **Reward Cache**:
 the Crash Pod form a quest reward takes: a warning, a marker where it will land, then a container holding exactly that reward. It empties when claimed and is marked like every Cache.
 
@@ -195,6 +199,10 @@ Two parts: days survived and Main Quest progress. Completing the game scores hig
 
 **Water Canister**:
 A drinkable item (1×2 in the Inventory Grid). Buried in the world, or waiting in the Supply Chest; finite per world. Oases provide finite water; a late-game method synthesizes water.
+
+**Hot Water Pouch**:
+A full Water Canister heated at a lit Campfire — it costs the fire one fuel charge. Using it (Q) is a heat pulse: +10 °C toward body-warm, clamped at the top of the safe zone so it can never overshoot, and the empty canister comes back.
+_Avoid_: canteen, thermos, heat pack (the wearable is the Hot Pad idea, dead)
 
 **Water Bucket**:
 A carrying vessel for Water itself: it scoops from a Source and pours back as a Source, moving water rather than drinking it.
@@ -354,7 +362,11 @@ A deep bluish Mineral, found only near the bottom of the underground — the mat
 _Avoid_: cobalt (bare)
 
 **Broken Thruster**:
-One of the wreck's four dead wingtip engines. Immovable: it cannot be broken or Disassembled — until the quest is done, the only interaction it accepts is a Thruster Nozzle.
+One of the wreck's four dead wingtip engines. A Disassembler takes it off its pylon — it comes down as an item and can be stood back up anywhere. Its only interaction while dead is a Thruster Nozzle (E); a lit Thruster keeps burning when broken and re-placed.
+
+**Armoury**:
+A station block (2×2), crafted at the Crafting Bench from 4 Dead Wood and 2 Iron Rods. It is where everything that guards the body is forged: all armour, Backpacks, the Visor and the Body Heat Regulator. The Crafting Bench keeps everything else.
+_Avoid_: forge (it is a bench, not a smithy), armory (spelling: British, like the rest)
 
 **Thruster Nozzle**:
 The replacement part that wakes a Broken Thruster: crafted from what the deep caves give up (Cobalt, Copper). Installing all four completes the Main Quest.
