@@ -5,7 +5,7 @@ import { Survival, REGULATOR_ROOM_MAX, SAFE_HI } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, type ItemDef, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName } from "./blocks";
+import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable } from "./blocks";
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
 import { heightAt, biomeAt, TOWN_L, CAMP_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
@@ -140,6 +140,7 @@ export class Game {
     this.survival = new Survival(this.seed ^ 7);
     this.quests = loadQuestState(run?.quest);
     this.renderer = new Renderer(parent);
+    this.renderer.fires = this.campCharges;
     this.player = new Player(this.world);
     this.timeSec = run?.time ?? DAY_SECONDS * 0.7; // new worlds start mid-afternoon, near the day's hottest
     this.playSec = run?.playSec ?? 0;
@@ -414,7 +415,10 @@ export class Game {
       const cache: DeathCache = { id: this.entitySeq++, x: c.x, y: c.y, z: c.z, kind, items: c.items.map((i) => ({ ...i })) };
       this.caches.push(cache); // crate, ring and beam get (re)built by the marker loop
     }
-    this.campCharges = new Map(Object.entries(run.campfires ?? {}).map(([k, v]) => [k, v]));
+    this.campCharges.clear();
+    for (const [k, v] of Object.entries(run.campfires ?? {})) this.campCharges.set(k, v);
+    this.renderer.fires = this.campCharges;
+    this.world.loadRots(run.rots ?? {});
     this.crops = new Map(run.crops ?? []);
     if (run.lastSleep) this.lastSleep = run.lastSleep;
     for (const c of legacyChests) this.adoptLegacyChest(c);
@@ -424,13 +428,16 @@ export class Game {
       beamEid: this.renderer.addBeam(p.x + 0.5, Math.round(heightAt(this.seed, p.x, p.z)), p.z + 0.5, 0xcc3322),
     }));
     this.won = !!run.won;
-    // re-light lamps and campfires that live in the saved deltas
+    // re-light lamps and campfires that live in the saved deltas; a campfire
+    // without fuel charges stays cold charcoal and keeps no light
     for (const [k, m] of this.world.deltas) {
       const [cx, cz] = k.split(",").map(Number);
       for (const [i, id] of m) {
         if (id !== LAMP && id !== CAMPFIRE) continue;
         const lx = Math.floor(i / (CS * CH)), rem = i % (CS * CH);
-        this.renderer.addPointLight(cx * CS + lx, rem % CH, cz * CS + Math.floor(rem / CH), id === LAMP ? "lamp" : "fire");
+        const wx = cx * CS + lx, wy = rem % CH, wz = cz * CS + Math.floor(rem / CH);
+        if (id === CAMPFIRE && (this.campCharges.get(`${wx},${wy},${wz}`) ?? 0) <= 0) continue;
+        this.renderer.addPointLight(wx, wy, wz, id === LAMP ? "lamp" : "fire");
       }
     }
   }
@@ -465,6 +472,7 @@ export class Game {
       trees: [...this.trees],
       lastSleep: this.lastSleep > 0 ? this.lastSleep : undefined,
       deltas: this.world.serializeDeltas(),
+      rots: this.world.serializeRots(),
     };
   }
 
@@ -832,14 +840,22 @@ export class Game {
         this.renderInv();
       }
       if (ke.code === "KeyR" && !this.ui && !this.paused && !this.cine && !this.liftoff) {
-        // in the field: R tosses the held item away
+        // in the field: R turns a held rotatable block a quarter turn;
+        // anything else is tossed away
         const s = this.inv.selectedSlot();
         if (s) {
-          this.inv.slots.splice(this.inv.selected, 1);
-          this.inv.selected = Math.min(this.inv.selected, Math.max(0, this.inv.slots.length - 1));
-          this.dropEntity(s.itemId, 1, 1);
-          this.renderHeld();
-          this.audio.place();
+          const blk = ITEMS[s.itemId].block;
+          if (blk !== undefined && BLOCKS[blk].placeable && rotatable(blk)) {
+            s.blockRot = ((s.blockRot ?? 0) + 1) & 3;
+            this.renderHeld();
+            this.audio.place();
+          } else {
+            this.inv.slots.splice(this.inv.selected, 1);
+            this.inv.selected = Math.min(this.inv.selected, Math.max(0, this.inv.slots.length - 1));
+            this.dropEntity(s.itemId, 1, 1);
+            this.renderHeld();
+            this.audio.place();
+          }
         }
       }
       if (ke.code === "Escape") {
@@ -1182,6 +1198,19 @@ export class Game {
     const target = this.raycastTarget();
     this.renderer.setPlayerLight(this.lanternOn ? this.player.eye() : null);
     this.renderer.setHighlight((this.ui || this.cine) ? null : (target?.hit ?? null));
+    // a held placeable block shows a translucent preview of where it lands
+    {
+      const gs = this.inv.selectedSlot();
+      const gblk = gs ? ITEMS[gs.itemId].block : undefined;
+      const hit = target?.hit, face = target?.face;
+      let shown = false;
+      if (!this.ui && !this.cine && gblk !== undefined && BLOCKS[gblk].placeable && hit && face) {
+        const gx = hit.x + face.x, gy = hit.y + face.y, gz = hit.z + face.z;
+        const at = this.world.get(gx, gy, gz);
+        if (at === AIR || (isWater(at) && at !== WATER)) { this.renderer.setGhost(gx, gy, gz, gblk); shown = true; }
+      }
+      if (!shown) this.renderer.clearGhost();
+    }
     hud.setPrompt((this.ui || this.cine) ? null : this.promptFor(target));
     hud.setBlockName((this.ui || this.cine) || !target?.hit ? null
       : blockDisplayName(this.world.get(target.hit.x, target.hit.y, target.hit.z)));
@@ -1311,7 +1340,8 @@ export class Game {
       if (id === BEACON) return "E: Save game (respawn point)";
       if (id === BENCH || id === BENCH_EXT) return "E: Craft";
       if (id === ARMORY) return "E: Forge armour and gear";
-      if (id === CAMPFIRE) return this.canHeatWater(t.hit.x, t.hit.y, t.hit.z) ? "E: Heat the water" : "E: Smelt";
+      if (id === CAMPFIRE) return this.canHeatWater(t.hit.x, t.hit.y, t.hit.z) ? "E: Heat the water"
+        : this.canFeed(t.hit.x, t.hit.y, t.hit.z) ? "E: Feed the fire" : "E: Smelt";
       if (id === REGULATOR) return "E: Draw neutral air (37 °C)";
       if (id === THRUSTER) return this.inv.has("thruster_nozzle", 1) ? "E: Install Thruster Nozzle" : null;
     }
@@ -1975,6 +2005,7 @@ export class Game {
     }
     this.world.set(bx, by, bz, def.block);
     if (benchPeer) this.world.set(benchPeer[0], benchPeer[1], benchPeer[2], BENCH_EXT);
+    if (slot.blockRot && rotatable(def.block)) this.world.setRot(bx, by, bz, slot.blockRot);
     if (def.block === DOOR_CLOSED && this.world.get(bx, by + 1, bz) === AIR) this.world.set(bx, by + 1, bz, DOOR_UPPER);
     if (def.block === DOOR_INNER && this.world.get(bx, by + 1, bz) === AIR) this.world.set(bx, by + 1, bz, DOOR_INNER_UPPER);
     if (def.block === BED && this.world.get(bx + 1, by, bz) === AIR) this.world.set(bx + 1, by, bz, BED_EXT); // a bed spans 2 blocks
@@ -1989,7 +2020,7 @@ export class Game {
       } else hud.toast("The relay needs the Core right next to a Save Beacon.");
     }
     if (def.block === LAMP) this.renderer.addPointLight(bx, by, bz, "lamp");
-    else if (def.block === CAMPFIRE) this.renderer.addPointLight(bx, by, bz, "fire");
+    // a fresh campfire is cold kindling — feed it before it glows
     else if (def.block === THRUSTER_LIT) this.renderer.addPointLight(bx, by, bz, "fire"); // a carried engine keeps burning
     if (def.block === STORM_BREAKER) this.breakers.add(`${bx},${by},${bz}`);
     if (def.block === CHEST) this.linkChests(bx, by, bz, chestOld);
@@ -2070,6 +2101,7 @@ export class Game {
       if (id === ARMORY) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("armory"); return; }
       if (id === CAMPFIRE) {
         if (this.canHeatWater(x, y, z)) { this.heatWater(x, y, z); return; }
+        if (this.canFeed(x, y, z)) { this.feed(x, y, z); return; }
         this.openStation = [x, y, z]; this.ui = "smelt"; this.unlockPointer(); this.renderCraft("smelt"); return;
       }
       if (id === THRUSTER) {
@@ -2171,6 +2203,7 @@ export class Game {
     let best = 0;
     for (let dx = -6; dx <= 6; dx++) for (let dz = -6; dz <= 6; dz++) for (let dy = -2; dy <= 2; dy++) {
       if (this.world.get(fx + dx, fy + dy, fz + dz) !== CAMPFIRE) continue;
+      if ((this.campCharges.get(`${fx + dx},${fy + dy},${fz + dz}`) ?? 0) <= 0) continue; // cold charcoal warms nothing
       const d = Math.max(Math.abs(dx), Math.abs(dz));
       best = Math.max(best, d <= 4 ? 18 : 9);
     }
@@ -2358,11 +2391,40 @@ export class Game {
     return this.inv.selectedSlot()?.itemId === "canister_full" && (this.campCharges.get(`${x},${y},${z}`) ?? 0) > 0;
   }
 
+  /** Holding Wood or Kindling in front of a Campfire: E stokes the coals
+   *  instead of opening the smelter — Wood +2 charges, Kindling +0.5. */
+  private canFeed(x: number, y: number, z: number): boolean {
+    const s = this.inv.selectedSlot();
+    return !!s && (s.itemId === "wood_log" || s.itemId === "kindling");
+  }
+  private feed(x: number, y: number, z: number) {
+    const s = this.inv.selectedSlot();
+    if (!s || !this.canFeed(x, y, z)) return;
+    const was = `${s.itemId === "wood_log" ? "log" : "kindling"}`;
+    const add = s.itemId === "wood_log" ? 2 : 0.5;
+    this.inv.removeItem(s.itemId, 1);
+    const key = `${x},${y},${z}`;
+    const fuel = (this.campCharges.get(key) ?? 0) + add;
+    this.campCharges.set(key, fuel);
+    this.syncFire(x, y, z);
+    this.audio.place();
+    this.renderHeld();
+    hud.toast(fuel > 0 ? `The ${was} catches — the fire breathes again.` : `The ${was} smoulders; the fire needs more.`);
+  }
+  /** Keep the campfire's point light in step with its fuel charges. */
+  private syncFire(x: number, y: number, z: number) {
+    const lit = (this.campCharges.get(`${x},${y},${z}`) ?? 0) > 0;
+    if (lit && !this.renderer.hasPointLight(x, y, z)) this.renderer.addPointLight(x, y, z, "fire");
+    else if (!lit && this.renderer.hasPointLight(x, y, z)) this.renderer.removePointLight(x, y, z);
+    this.world.dirty.add(Math.floor(x / CS) + "," + Math.floor(z / CS)); // cold vs lit charcoal
+  }
+
   private heatWater(x: number, y: number, z: number) {
     const key = `${x},${y},${z}`;
     const fuel = this.campCharges.get(key) ?? 0;
     if (!this.canHeatWater(x, y, z)) { this.audio.error(); return; }
     this.campCharges.set(key, fuel - 1);
+    this.syncFire(x, y, z);
     this.inv.removeItem("canister_full", 1);
     this.giveOrDrop("hot_water_pouch", 1);
     this.audio.drink();
@@ -3153,6 +3215,7 @@ export class Game {
         if (!this.inv.has("deadwood", 1)) { hud.toast("No Dead Wood to burn."); this.audio.error(); return; }
         this.inv.removeItem("deadwood", 1);
         this.campCharges.set(key, fuel + 3);
+        this.syncFire(pos[0], pos[1], pos[2]);
         this.renderCraft("smelt");
       };
       // an equipped Head Lantern drinks from the fire too
@@ -3168,6 +3231,7 @@ export class Game {
         rb.onclick = () => {
           if (lc >= 5 || fuel < 1) return;
           this.campCharges.set(key, fuel - 1);
+          this.syncFire(pos[0], pos[1], pos[2]);
           lamp.charges = lc + 1;
           this.audio.place();
           this.renderCraft("smelt");
@@ -3185,6 +3249,7 @@ export class Game {
         b.onclick = () => {
           this.inv.removeItem(s.in, 1);
           this.campCharges.set(key, fuel - 1);
+          this.syncFire(pos[0], pos[1], pos[2]);
           const left = this.inv.addItem(s.out, s.n ?? 1);
           if (left > 0) this.giveOrDrop(s.out, left);
           this.audio.place();

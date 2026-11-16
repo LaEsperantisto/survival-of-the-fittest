@@ -478,6 +478,8 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
         set(x, y, z, interior ? AIR : cornerPost(x, z) || wingJoint(x, z, y) ? CURVED_HULL : y === Y0 ? METAL_PLATING : HULL);
       }
   // rounded spine along the roof — sloped hull plates catch the light right
+  // hull slope + curved hull chamfer all four vertical edges: orientation-symmetric,
+  // so gen stamps no blockRot — doors self-orient from neighbours at mesh time
   for (let x = -3; x <= 1; x++) for (let z = -2; z <= 2; z++) set(x, 35, z, HULL_SLOPE);
   for (let x = -2; x <= 0; x++) for (let z = -1; z <= 1; z++) set(x, 36, z, HULL_SLOPE);
   // wings: thin plated planes out from the flanks, tapering at the tips

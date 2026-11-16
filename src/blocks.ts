@@ -45,6 +45,15 @@ export const BLOCK_DISPLAY: Record<number, string> = {
 };
 export function blockDisplayName(id: number): string { return BLOCK_DISPLAY[id] ?? BLOCKS[id].name; }
 
+// Natural terrain and self-orienting blocks (doors find their own wall, water
+// flows) never carry a rotation nibble; everything the player builds with can.
+const NATURAL = new Set<number>([SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, GRASS, DEADWOOD,
+  WOOD, LEAVES, SAPLING, CACTUS, CACTUS_FRUIT, MELON_1, MELON_2, WHEAT_1, WHEAT_2, FARMLAND,
+  IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER]);
+const NO_ROT = new Set<number>([DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER,
+  DOOR_INNER_OPEN, WATER, WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1]);
+export function rotatable(id: number): boolean { return BLOCKS[id].placeable && !NATURAL.has(id) && !NO_ROT.has(id); }
+
 export const BLOCKS: BlockDef[] = [
   def({ id: AIR, name: "Air", solid: false, opaque: false, transparent: false, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0, 0, 0] }),
   def({ id: SAND, name: "Sand", solid: true, opaque: true, transparent: false, emissive: false, R: 0.8, breakTime: 0.6, tool: "shovel", minTier: 0, placeable: true, color: [0.83, 0.72, 0.50] }),

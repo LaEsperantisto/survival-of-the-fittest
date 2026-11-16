@@ -45,6 +45,11 @@ interface ShapeFace {
   pts: [number, number, number][];
   sh: number;
   uv: (p: [number, number, number]) => [number, number];
+  /** model faces (bench parts) never cull: they hang inside a solid cell */
+  always?: boolean;
+  /** bridge face: emitted only when the cell at `fill` is solid — it plugs
+   *  the gap left where that neighbour culled its shared face */
+  fill?: [number, number, number];
 }
 
 function shapeFace(dir: [number, number, number], kind: 0 | 1 | 2, sh: number,
@@ -56,6 +61,10 @@ function shapeFace(dir: [number, number, number], kind: 0 | 1 | 2, sh: number,
   if (nx * dir[0] + ny * dir[1] + nz * dir[2] < 0) pts.reverse();
   return { dir, kind, pts, sh, uv };
 }
+function fillFace(dir: [number, number, number], sh: number,
+  pts: [number, number, number][], uv: (p: [number, number, number]) => [number, number]): ShapeFace {
+  return { ...shapeFace(dir, 2, sh, pts, uv), fill: dir };
+}
 
 const HULL_SHAPES: Record<number, ShapeFace[]> = (() => {
   const c = CHAMFER, k = 1 - c; // k: inner chamfer coordinate
@@ -65,6 +74,7 @@ const HULL_SHAPES: Record<number, ShapeFace[]> = (() => {
   // 45° facets: u continues roughly the strip of one adjacent face's planar u
   const uvChamDiag = (p: [number, number, number]) => [(p[2] - p[0]) / 2 + 0.5, p[1]] as [number, number];
   const uvChamAnti = (p: [number, number, number]) => [(p[0] + p[2]) / 2, p[1]] as [number, number];
+  // octagonal ring: the cell square with the corners cut by the chamfer
   const oct: [number, number][] = [[c, 0], [k, 0], [1, c], [1, k], [k, 1], [c, 1], [0, k], [0, c]];
   const curved: ShapeFace[] = [
     shapeFace([0, 1, 0], 0, 1.0, oct.map(([px, pz]) => [px, 1, pz]), uvXZ),
@@ -78,6 +88,19 @@ const HULL_SHAPES: Record<number, ShapeFace[]> = (() => {
     shapeFace([1, 0, -1], 2, 0.725, [[k, 0, 0], [k, 1, 0], [1, 1, c], [1, 0, c]], uvChamAnti),
     shapeFace([1, 0, 1], 2, 0.825, [[1, 0, k], [1, 1, k], [k, 1, 1], [k, 0, 1]], uvChamDiag),
     shapeFace([-1, 0, 1], 2, 0.775, [[0, 0, k], [0, 1, k], [c, 1, 1], [c, 0, 1]], uvChamAnti),
+    // bridge flaps: where a neighbour is solid it culls the shared plane, but
+    // the chamfer leaves the corner strips open — these close them from the
+    // curved side. Only drawn when that neighbour really is there, so the
+    // rounded silhouette against air is untouched and the sealed interior
+    // never sees a culled backface (the old light leak).
+    fillFace([1, 0, 0], 0.8, [[1, 0, 0], [1, 1, 0], [1, 1, c], [1, 0, c]], uvZY),
+    fillFace([1, 0, 0], 0.8, [[1, 0, k], [1, 1, k], [1, 1, 1], [1, 0, 1]], uvZY),
+    fillFace([-1, 0, 0], 0.7, [[0, 0, 0], [0, 0, c], [0, 1, c], [0, 1, 0]], uvZY),
+    fillFace([-1, 0, 0], 0.7, [[0, 0, k], [0, 0, 1], [0, 1, 1], [0, 1, k]], uvZY),
+    fillFace([0, 0, 1], 0.85, [[0, 0, 1], [0, 1, 1], [c, 1, 1], [c, 0, 1]], uvXY),
+    fillFace([0, 0, 1], 0.85, [[k, 0, 1], [k, 1, 1], [1, 1, 1], [1, 0, 1]], uvXY),
+    fillFace([0, 0, -1], 0.65, [[0, 0, 0], [c, 0, 0], [c, 1, 0], [0, 1, 0]], uvXY),
+    fillFace([0, 0, -1], 0.65, [[k, 0, 0], [1, 0, 0], [1, 1, 0], [k, 1, 0]], uvXY),
   ];
   const slope: ShapeFace[] = [
     shapeFace([0, 1, 0], 0, 1.0, [[c, 1, c], [c, 1, k], [k, 1, k], [k, 1, c]], uvXZ),
@@ -94,6 +117,50 @@ const HULL_SHAPES: Record<number, ShapeFace[]> = (() => {
     shapeFace([1, 1, 0], 2, 0.9, [[1, k, 0], [1, k, 1], [1, 1, k], [1, 1, c]], uvZY),
   ];
   return { [CURVED_HULL]: curved, [HULL_SLOPE]: slope };
+})();
+
+// Quarter-turn helpers around the cell centre (Y axis, CCW from above). The
+// rotation nibble turns the whole shape — geometry and face normals — while
+// UVs keep sampling the tile the unrotated face used, so art follows the block.
+const rot2 = (px: number, pz: number, r: number): [number, number] =>
+  r === 0 ? [px, pz] : r === 1 ? [1 - pz, px] : r === 2 ? [1 - px, 1 - pz] : [pz, 1 - px];
+const rotDir = (d: [number, number, number], r: number): [number, number, number] =>
+  r === 0 ? d : r === 1 ? [-d[2], d[1], d[0]] : r === 2 ? [-d[0], d[1], -d[2]] : [d[2], d[1], -d[0]];
+const rotShapes = (faces: ShapeFace[], r: number): ShapeFace[] =>
+  r === 0 ? faces : faces.map((f) => ({
+    ...f, dir: rotDir(f.dir, r), fill: f.fill ? rotDir(f.fill, r) : f.fill,
+    pts: f.pts.map(([px, py, pz]) => { const [qx, qz] = rot2(px, pz, r); return [qx, py, qz] as [number, number, number]; }),
+  }));
+
+// The Crafting Bench stands as a workbench model across its two cells:
+// a thick top slab spanning both, an apron shelf, legs at the outer ends and
+// a drawer front on the near half. Templates are authored for the BENCH cell
+// with its EXT neighbour on +x (drawer facing -z); the mesher rotates them by
+// where the pair actually runs plus the player's rotation nibble.
+const slabFaces = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): ShapeFace[] => [
+  shapeFace([0, 1, 0], 0, 1.0, [[x0, y1, z0], [x0, y1, z1], [x1, y1, z1], [x1, y1, z0]], (p) => [p[0], p[2]]),
+  shapeFace([0, -1, 0], 1, 0.45, [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], (p) => [p[0], p[2]]),
+  shapeFace([1, 0, 0], 2, 0.8, [[x1, y0, z0], [x1, y0, z1], [x1, y1, z1], [x1, y1, z0]], (p) => [p[2], p[1]]),
+  shapeFace([-1, 0, 0], 2, 0.7, [[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]], (p) => [p[2], p[1]]),
+  shapeFace([0, 0, 1], 2, 0.85, [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], (p) => [p[0], p[1]]),
+  shapeFace([0, 0, -1], 2, 0.65, [[x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [x1, y0, z0]], (p) => [p[0], p[1]]),
+];
+const always = (faces: ShapeFace[]) => { for (const f of faces) f.always = true; return faces; };
+// drop one face by index: 2 = +x, 3 = -x — the pair's worktop spans both
+// cells, so the seam faces at the shared border must not double-draw
+const noFace = (faces: ShapeFace[], i: number) => faces.filter((_, k) => k !== i);
+const BENCH_MODEL = (() => {
+  const top = noFace(slabFaces(0, 0.72, 0, 1, 0.88, 1), 2);
+  const shelf = noFace(slabFaces(0, 0.18, 0.18, 1, 0.26, 0.82), 2);
+  const legs = [...slabFaces(0.05, 0, 0.05, 0.2, 0.72, 0.2), ...slabFaces(0.05, 0, 0.8, 0.2, 0.72, 0.95)];
+  const drawer = slabFaces(0.28, 0.3, 0, 0.72, 0.64, 0.05);
+  return always([...top, ...shelf, ...legs, ...drawer]);
+})();
+const BENCHX_MODEL = (() => {
+  const top = noFace(slabFaces(0, 0.72, 0, 1, 0.88, 1), 3);
+  const shelf = noFace(slabFaces(0, 0.18, 0.18, 1, 0.26, 0.82), 3);
+  const legs = [...slabFaces(0.8, 0, 0.05, 0.95, 0.72, 0.2), ...slabFaces(0.8, 0, 0.8, 0.95, 0.72, 0.95)];
+  return always([...top, ...shelf, ...legs]);
 })();
 
 // ---------------- procedural texture atlas ----------------
@@ -120,6 +187,7 @@ const VARIANTS: [string, number][] = [
   ["farmland_side", FARMLAND], ["sandstone_top", SANDSTONE], ["hull_top", HULL],
   ["water_side", WATER], ["bed_side", BED], ["chest_top", CHEST],
   ["bench_top", BENCH], ["bench_ext_top", BENCH_EXT], ["campfire_top", CAMPFIRE],
+  ["campfire_cold", CAMPFIRE],
   ["cactus_top", CACTUS],
 ];
 const VI: Record<string, number> = {};
@@ -392,6 +460,17 @@ export function getAtlasCanvas(): HTMLCanvasElement {
       }
     }
     px(8, 1, col(0.2, 1, 0.7, 0.15, -0.4)); px(7, 3, col(0.3, 1, 0.9, 0.4, -0.4)); // sparks
+  });
+  R("campfire_cold", () => {
+    // unlit fire: ash, stone ring, charred logs, grey embers — no flame, no glow
+    fbmFill((x, y, n) => n * 0.04 - 0.22);                                   // cold ash base
+    for (let i = 0; i < 5; i++) pebble(2 + i * 3, 13, 1, -0.05);             // stone ring
+    g.strokeStyle = "rgba(40,34,28,1)"; g.lineWidth = 2;                    // charred crossed logs
+    g.beginPath(); g.moveTo(tx + 4, ty + 13); g.lineTo(tx + 12, ty + 9); g.stroke();
+    g.beginPath(); g.moveTo(tx + 12, ty + 13); g.lineTo(tx + 4, ty + 9); g.stroke();
+    g.lineWidth = 1;
+    for (let i = 0; i < 6; i++)                                             // grey ember pits
+      pebble(5 + (i % 3) * 3, 9 + ((i / 3) | 0) * 2, 1, 0.08 + 0.04 * (i % 2));
   });
   R("campfire_top", () => {
     fbmFill((x, y, n) => -0.12 + n * 0.05);
@@ -1001,6 +1080,10 @@ export class Renderer {
   /** Head Lantern light: shown at the player's head while a lantern is on */
   private playerLight: THREE.PointLight;
   private dynLights: { x: number; y: number; z: number; light: THREE.PointLight; flame: boolean }[] = [];
+  /** live campfire fuel charges ("x,y,z" -> heat units); the mesher dims
+   *  unlit fires, the game owns the map and mutates it in place. */
+  fires = new Map<string, number>();
+  private ghost: THREE.Mesh | null = null;
 
   constructor(canvasParent: HTMLElement) {
     this.three = new THREE.WebGLRenderer({ antialias: false });
@@ -1014,7 +1097,7 @@ export class Renderer {
     this.torch.position.set(0.25, -0.15, 0.1);
     this.camera.add(this.torch);
     // head lantern: a world-space warm light toggled by setPlayerLight
-    this.playerLight = new THREE.PointLight(0xffd76a, 1.4, 14, 1.4);
+    this.playerLight = new THREE.PointLight(0xffd76a, 2.4, 20, 1.4);
     this.playerLight.visible = false;
     this.scene.add(this.playerLight);
     this.sun = new THREE.DirectionalLight(0xffffff, 1.0);
@@ -1093,12 +1176,35 @@ export class Renderer {
     this.dynLights.push({ x, y, z, light, flame: kind === "fire" });
   }
 
+  hasPointLight(x: number, y: number, z: number): boolean {
+    return this.dynLights.some((d) => d.x === x && d.y === y && d.z === z);
+  }
+
   removePointLight(x: number, y: number, z: number) {
     const i = this.dynLights.findIndex((d) => d.x === x && d.y === y && d.z === z);
     if (i < 0) return;
     this.scene.remove(this.dynLights[i].light);
     this.dynLights.splice(i, 1);
   }
+
+  /** Translucent preview of the block the held item would place at x,y,z. */
+  setGhost(x: number, y: number, z: number, id: number) {
+    if (!this.ghost) {
+      const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.35, depthWrite: false });
+      this.ghost = new THREE.Mesh(new THREE.BoxGeometry(1.001, 1.001, 1.001), mat);
+      const edges = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(1.02, 1.02, 1.02)),
+        new THREE.LineBasicMaterial({ color: 0xd8b74f, transparent: true, opacity: 0.7 }));
+      this.ghost.add(edges);
+      this.ghost.renderOrder = 5;
+      this.scene.add(this.ghost);
+    }
+    const c = BLOCKS[id].color;
+    (this.ghost.material as THREE.MeshBasicMaterial).color.setRGB(c[0], c[1], c[2]);
+    this.ghost.position.set(x + 0.5, y + 0.5, z + 0.5);
+    this.ghost.visible = true;
+  }
+  clearGhost() { if (this.ghost) this.ghost.visible = false; }
 
   dispose() {
     this.resetChunkMeshes();
@@ -1319,6 +1425,8 @@ export class Renderer {
     for (let x = 0; x < CS; x++) for (let z = 0; z < CS; z++) for (let y = 0; y < CH; y++) {
       const id = c[(x * CS + z) * CH + y];
       if (id === AIR) continue;
+      const wx = cx * CS + x, wz = cz * CS + z;
+      const r = world.rots.size ? world.getRot(wx, y, wz) : 0;
       if (DOOR_BLOCKS.has(id)) {
         // the thin slab borrows the brightest light of its four sides — the
         // room it belongs to
@@ -1353,7 +1461,26 @@ export class Renderer {
       if (id === CURVED_HULL || id === HULL_SLOPE) {
         // chamfered cube: axis faces cull exactly like a plain cube, the 45°
         // facets are always drawn
-        this.emitShape(HULL_SHAPES[id], pos, col, idx, uvs, lite, id, world, x, y, z, cx * CS, cz * CS, faceLight);
+        this.emitShape(rotShapes(HULL_SHAPES[id], r), pos, col, idx, uvs, lite, id, world, x, y, z, cx * CS, cz * CS, faceLight);
+        continue;
+      }
+      if (id === BENCH || id === BENCH_EXT) {
+        // the two-cell workbench: orient the model by where the partner cell
+        // actually is, then apply the player's rotation stored on the BENCH
+        const wx2 = cx * CS + x, wz2 = cz * CS + z;
+        let d: number, base: ShapeFace[], rr: number;
+        if (id === BENCH) {
+          d = world.get(wx2 + 1, y, wz2) === BENCH_EXT ? 0 : world.get(wx2, y, wz2 + 1) === BENCH_EXT ? 1
+            : world.get(wx2 - 1, y, wz2) === BENCH_EXT ? 2 : 3;
+          base = BENCH_MODEL;
+          rr = r;
+        } else {
+          d = world.get(wx2 - 1, y, wz2) === BENCH ? 0 : world.get(wx2, y, wz2 - 1) === BENCH ? 1
+            : world.get(wx2 + 1, y, wz2) === BENCH ? 2 : 3;
+          base = BENCHX_MODEL;
+          rr = world.getRot(wx2 + (d === 0 ? -1 : d === 2 ? 1 : 0), y, wz2 + (d === 1 ? -1 : d === 3 ? 1 : 0));
+        }
+        this.emitShape(rotShapes(base, (d + rr) & 3), pos, col, idx, uvs, lite, id, world, x, y, z, cx * CS, cz * CS, faceLight);
         continue;
       }
       if (id >= WATER7 && id <= WATER1) {
@@ -1386,7 +1513,10 @@ export class Renderer {
         continue;
       }
       const def = BLOCKS[id];
-      const useE = def.emissive, useT = def.transparent;
+      // a campfire only glows while it has fuel charges; empty ones are cold
+      // charcoal — dark tile, opaque pass, no point light
+      const coldFire = id === CAMPFIRE && (this.fires.get(wx + "," + y + "," + wz) ?? 0) <= 0;
+      const useE = def.emissive && !coldFire, useT = def.transparent;
       const P = useT ? tpos : useE ? epos : pos;
       const C = useT ? tcol : useE ? ecol : col;
       const I = useT ? tidx : useE ? eidx : idx;
@@ -1394,15 +1524,18 @@ export class Renderer {
       const LM = useT ? tlite : useE ? null : lite;
       for (let fi = 0; fi < FACES.length; fi++) {
         const f = FACES[fi];
-        const nx = x + f.dir[0], ny = y + f.dir[1], nz = z + f.dir[2];
+        const fd = r ? rotDir(f.dir, r) : f.dir;
+        const nx = x + fd[0], ny = y + fd[1], nz = z + fd[2];
         if (!faceVisible(world, cx * CS + nx, ny, cz * CS + nz, id)) continue;
-        const ft = FACE_T[id * 6 + fi];
+        // cold fires draw their charcoal tile instead of the flame tile
+        const ft = coldFire ? VI.campfire_cold : FACE_T[id * 6 + fi];
         const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
         const base = P.length / 3;
         const sh = useE ? 1 : f.shade;
         const lv = LM ? faceLight(nx, ny, nz) : 0;
         for (const cn of f.corners) {
-          P.push(x + cn[0], y + cn[1], z + cn[2]);
+          const [px, pz] = r ? rot2(cn[0], cn[2], r) : [cn[0], cn[2]];
+          P.push(x + px, y + cn[1], z + pz);
           C.push(sh, sh, sh); // shading only; texture carries the color
           if (LM) LM.push(lv);
           U.push((tx0 + 0.5 + cn[f.uv[0]] * (TILE_PX - 1)) / ATLAS_PX, (ty0 + 0.5 + cn[f.uv[1]] * (TILE_PX - 1)) / ATLAS_PX);
@@ -1506,10 +1639,13 @@ export class Renderer {
     faceLight: (nx: number, ny: number, nz: number) => number) {
     for (const f of faces) {
       const axis = (f.dir[0] ? 1 : 0) + (f.dir[1] ? 1 : 0) + (f.dir[2] ? 1 : 0);
-      if (axis === 1 && !faceVisible(world, ox + x + f.dir[0], y + f.dir[1], oz + z + f.dir[2], id)) continue;
+      if (f.fill) {
+        if (faceVisible(world, ox + x + f.fill[0], y + f.fill[1], oz + z + f.fill[2], id)) continue;
+      } else if (axis === 1 && !f.always && !faceVisible(world, ox + x + f.dir[0], y + f.dir[1], oz + z + f.dir[2], id)) continue;
       const ft = FACE_T[id * 6 + f.kind];
       const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
       let lv = 0;
+      if (f.fill) lv = faceLight(x, y, z); // coplanar with the neighbour's culled face: it took this cell's light
       if (f.dir[0]) lv = Math.max(lv, faceLight(x + f.dir[0], y, z));
       if (f.dir[1]) lv = Math.max(lv, faceLight(x, y + f.dir[1], z));
       if (f.dir[2]) lv = Math.max(lv, faceLight(x, y, z + f.dir[2]));

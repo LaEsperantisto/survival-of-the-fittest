@@ -58,7 +58,7 @@ export interface RunSave {
   player: { x: number; y: number; z: number; yaw: number; pitch: number };
   survival: { health: number; water: number; body: number };
   quest?: { i: number; p: number[] };
-  inventory: { slots: { itemId: string; count?: number; x: number; y: number; rot?: boolean }[]; selected: number; w: number; h: number; bonusLimit: number }; // count: legacy only — items never stack now
+  inventory: { slots: { itemId: string; count?: number; x: number; y: number; rot?: boolean; blockRot?: number }[]; selected: number; w: number; h: number; bonusLimit: number }; // count: legacy only — items never stack now
   equip?: { backpack?: string; head?: string; body?: string; regulator?: string; light?: string;
             charges?: { regulator?: number; light?: number } };
   beaconMarks: { x: number; y: number; z: number }[];
@@ -73,6 +73,7 @@ export interface RunSave {
   trees?: [string, number][]; // planted Living Tree key -> growth seconds
   lastSleep?: number;         // timeSec of the last bed sleep
   deltas: Record<string, number[]>;
+  rots?: Record<string, number>; // cell "x,y,z" -> quarter-turn for player-placed blocks
 }
 
 export function saveRun(meta: WorldMeta, run: RunSave): boolean {

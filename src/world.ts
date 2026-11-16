@@ -19,6 +19,9 @@ export class World {
   /** door column "x,z" -> swing side; set when a player pushes the door open,
    *  absent means the renderer's deterministic default. Visual state only. */
   doorSwing = new Map<string, 1 | -1>();
+  /** cell "x,y,z" -> quarter-turn rotation (1..3) for player-placed blocks.
+   *  Sparse: unrotated cells are absent, so terrain costs nothing. */
+  rots = new Map<string, number>();
   /** cells whose water situation may have changed (Minecraft-style flow sim). */
   private waterQ = new Set<string>();
   gen: Structures;
@@ -136,6 +139,7 @@ export class World {
     let d = this.deltas.get(ckey(cx, cz));
     if (!d) this.deltas.set(ckey(cx, cz), (d = new Map()));
     d.set(i, id);
+    this.rots.delete(x + "," + y + "," + z); // a new block starts unrotated
     this.markDirty(cx, cz);
     const lx = x - cx * CS, lz = z - cz * CS;
     if (lx === 0) this.markDirty(cx - 1, cz);
@@ -145,6 +149,12 @@ export class World {
   }
 
   markDirty(cx: number, cz: number) { this.dirty.add(ckey(cx, cz)); }
+
+  getRot(x: number, y: number, z: number): number { return this.rots.get(x + "," + y + "," + z) ?? 0; }
+  setRot(x: number, y: number, z: number, r: number) {
+    const k = x + "," + y + "," + z;
+    if (r & 3) this.rots.set(k, r & 3); else this.rots.delete(k);
+  }
 
   private queueWater(x: number, y: number, z: number) {
     if (y >= 0 && y < CH) this.waterQ.add(x + "," + y + "," + z);
@@ -261,6 +271,11 @@ export class World {
     this.chunks.clear();
     this.dirty.clear();
     for (const k of this.deltas.keys()) this.dirty.add(k);
+  }
+
+  serializeRots(): Record<string, number> { return Object.fromEntries(this.rots); }
+  loadRots(rec: Record<string, number>) {
+    this.rots = new Map(Object.entries(rec ?? {}).map(([k, v]) => [k, v]));
   }
 }
 

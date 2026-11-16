@@ -204,6 +204,10 @@ A drinkable item (1×2 in the Inventory Grid). Buried in the world, or waiting i
 A full Water Canister heated at a lit Campfire — it costs the fire one fuel charge. Using it (Q) is a heat pulse: +10 °C toward body-warm, clamped at the top of the safe zone so it can never overshoot, and the empty canister comes back.
 _Avoid_: canteen, thermos, heat pack (the wearable is the Hot Pad idea, dead)
 
+**Campfire**:
+A fuel-charged heat source. It glows and warms only while it has charges; an empty fire is cold charcoal — no light, no glow, no smelting. Feed it (E, holding fuel): a Wood Log adds 2 charges, Kindling half a charge. Charges decay over time; smelting and heating draw from them.
+_Avoid_: bonfire, furnace
+
 **Water Bucket**:
 A carrying vessel for Water itself: it scoops from a Source and pours back as a Source, moving water rather than drinking it.
 _Avoid_: pail, canteen

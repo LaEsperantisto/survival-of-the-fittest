@@ -154,7 +154,7 @@ BLOCK_TO_ITEM[CACTUS_FRUIT] = "cactus";
 // ---------------- Inventory Grid ----------------
 
 /** One slot holds exactly one item — items never stack, anywhere. */
-export interface Slot { itemId: string; x: number; y: number; rot?: boolean; charges?: number; }
+export interface Slot { itemId: string; x: number; y: number; rot?: boolean; charges?: number; blockRot?: number; }
 
 /** Effective footprint of a placed item (rot swaps w/h). */
 export function slotDims(s: Slot): { w: number; h: number } {
