@@ -176,8 +176,9 @@ export class Inventory {
     const old = this.slots;
     this.w = sizeW; this.h = sizeH; this.bonusLimit = extraKg;
     this.slots = [];
-    for (const s of old) this.addItem(s.itemId, 1);
+    for (const s of old) if (!this.addSlot(s)) this.droppedOnResize.push(s);
   }
+  droppedOnResize: Slot[] = [];
 
   weightLimit(): number { return this.baseLimit + this.bonusLimit; }
 
@@ -221,6 +222,25 @@ export class Inventory {
     if (!this.fits(s.x, s.y, d.h, d.w, s)) return false;
     s.rot = !s.rot;
     return true;
+  }
+
+  /** Add an existing Slot object (keeping charges, blockRot, ...). False if nowhere fits. */
+  addSlot(s: Slot): boolean {
+    const def = ITEMS[s.itemId];
+    const variants: [number, number, boolean][] =
+      def.w === def.h ? [[def.w, def.h, s.rot ?? false]] : [[def.w, def.h, s.rot ?? false], [def.h, def.w, !s.rot]];
+    for (const [w, h, rot] of variants) {
+      for (let y = 0; y <= this.h - h; y++) {
+        for (let x = 0; x <= this.w - w; x++) {
+          let free = true;
+          for (let dy = 0; dy < h && free; dy++)
+            for (let dx = 0; dx < w && free; dx++)
+              if (this.occupied(x + dx, y + dy)) free = false;
+          if (free) { s.x = x; s.y = y; s.rot = rot || undefined; this.slots.push(s); return true; }
+        }
+      }
+    }
+    return false;
   }
 
   /** Add items; every instance claims its own footprint. Returns count that did NOT fit. */

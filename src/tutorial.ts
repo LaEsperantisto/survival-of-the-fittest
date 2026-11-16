@@ -1,5 +1,5 @@
 import type { Game } from "./game";
-import { DIRT, DOOR_CLOSED, DOOR_OPEN, DOOR_UPPER, SAND, SANDSTONE } from "./blocks";
+import { DOOR_CLOSED, DOOR_OPEN, DOOR_UPPER } from "./blocks";
 
 // The guided tour for fresh worlds: a cinematic flyover of the wreck, then steps
 // the player performs in the real game world. Coordinates are the main wreck's
@@ -65,22 +65,11 @@ const STEPS: TutStep[] = [
     cap: "Select the shovel on the bottom hotbar — click it, scroll, or press its number — then hold <b>Left-click</b> on sand until it breaks. Rock outcrops need a pickaxe; you will craft one soon enough.",
     goal: "mine", hold: 45 },
   { t: "Farming",
-    cap: "A shovel has a second use: press <b>Q</b> while aiming at <b>dirt or grass</b> to till it into <b>Farm Land</b> — sand refuses the blade. Plant seeds in the tilled soil. Crops ripen only while water sits within 4 blocks and the air stays in their band — melons love the heat, wheat does not. Dirt is precious out here; oasis rims and town fields still hold it.",
-    goal: "plant", hold: 40,
+    cap: "A shovel has a second use: press <b>Q</b> while aiming at <b>dirt or grass</b> to till it into <b>Farm Land</b> — sand refuses the blade. The wreck keeps its soil where the tank sinks: <b>Dirt</b> lines the water compartment. Dig it out, till it, plant seeds in the furrow. Crops ripen only while water sits within 4 blocks and the air stays in their band — melons love the heat, wheat does not. Dirt is precious out here; oasis rims and town fields still hold it.",
+    guide: { name: "Dirt", x: -3, y: 30, z: 3 }, goal: "plant", hold: 60,
     enter: (g) => {
       g.giveOrDrop("seed_wheat", 2);
       g.selectHeld("shovel");
-      // the dunes here are pure sand: lay a patch of soil right under the player's feet
-      const p = g.player.pos;
-      const x = Math.floor(p.x), z = Math.floor(p.z);
-      for (let y = Math.floor(p.y) - 1; y > 20; y--) {
-        const id = g.world.get(x, y, z);
-        if (id === SAND || id === SANDSTONE) {
-          g.world.set(x, y, z, DIRT);
-          g.tutGuide = { name: "Dirt", x, y, z };
-          break;
-        }
-      }
     } },
   { t: "Save Points",
     cap: "Last lesson: a Save Beacon waits in the aft cabin. Press <b>E</b> at it. Beacons are the only save points and the only respawns — craft more and set one before every long trip. After this, the desert is yours.",
@@ -98,7 +87,7 @@ export class Tutorial {
   private dotsEl = document.getElementById("tut-dots")!;
 
   constructor(private g: Game) {
-    document.getElementById("btn-tut-skip")!.onclick = () => this.finish();
+    document.getElementById("btn-tut-skip")!.onclick = () => this.finish(true);
     this.card.classList.remove("hidden");
     this.setCard("Crash Landing", "Something gave out over the dunes. What is left is this wreck — and inside it, you are still safe.");
   }
@@ -155,9 +144,18 @@ export class Tutorial {
     this.card.classList.add("pop");
   }
 
-  finish() {
+  finish(skip = false) {
     if (this.ended) return;
     this.ended = true;
+    if (skip) {
+      // the whole kit the tour would have handed over, and the camera back
+      // on the player at once — no flyover left running under the world
+      this.g.skipCine();
+      const g = this.g;
+      if (!g.inv.has("canister_empty")) g.giveOrDrop("canister_empty", 1);
+      g.giveOrDrop("deadwood", 4);
+      g.giveOrDrop("seed_wheat", 2);
+    }
     this.card.classList.add("hidden");
     this.g.tutGuide = null;
     this.g.endTutorial();

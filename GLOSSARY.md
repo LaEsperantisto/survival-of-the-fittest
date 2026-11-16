@@ -284,7 +284,7 @@ A station that breaks down crafted items (tools, gear — not placed blocks) int
 _Avoid_: scrap bin
 
 **Trader**:
-A desert merchant who keeps a stall at a Trader Camp. Traders do not travel, do not fight, and cannot be killed — barter is the only exchange, and there is no coin anywhere in the desert.
+A desert merchant who keeps a stall at a Trader Camp. A Trader paces a small beat around the stall — never far from it, and it turns to face whoever is bartering — but it does not fight and cannot be killed. Barter is the only exchange, and there is no coin anywhere in the desert.
 _Avoid_: NPC (generic), merchant, vendor, wanderer (the abandoned Town-based idea)
 
 **Trader Camp**:

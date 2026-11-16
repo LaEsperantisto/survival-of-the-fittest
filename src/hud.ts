@@ -46,13 +46,13 @@ export function hitFlash() {
 let hbKey = "";
 export function renderHotbar(inv: Inventory) {
   const selId = inv.selectedSlot()?.itemId ?? "";
-  const key = inv.slots.map(s => s.itemId).join(",") + "|" + selId;
+  const key = inv.slots.map(s => s.itemId + ":" + (s.charges ?? "")).join(",") + "|" + selId;
   if (key === hbKey) return;
   hbKey = key;
-  const uniq: { itemId: string; count: number }[] = [];
+  const uniq: { itemId: string; count: number; charges?: number }[] = [];
   for (const s of inv.slots) {
     const u = uniq.find(q => q.itemId === s.itemId);
-    if (u) u.count += 1; else uniq.push({ itemId: s.itemId, count: 1 });
+    if (u) u.count += 1; else uniq.push({ itemId: s.itemId, count: 1, charges: s.charges });
   }
   const el = $("hotbar");
   el.innerHTML = "";
@@ -61,7 +61,7 @@ export function renderHotbar(inv: Inventory) {
     d.className = "hb-slot" + (u.itemId === selId ? " sel" : "");
     d.dataset.hb = String(i);
     const img = document.createElement("img");
-    img.src = itemArtUrl(u.itemId);
+    img.src = itemArtUrl(u.itemId, 0, u.charges);
     img.alt = ITEMS[u.itemId].name;
     d.appendChild(img);
     const k = document.createElement("span");

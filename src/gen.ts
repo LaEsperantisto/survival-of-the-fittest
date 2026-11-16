@@ -512,6 +512,11 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
   // look at the water in the hole and press E to refill canisters
   set(-4, 30, 4, WATER); set(-4, 29, 4, WATER);
   set(-3, 30, 4, WATER);
+  // the pit is dug in soil, not sand: line walls and floor with Dirt so the
+  // tank reads as a sunk cistern and holds its water at the edges
+  for (const [dx, dz] of [[0, -1], [1, 0], [-1, 0], [0, 1], [0, -2]] as const) set(-4 + dx, 29, 4 + dz, DIRT);
+  set(-4, 28, 4, DIRT); // pit bottom
+  set(-3, 30, 3, DIRT); set(-5, 30, 4, DIRT); // exposed compartment floor around the rim
   // one heat regulator, pre-installed in the small regulator room — the
   // wreck's heart stays body-neutral while you fly out
   set(-4, 31, -4, REGULATOR);

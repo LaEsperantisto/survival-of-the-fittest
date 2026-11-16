@@ -24,13 +24,15 @@ const FALL_GRACE = 4, FALL_DMG_PER_BLOCK = 8.5;
 
 export interface DroppedItem {
   id: number; x: number; y: number; z: number; itemId: string;
+  charges?: number; // fuel carried by gear (Head Lantern, Regulator) survives a drop
   buried?: boolean; buriedAt?: [number, number, number]; srcIndex?: number; fall?: number;
   repickAt?: number; // game time before which auto-pickup is suppressed (manual drops)
   age?: number; // seconds since the item hit the sand; loose items rot away (buried ones never do)
 }
-export interface DeathCache { id: number; x: number; y: number; z: number; kind: "death" | "reward"; items: { itemId: string; count: number }[]; markerEid?: number; beamEid?: number }
+export interface DeathCache { id: number; x: number; y: number; z: number; kind: "death" | "reward"; items: { itemId: string; count: number; charges?: number }[]; markerEid?: number; beamEid?: number }
 export interface Mob {
   kind: MobKind; hp: number; x: number; y: number; z: number;
+  homeX: number; homeZ: number;
   yaw: number; biteCd: number; wanderT: number; wanderYaw: number; wanderOn: boolean;
   vis: MobVisual;
 }
@@ -318,7 +320,7 @@ export class Game {
   private linkChests(bx: number, by: number, bz: number, old: Slot[]) {
     const cells = this.chestCluster(bx, by, bz);
     const ci = this.emptyChestGrid(cells.length);
-    for (const sl of old) if (!Game.placeSlotFree(ci, sl)) this.dropEntity(sl.itemId, 1, 2);
+    for (const sl of old) if (!Game.placeSlotFree(ci, sl)) this.dropEntity(sl.itemId, 1, 2, sl.charges);
     if (ci.slots.length) this.chests.set(Game.chestKey(cells), ci.slots);
     if (cells.length > 1) hud.toast(`Chests linked — one ${ci.w}×${ci.h} inventory.`);
   }
@@ -363,7 +365,7 @@ export class Game {
     this.inv.slots = run.inventory.slots.map((s) => {
       const n = s.count ?? 1;
       for (let i = 1; i < n; i++) legacyExtras.push({ itemId: s.itemId });
-      return { itemId: s.itemId, x: s.x, y: s.y, rot: s.rot };
+      return { itemId: s.itemId, x: s.x, y: s.y, rot: s.rot, charges: s.charges, blockRot: s.blockRot };
     });
     for (const s of legacyExtras) this.giveOrDrop(s.itemId, 1);
     this.inv.selected = run.inventory.selected;
@@ -399,7 +401,7 @@ export class Game {
     this.chests = new Map((run.chests ?? []).map((c) => {
       const ci = this.emptyChestGrid(c.cells.split("|").length);
       for (const s of c.slots) {
-        ci.slots.push({ itemId: s.itemId, x: s.x, y: s.y, rot: s.rot });
+        ci.slots.push({ itemId: s.itemId, x: s.x, y: s.y, rot: s.rot, blockRot: s.blockRot, charges: s.charges });
         for (let i = 1; i < (s.count ?? 1); i++) {
           const extra: Slot = { itemId: s.itemId, x: 0, y: 0 };
           if (!Game.placeSlotFree(ci, extra)) this.giveOrDrop(s.itemId, 1);
@@ -462,7 +464,7 @@ export class Game {
       },
       beaconMarks: this.beaconMarks,
       collected: this.collectedCanisterIndices(),
-      entities: this.entities.filter((e) => !e.buried).map((e) => ({ x: e.x, y: e.y, z: e.z, itemId: e.itemId, age: Math.floor(e.age ?? 0) })),
+      entities: this.entities.filter((e) => !e.buried).map((e) => ({ x: e.x, y: e.y, z: e.z, itemId: e.itemId, charges: e.charges, age: Math.floor(e.age ?? 0) })),
       pods: this.pods,
       won: this.won || undefined,
       caches: this.caches.map((c) => ({ x: c.x, y: c.y, z: c.z, kind: c.kind, items: c.items.map((i) => ({ ...i })) })),
@@ -508,6 +510,20 @@ export class Game {
     this.cineSegs = segs;
     this.cine = { t: 0 };
     this.cineOnEnd = onEnd;
+  }
+  /** Abort the opening flyover: the camera snaps straight back to the player
+   *  and the hatch the tour pushed open is re-latched. */
+  skipCine() {
+    if (!this.cine) return;
+    this.cine = null;
+    this.cineOnEnd = null;
+    const w = this.world;
+    if (w.get(-6, 31, 0) === DOOR_OPEN) {
+      w.set(-6, 31, 0, DOOR_CLOSED);
+      w.set(-6, 32, 0, DOOR_UPPER);
+      w.doorSwing.delete("-6,0");
+    }
+    this.player.pitch = 0;
   }
   // cinematic camera: straight dolly shots, hard cuts between them
   private cineFrame(dt: number) {
@@ -852,7 +868,7 @@ export class Game {
           } else {
             this.inv.slots.splice(this.inv.selected, 1);
             this.inv.selected = Math.min(this.inv.selected, Math.max(0, this.inv.slots.length - 1));
-            this.dropEntity(s.itemId, 1, 1);
+            this.dropEntity(s.itemId, 1, 1, s.charges);
             this.renderHeld();
             this.audio.place();
           }
@@ -860,7 +876,7 @@ export class Game {
       }
       if (ke.code === "Escape") {
         if (this.liftoff) return; // the Ship is mid-flight; nothing to close
-        if (this.tut && !this.ui) { this.tut.finish(); return; }
+        if (this.tut && !this.ui) { this.tut.finish(true); return; }
         this.escape();
       }
       if (ke.code === "KeyP" && !this.liftoff) this.escape(true);
@@ -1473,7 +1489,7 @@ export class Game {
     if (id === MELON_2 || id === MELON_1 || id === WHEAT_2 || id === WHEAT_1) {
       // breaking a crop by hand or tool yields its harvest too — rougher than
       // picking it (E) but never a wasted plant
-      this.world.set(x, y, z, id === WHEAT_2 || id === WHEAT_1 ? FARMLAND : AIR);
+      this.world.set(x, y, z, AIR); // wheat sits ON farmland: breaking it must not stack a second tilled block
       this.crops.delete(`${x},${y},${z}`);
       if (id === MELON_2) this.giveOrDrop("dune_melon", 1);
       if (id === WHEAT_2) { this.giveOrDrop("wheat", 1); this.giveOrDrop("seed_wheat", 1); }
@@ -1517,7 +1533,7 @@ export class Game {
       }
       let spilled = false;
       for (const sl of old) {
-        if (!groups.some(([, gi]) => Game.placeSlotFree(gi, sl))) { this.dropEntity(sl.itemId, 1, 2); spilled = true; }
+        if (!groups.some(([, gi]) => Game.placeSlotFree(gi, sl))) { this.dropEntity(sl.itemId, 1, 2, sl.charges); spilled = true; }
       }
       for (const [k, gi] of groups) if (gi.slots.length) this.chests.set(k, gi.slots);
       this.giveOrDrop("chest", 1);
@@ -1586,7 +1602,7 @@ export class Game {
     vis.group.rotation.y = Math.random() * Math.PI * 2;
     this.renderer.addSceneObject(vis.group);
     this.mobs.push({
-      kind, hp: MOB_DEFS[kind].hp, x, y, z, yaw: vis.group.rotation.y,
+      kind, hp: MOB_DEFS[kind].hp, x, y, z, homeX: x, homeZ: z, yaw: vis.group.rotation.y,
       biteCd: 0, wanderT: Math.random() * 3, wanderYaw: Math.random() * Math.PI * 2, wanderOn: false, vis,
     });
   }
@@ -1791,8 +1807,34 @@ export class Game {
     const p = this.player.pos, t = this.timeSec;
     for (const m of this.mobs.slice()) {
       const def = MOB_DEFS[m.kind];
-      // a Trader stands its ground: it never moves, never despawns, never bites
-      if (m.kind === "trader") { m.vis.animate(t, 0); continue; }
+      // a Trader paces its stall — a slow beat within a few blocks of the
+      // awning, never far from the spot it was placed at — and keeps an
+      // eye on whoever is bargaining with it
+      if (m.kind === "trader") {
+        let moving = 0;
+        if (this.ui === "trade" && this.tradeCamp &&
+            Math.hypot(m.x - this.tradeCamp.x, m.z - this.tradeCamp.z) < 10) {
+          m.yaw = Math.atan2(p.x - m.x, p.z - m.z); // turn to the customer
+        } else {
+          const hx = m.x - m.homeX, hz = m.z - m.homeZ;
+          const hd = Math.hypot(hx, hz);
+          m.wanderT -= dt;
+          if (m.wanderT <= 0) { m.wanderT = 3 + Math.random() * 5; m.wanderYaw = Math.random() * Math.PI * 2; m.wanderOn = Math.random() < 0.5; }
+          if (m.wanderOn || hd > 4.5) {
+            const wy = hd > 4.5 ? Math.atan2(-hx, -hz) : m.wanderYaw; // past the leash: walk back
+            const vx = Math.sin(wy) * def.speed * 0.45, vz = Math.cos(wy) * def.speed * 0.45;
+            m.yaw = wy;
+            const nx = m.x + vx * dt, nz = m.z + vz * dt;
+            if (this.mobCanStand(m, nx, nz) && Math.hypot(nx - m.homeX, nz - m.homeZ) <= 5) { m.x = nx; m.z = nz; moving = 1; }
+            else m.wanderYaw = m.yaw = Math.atan2(m.homeX - m.x, m.homeZ - m.z);
+          }
+        }
+        m.y = this.mobGround(m, m.x, m.z);
+        m.vis.group.position.set(m.x, m.y, m.z);
+        m.vis.group.rotation.y = m.yaw;
+        m.vis.animate(t, moving);
+        continue;
+      }
       const dx = p.x - m.x, dz = p.z - m.z;
       const dist = Math.hypot(dx, dz);
       if (dist > 110) { this.renderer.removeSceneObject(m.vis.group); this.mobs = this.mobs.filter((x) => x !== m); continue; }
@@ -1856,6 +1898,11 @@ export class Game {
     if (this.inv.w !== b.w || this.inv.h !== b.h)
       this.inv.setBackpack(b.w, b.h, b.kg);
     if (this.inv.selected >= this.inv.slots.length) this.inv.selected = 0;
+    // a slot that no longer fits after a shrink lands on the sand, fuel and all
+    while (this.inv.droppedOnResize.length) {
+      const s = this.inv.droppedOnResize.shift()!;
+      this.dropEntity(s.itemId, 1, 2, s.charges);
+    }
     this.renderInv();
   }
 
@@ -1867,7 +1914,7 @@ export class Game {
     const slot = d.equip;
     const prev = this.equip[slot];
     // swapping out old gear puts it back in the pack — refuse if it would not fit
-    if (prev && this.inv.addItem(prev.itemId, 1) > 0) {
+    if (prev && !this.inv.addSlot(prev)) {
       hud.toast("No room in your pack for the gear you are taking off.");
       this.audio.error();
       return;
@@ -1894,7 +1941,7 @@ export class Game {
     this.equip[slot] = null;
     if (slot === "light") this.lanternOn = false;
     this.applyEquip(); // grid may shrink to 3×4 before the item lands back in it
-    this.inv.addItem(it.itemId, 1);
+    this.inv.addSlot(it); // same Slot object — fuel charges ride along
     this.audio.place();
     hud.toast(`${ITEMS[it.itemId].name} taken off.`);
     this.renderInv(); // the item is only in the grid after applyEquip resized it
@@ -1923,7 +1970,7 @@ export class Game {
 
   /** Drop items in front of the player; if that lands inside geometry, try other
    *  sides, then the feet. Manual drops get a short auto-pickup cooldown. */
-  private dropEntity(itemId: string, count: number, cooldown = 0) {
+  private dropEntity(itemId: string, count: number, cooldown = 0, charges?: number) {
     const p = this.player.pos;
     const fx = -Math.sin(this.player.yaw), fz = -Math.cos(this.player.yaw);
     const clear = (dx: number, dz: number) => {
@@ -1938,7 +1985,7 @@ export class Game {
       // spread multiple drops a little so they do not render as one lump
       const jx = i === 0 ? 0 : 0.3 * Math.sin(i * 2.4), jz = i === 0 ? 0 : 0.3 * Math.cos(i * 2.4);
       this.entities.push({
-        id: this.entitySeq++, x: p.x + dx + jx, y: p.y + 0.35, z: p.z + dz + jz, itemId,
+        id: this.entitySeq++, x: p.x + dx + jx, y: p.y + 0.35, z: p.z + dz + jz, itemId, charges,
         repickAt: dx === 0 && dz === 0 ? this.timeSec + Math.max(cooldown, 2.5) : this.timeSec + cooldown,
       });
     }
@@ -2514,7 +2561,8 @@ export class Game {
       if (e.buried && e.buriedAt && this.world.get(e.buriedAt[0], e.buriedAt[1], e.buriedAt[2]) !== AIR) continue;
       if (e.repickAt !== undefined) { if (this.timeSec < e.repickAt) continue; e.repickAt = undefined; }
       if (p.distanceTo(new THREE.Vector3(e.x, e.y, e.z)) < 1.3) {
-        if (this.inv.addItem(e.itemId, 1) === 0) {
+        // addSlot, not addItem: a lantern or Regulator picked off the sand keeps its fuel
+        if (this.inv.addSlot({ itemId: e.itemId, x: 0, y: 0, charges: e.charges })) {
           if (e.srcIndex !== undefined) this.collected.add(e.srcIndex);
           this.entities.splice(i, 1);
           this.renderer.removeEntityMesh(e.id);
@@ -2631,11 +2679,11 @@ export class Game {
       kind: "death",
       // everything you carried AND everything you wore waits in the cache
       items: [
-        ...this.inv.slots.map((s) => ({ itemId: s.itemId, count: 1 })),
+        ...this.inv.slots.map((s) => ({ itemId: s.itemId, count: 1, charges: s.charges })),
         ...(["backpack", "head", "body", "regulator", "light"] as const)
           .map((sl) => this.equip[sl])
           .filter((s): s is Slot => !!s)
-          .map((s) => ({ itemId: s.itemId, count: 1 })),
+          .map((s) => ({ itemId: s.itemId, count: 1, charges: s.charges })),
       ],
     });
     this.inv.slots = []; this.inv.selected = 0;
@@ -2745,7 +2793,7 @@ export class Game {
       const d = ITEMS[this.temp.itemId];
       tempEl.classList.add("filled");
       tempEl.style.background = d.color;
-      tempEl.style.backgroundImage = `url(${itemTiles(this.temp.itemId)[0] ?? ""})`;
+      tempEl.style.backgroundImage = `url(${itemTiles(this.temp.itemId, this.temp.charges)[0] ?? ""})`;
       tempEl.onmousedown = (e) => {
         if (Date.now() - this.lastTouchTs < 700) { this.tapTemp(); return; }
         this.startTempDrag(e);
@@ -2753,7 +2801,7 @@ export class Game {
       dropTemp.textContent = `Drop ${d.name}`;
       dropTemp.onclick = () => {
         if (!this.temp) return;
-        this.dropEntity(this.temp.itemId, 1, 1);
+        this.dropEntity(this.temp.itemId, 1, 1, this.temp.charges);
         this.temp = null;
         this.audio.place();
         this.renderInv();
@@ -2775,7 +2823,7 @@ export class Game {
         const d = ITEMS[it.itemId];
         el.classList.add("filled");
         el.style.background = d.color;
-        el.style.backgroundImage = `url(${itemTiles(it.itemId)[0] ?? ""})`;
+        el.style.backgroundImage = `url(${itemTiles(it.itemId, it.charges)[0] ?? ""})`;
         const ch = it.charges;
         el.textContent = ch !== undefined && ch > 0 ? String(ch) : "";
         el.title = ch !== undefined
@@ -2865,8 +2913,8 @@ export class Game {
         const useBtn = document.createElement("button");
         useBtn.textContent = "Drop 1";
         useBtn.onclick = () => {
-          this.inv.removeItem(sel.itemId, 1);
-          this.dropEntity(sel.itemId, 1, 1);
+          this.inv.slots.splice(this.inv.slots.indexOf(sel), 1);
+          this.dropEntity(sel.itemId, 1, 1, sel.charges);
           this.renderInv();
         };
         side.appendChild(useBtn);
@@ -2891,7 +2939,7 @@ export class Game {
         const d = ITEMS[s.itemId];
         const dx = x - s.x, dy = y - s.y;
         // the art is one picture across the whole footprint: pick this cell's slice
-        const tiles = itemTiles(s.itemId);
+        const tiles = itemTiles(s.itemId, s.charges);
         const idx = s.rot ? (d.h - 1 - dx) * d.w + dy : dy * d.w + dx;
         cell.style.background = d.color;
         cell.style.backgroundImage = `url(${tiles[Math.min(idx, tiles.length - 1)] ?? ""})`;
@@ -3010,7 +3058,7 @@ export class Game {
     ghost.style.width = d.w * STEP - GAP + "px";
     ghost.style.height = d.h * STEP - GAP + "px";
     ghost.style.background = ITEMS[s.itemId].color;
-    ghost.style.backgroundImage = `url(${itemArtUrl(s.itemId, s.rot ? 1 : 0)})`;
+    ghost.style.backgroundImage = `url(${itemArtUrl(s.itemId, s.rot ? 1 : 0, s.charges)})`;
     document.body.appendChild(ghost);
     const rect = (src === this.inv ? document.getElementById("inv-grid") : document.getElementById("chest-grid"))!.getBoundingClientRect();
     const D = { gx: e.clientX - (rect.left + s.x * STEP), gy: e.clientY - (rect.top + s.y * STEP) };
@@ -3106,7 +3154,7 @@ export class Game {
     ghost.style.width = d.w * STEP - GAP + "px";
     ghost.style.height = d.h * STEP - GAP + "px";
     ghost.style.background = ITEMS[s.itemId].color;
-    ghost.style.backgroundImage = `url(${itemArtUrl(s.itemId, s.rot ? 1 : 0)})`;
+    ghost.style.backgroundImage = `url(${itemArtUrl(s.itemId, s.rot ? 1 : 0, s.charges)})`;
     document.body.appendChild(ghost);
     const move = (ev: MouseEvent) => {
       ghost.style.left = ev.clientX - d.w * STEP / 2 + "px";
@@ -3282,9 +3330,17 @@ export class Game {
       while (moved) {
         moved = false;
         for (const it of cache.items) {
-          const left = this.inv.addItem(it.itemId, it.count);
-          if (left < it.count) { moved = true; it.count = left; }
-          if (left === 0) cache.items.splice(cache.items.indexOf(it), 1);
+          if (it.charges !== undefined && it.count === 1) {
+            // fuel-carrying gear comes back with its charges intact
+            if (this.inv.addSlot({ itemId: it.itemId, x: 0, y: 0, charges: it.charges })) {
+              moved = true;
+              cache.items.splice(cache.items.indexOf(it), 1);
+            }
+          } else {
+            const left = this.inv.addItem(it.itemId, it.count);
+            if (left < it.count) { moved = true; it.count = left; }
+            if (left === 0) cache.items.splice(cache.items.indexOf(it), 1);
+          }
         }
       }
       if (!cache.items.length) this.renderer.removeEntityMesh(cache.id);

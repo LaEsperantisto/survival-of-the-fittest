@@ -33,7 +33,15 @@ const poly = (g: CanvasRenderingContext2D, pts: number[][], c: string) => {
 };
 
 // hand-drawn art, drawn at (def.w*16) x (def.h*16); cell 0 = top-left
-function drawArt(id: string, w: number, h: number, color: string): HTMLCanvasElement | null {
+/** Charge level baked into the art: "0" empty, "1" low, "2" full. A lamp or
+ *  Regulator with no recorded charge has never been fuelled — it reads empty. */
+export function fuelTier(id: string, charges?: number): string {
+  if (id === "head_lantern") return !charges ? "0" : charges <= 2 ? "1" : "2";
+  if (id === "body_regulator") return !charges ? "0" : charges <= 1 ? "1" : "2";
+  return "";
+}
+
+function drawArt(id: string, w: number, h: number, color: string, tier = ""): HTMLCanvasElement | null {
   const [cv, g] = mk(w * T, h * T);
   // shared stone silhouette for ore/rock family
   const boulder = (base: string, hi: string, lo: string) => {
@@ -150,6 +158,13 @@ function drawArt(id: string, w: number, h: number, color: string): HTMLCanvasEle
       rect(g, 4, 7, 8, 1, "#b4ab92"); rect(g, 6, 10, 7, 1, "#b4ab92"); rect(g, 3, 12, 5, 1, "#b4ab92");
       g.fillStyle = "#f7f2e2"; g.fillRect(6, 3, 2, 1);
       return cv;
+    case "metal":
+      rect(g, 6, 1, 3, 14, "#6e747e");
+      rect(g, 7, 2, 1, 12, "#b8bec8");
+      g.fillStyle = "#4a4f57";
+      for (const [rx, ry] of [[6, 3], [8, 7], [6, 11], [8, 13]] as const) g.fillRect(rx, ry, 1, 1);
+      rect(g, 5, 1, 5, 1, "#4a4f57"); rect(g, 5, 14, 5, 1, "#4a4f57");
+      return cv;
     case "copperrod":
       rect(g, 6, 1, 3, 14, "#a05a2e");
       rect(g, 7, 2, 1, 12, "#e89a62");
@@ -177,15 +192,22 @@ function drawArt(id: string, w: number, h: number, color: string): HTMLCanvasEle
       return cv;
     }
     case "body_regulator": {
+      const cells = tier === "0" ? 0 : tier === "1" ? 1 : 3; // coolant cells running
       rect(g, 4, 2, 3, 28, "#4c3822"); rect(g, 25, 2, 3, 28, "#4c3822");     // harness straps
       g.strokeStyle = "#3a4750"; g.lineWidth = 2;                            // hoses to the straps
       g.beginPath(); g.moveTo(10, 12); g.quadraticCurveTo(4, 10, 5, 3); g.stroke();
       g.beginPath(); g.moveTo(22, 12); g.quadraticCurveTo(28, 10, 27, 3); g.stroke();
       rect(g, 8, 8, 16, 17, "#8a98a8"); outline(g, 8, 8, 16, 17, "#3c4650"); // steel chest unit
       rect(g, 8, 8, 16, 3, "#aab4c0"); rect(g, 8, 22, 16, 3, "#6a7680");
-      rect(g, 10, 13, 12, 2, "#2e6a78"); rect(g, 10, 16, 12, 2, "#2e6a78"); rect(g, 10, 19, 12, 2, "#2e6a78"); // frost vents
-      g.fillStyle = "#5fb8cc"; g.fillRect(11, 13, 2, 2); g.fillRect(15, 16, 2, 2); g.fillRect(19, 19, 2, 2);
-      g.fillStyle = "#d2f8ff"; g.fillRect(9, 12, 1, 1); g.fillRect(22, 15, 1, 1); g.fillRect(9, 21, 1, 1); g.fillRect(21, 12, 1, 1);
+      // frost vents: live rows stay cyan, spent rows go dull steel
+      for (let r = 0; r < 3; r++) rect(g, 10, 13 + r * 3, 12, 2, r < cells ? "#2e6a78" : "#313d46");
+      g.fillStyle = "#5fb8cc";
+      for (const [vx, vy] of [[11, 13], [15, 16], [19, 19]] as const) if (vy <= 13 + (cells - 1) * 3 + 1) g.fillRect(vx, vy, 2, 2);
+      if (cells) {
+        g.fillStyle = "#d2f8ff";
+        g.fillRect(9, 12, 1, 1); g.fillRect(22, 15, 1, 1);
+        if (cells > 1) { g.fillRect(9, 21, 1, 1); g.fillRect(21, 12, 1, 1); }
+      }
       return cv;
     }
     case "coolant_cell": {
@@ -200,14 +222,33 @@ function drawArt(id: string, w: number, h: number, color: string): HTMLCanvasEle
       return cv;
     }
     case "head_lantern": {
-      g.fillStyle = "#ffd76a"; g.globalAlpha = 0.25;
-      g.beginPath(); g.arc(8, 9, 6, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
+      if (tier !== "0") {
+        g.fillStyle = "#ffd76a"; g.globalAlpha = tier === "1" ? 0.10 : 0.25;
+        g.beginPath(); g.arc(8, 9, 6, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
+      }
       rect(g, 1, 7, 14, 3, "#4a4a52");                                       // head strap
       rect(g, 1, 7, 14, 1, "#5f6670"); rect(g, 1, 9, 14, 1, "#33373d");
       rect(g, 7, 4, 2, 2, "#5a6875");                                        // bracket
       rect(g, 5, 6, 6, 8, "#2e3a45"); outline(g, 5, 6, 6, 8, "#8a98a8");     // housing
-      rect(g, 6, 7, 4, 5, "#ffd76a"); rect(g, 7, 8, 2, 2, "#fff3c0");        // warm glass
+      rect(g, 6, 7, 4, 5, tier === "0" ? "#464e57" : tier === "1" ? "#b98a3a" : "#ffd76a"); // glass: dead / low / full
+      if (tier === "2" || tier === "") rect(g, 7, 8, 2, 2, "#fff3c0");       // bright core only when full
       rect(g, 6, 11, 4, 1, "#e8a83c"); rect(g, 5, 13, 6, 1, "#232830");
+      return cv;
+    }
+    case "reptile_armor": {                                     // scaled hauberk: overlapping plate rows
+      rect(g, 6, 4, 20, 24, "#6f573c");                         // body of the harness
+      outline(g, 6, 4, 20, 24, "#3f3222");
+      rect(g, 2, 6, 5, 10, "#8a6f4d"); rect(g, 25, 6, 5, 10, "#8a6f4d"); // shoulder flaps
+      for (let r = 0; r < 5; r++) {                             // scale rows, each over the last
+        const y = 7 + r * 4;
+        for (let cX = 7; cX <= 21; cX += 5) {
+          poly(g, [[cX, y], [cX + 5, y], [cX + 5, y + 4], [cX + 2, y + 6], [cX, y + 4]], "#8a6f4d");
+          poly(g, [[cX, y], [cX + 5, y], [cX + 5, y + 2], [cX, y + 2]], "#a08560");
+          outline(g, cX, y, 5, 4, "#3f3222");
+        }
+      }
+      rect(g, 13, 2, 6, 4, "#8a6f4d"); outline(g, 13, 2, 6, 4, "#3f3222"); // gorget collar
+      g.fillStyle = "#d8cfc0"; g.fillRect(15, 12, 2, 2); g.fillRect(11, 18, 1, 1); g.fillRect(19, 20, 1, 1); // bone rivets
       return cv;
     }
     case "chitin":
@@ -548,13 +589,16 @@ function drawArt(id: string, w: number, h: number, color: string): HTMLCanvasEle
 
 const tilesCache = new Map<string, string[]>();
 
-/** One dataURL per Inventory Grid cell of the item, row-major, unrotated. */
-export function itemTiles(itemId: string): string[] {
-  const hit = tilesCache.get(itemId);
+/** One dataURL per Inventory Grid cell of the item, row-major, unrotated.
+ *  `charges` selects the fuel-variant art for lamp/Regulator items. */
+export function itemTiles(itemId: string, charges?: number): string[] {
+  const tier = fuelTier(itemId, charges);
+  const key = tier ? itemId + "|" + tier : itemId;
+  const hit = tilesCache.get(key);
   if (hit) return hit;
   const def = ITEMS[itemId];
-  if (!def) return tilesCache.set(itemId, []), tilesCache.get(itemId)!;
-  const art = drawArt(itemId, def.w, def.h, def.color);
+  if (!def) return tilesCache.set(key, []), tilesCache.get(key)!;
+  const art = drawArt(itemId, def.w, def.h, def.color, tier);
   let cv: HTMLCanvasElement | null = art;
   if (!cv && def.block !== undefined) {
     const [c, g] = mk(def.w * T, def.h * T);
@@ -574,18 +618,18 @@ export function itemTiles(itemId: string): string[] {
     // color fallback for unknown items
     const [c, g] = mk(T, T); rect(g, 2, 2, T - 4, T - 4, def.color); out.push(c.toDataURL());
   }
-  tilesCache.set(itemId, out);
+  tilesCache.set(key, out);
   return out;
 }
 
 /** Full-footprint art as one dataURL (catalogs, tooltips, drag ghosts). */
-export function itemArtUrl(itemId: string, rot = 0): string {
+export function itemArtUrl(itemId: string, rot = 0, charges?: number): string {
   const def = ITEMS[itemId];
   if (!def) return "";
-  if (def.w === 1 && def.h === 1) return itemTiles(itemId)[0] ?? "";
+  if (def.w === 1 && def.h === 1) return itemTiles(itemId, charges)[0] ?? "";
   const [cv, g] = mk(def.w * T, def.h * T);
   g.imageSmoothingEnabled = false;
-  const art = drawArt(itemId, def.w, def.h, def.color);
+  const art = drawArt(itemId, def.w, def.h, def.color, fuelTier(itemId, charges));
   if (art) g.drawImage(art, 0, 0);
   else if (def.block !== undefined)
     for (let y = 0; y < def.h; y++) for (let x = 0; x < def.w; x++) blit(g, x * T, y * T, def.block);

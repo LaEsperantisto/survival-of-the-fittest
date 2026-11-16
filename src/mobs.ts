@@ -47,7 +47,7 @@ export const MOB_DEFS: Record<MobKind, MobDef> = {
     dropChance: [1, 0.5],
   },
   trader: {
-    kind: "trader", name: "Trader", hp: 9999, speed: 0,
+    kind: "trader", name: "Trader", hp: 9999, speed: 1.1,
     aggroR: 0, fleeR: 0, biteDmg: 0, biteCd: 0,
     hitR: 0.5, height: 1.8,
     drops: [],
@@ -923,7 +923,7 @@ function makeFennec(): MobVisual {
   return { group, animate };
 }
 
-// trader: 1.8 m tall robed humanoid merchant; stationary, faces +Z
+// trader: 1.8 m tall robed humanoid merchant; paces its stall, faces +Z
 function makeTrader(): MobVisual {
   const mats = getTraderMats();
   const group = new THREE.Group();
@@ -958,10 +958,12 @@ function makeTrader(): MobVisual {
   pivot.add(headRoot);
 
   const animate = (t: number, moving: number): void => {
-    // stationary merchant: never walks, only a slow weight shift and head bob
-    pivot.rotation.z = Math.sin(t * 0.6) * 0.01;
-    headRoot.position.y = 1.56 + Math.sin(t * 0.9) * 0.012;
-    headRoot.rotation.y = Math.sin(t * 0.35) * 0.08;
+    // merchant on his beat: a weight shift at rest, a robe-cushioned shuffle walking
+    const step = moving ? Math.sin(t * 5) : 0;
+    pivot.rotation.z = Math.sin(t * 0.6) * 0.01 + step * 0.02;
+    pivot.position.y = Math.abs(step) * 0.015;
+    headRoot.position.y = 1.56 + Math.sin(t * 0.9) * 0.012 + Math.abs(step) * 0.008;
+    headRoot.rotation.y = Math.sin(t * 0.35) * 0.08 + (moving ? step * 0.05 : 0);
   };
   return { group, animate };
 }
