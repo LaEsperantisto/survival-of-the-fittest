@@ -53,6 +53,8 @@ export const RECIPES: Recipe[] = [
   { out: "chest_connector", count: 1, needs: { deadwood: 2, metal: 1 }, bench: false },
   { out: "metal_plating", count: 1, needs: { metal: 1 }, bench: false },
   { out: "door_inner", count: 1, needs: { metal: 1 }, bench: true },
+  // Sandstorm Breaker: catalyst-free on purpose — storm-proofing must be expandable.
+  { out: "storm_breaker", count: 1, needs: { metal: 2, glass: 1 }, bench: true },
   { out: "bucket", count: 1, needs: { metal: 2 }, bench: true },
   { out: "bed", count: 1, needs: { deadwood: 3, snake_skin: 2 }, bench: true },
 ];

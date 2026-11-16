@@ -3,7 +3,7 @@ import {
   DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, ADOBE, ENGINECORE, REGULATOR, CHEST, CACTUS,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, BED, BED_EXT, GRASS, LEAVES, WOOD, SAPLING,
-  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE,
+  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, STORM_BREAKER,
 } from "./blocks";
 
 export interface ItemDef {
@@ -18,7 +18,8 @@ export interface ItemDef {
   eat?: { water?: number; health?: number };  // eating applies these to the player
   equip?: "backpack" | "head" | "body" | "regulator" | "light"; // goes in that Armour Slot
   bag?: { w: number; h: number; kg: number }; // Backpack-slot gear: grid size + weight bonus
-  armor?: number;            // Body-slot gear: fraction of every damage shrugged off
+  armor?: number; // Body-slot gear: fraction of every damage shrugged off
+  stormResist?: boolean; // Body-slot gear wearing Chitin: Sandstorm terms bite at a quarter
   fuel?: number;             // max fuel charges (Head Lantern)
   instaBreak?: boolean;      // Voidbreaker: every block shatters on the first swing frame
   color: string;             // icon color
@@ -97,6 +98,7 @@ const ITEM_LIST: ItemDef[] = [
   // ---- building ----
   I({ id: "chest_connector", name: "Chest Connector", desc: "Steel rail between Supply Chests: links their grids into one bigger Inventory Grid. Stores nothing itself.", w: 1, h: 1, mass: 1, block: CHEST_CONNECTOR, color: "#8a744a" }),
   I({ id: "metal_plating", name: "Metal Plating", desc: "The ship's plated floor and skin. Same plate, same tools - disassemble it back.", w: 1, h: 1, mass: 1.2, block: METAL_PLATING, color: "#9aa0ac" }),
+  I({ id: "storm_breaker", name: "Sandstorm Breaker", desc: "A humming red pylon. Stand within 8 blocks of one and the Sandstorm loses all teeth — no scorching, no wind-thirst, no sand blast.", w: 1, h: 1, mass: 4.0, block: STORM_BREAKER, color: "#c04838" }),
   I({ id: "door_inner", name: "Inside Door", desc: "Interior bulkhead door. It divides rooms for sight and movement - and never insulates: in temperature terms it is just air, open or closed.", w: 1, h: 1, mass: 2, block: DOOR_INNER, color: "#82868e" }),
   I({ id: "bed", name: "Bed", desc: "Curtained sleep for 8 game hours, then the cool morning. One long sleep every 8 hours; press E at the bed. Takes a 2x1 floor span.", w: 2, h: 1, mass: 6, block: BED, color: "#a84a42" }),
   // ---- underground: minerals ----
@@ -120,7 +122,7 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "tortoise_shell", name: "Thornback Shell", desc: "The spiked dome of a Thornback Tortoise. Three plate a Cuirass; Traders always want them.", w: 2, h: 2, mass: 6.0, color: "#5f5a4e" }),
   I({ id: "fennec_pelt", name: "Fennec Pelt", desc: "Soft pale fur off a Fennec Fox. Worth a real price at any Trader.", w: 1, h: 2, mass: 0.5, color: "#c99a62" }),
   I({ id: "tortoise_cuirass", name: "Thornback Cuirass", desc: "Body-slot breastplate of layered Shell and Metal: shrugs off 48% of every blow. Heavy going.", w: 2, h: 2, mass: 9.0, equip: "body", armor: 0.48, color: "#6a6255" }),
-  I({ id: "wurmsuit", name: "Wurmsuit", desc: "Body-slot armour of Wurm Hide and Chitin: shrugs off 55% of every blow. Warmer against the cold night too.", w: 2, h: 2, mass: 5.0, equip: "body", armor: 0.55, color: "#7a5c40" }),
+  I({ id: "wurmsuit", name: "Wurmsuit", desc: "Body-slot armour of Wurm Hide and Chitin: shrugs off 45% of every blow, and the Chitin turns the Sandstorm aside — blast and wind-thirst bite at a quarter. Warmer against the cold night too.", w: 2, h: 2, mass: 5.0, equip: "body", armor: 0.45, stormResist: true, color: "#7a5c40" }),
   I({ id: "stinger_blade", name: "Stinger Blade", desc: "A Metal Sword tipped with a Scorpion Stinger: hits harder and farther than anything above ground.", w: 1, h: 2, mass: 2.4, weapon: { reach: 5.2, dmg: 12 }, color: "#c9b048" }),
   // ---- the Ship's wings ----
   I({ id: "curved_hull", name: "Curved Hull Plating", desc: "Hull Plating shaped as an elbow - insulates exactly like flat plating, and rounds any corner you build.", w: 1, h: 1, mass: 2.0, block: CURVED_HULL, color: "#7d8390" }),

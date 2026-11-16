@@ -2,7 +2,7 @@ import {
   AIR, SAND, SANDSTONE, ROCK, GRAVEL, SALT, DEADWOOD, DIRT, HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL_PLATING, BEACON, CAMPFIRE,
   WATER, ADOBE, INSGLASS, BENCH, BENCH_EXT, ENGINECORE, CS, CH, REGULATOR, CACTUS, CACTUS_FRUIT,
   DOOR_INNER, DOOR_INNER_UPPER, CHEST, BED, BED_EXT, MELON_2, WHEAT_1, WHEAT_2, FARMLAND, GRASS, WOOD, LEAVES,
-  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, THRUSTER,
+  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, THRUSTER, STORM_BREAKER,
 } from "./blocks";
 import { fbm2, ridge2, value2, hash2, Rng } from "./noise";
 
@@ -517,6 +517,9 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
   set(-4, 31, -1, BEACON);
   // crafting bench in the hall — the bench is a two-block structure
   set(0, 31, -3, BENCH); set(0, 31, -2, BENCH_EXT);
+  // Sandstorm Breaker: the wreck's one still-humming pylon, planted in the hall
+  // so the calm it grants is visible from the very first night — and craftable.
+  set(-1, 31, 1, STORM_BREAKER);
   // ceiling lamps, one per room
   for (const [lx, lz] of [[3, 0], [0, 0], [-4, 3], [-4, -3], [-5, 0]] as const) set(lx, Y1, lz, LAMP);
   // scattered plating salvage — kept clear of every doorway approach

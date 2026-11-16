@@ -5,7 +5,7 @@ import { Survival, REGULATOR_ROOM_MAX } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, type ItemDef, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName } from "./blocks";
+import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName } from "./blocks";
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
 import { heightAt, biomeAt, TOWN_L, CAMP_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
@@ -18,6 +18,9 @@ import { itemTiles, itemArtUrl } from "./icons";
 import * as hud from "./hud";
 
 const isDoorHalf = (i: number) => i === DOOR_CLOSED || i === DOOR_UPPER || i === DOOR_INNER || i === DOOR_INNER_UPPER;
+
+// Falls: the first 4 blocks are free, ~16 without armour is lethal.
+const FALL_GRACE = 4, FALL_DMG_PER_BLOCK = 8.5;
 
 export interface DroppedItem {
   id: number; x: number; y: number; z: number; itemId: string;
@@ -97,6 +100,11 @@ export class Game {
   private regGlow = new Map<string, number>(); // "x,y,z" -> entity mesh id of an active regulator's glow shell
   private regGlowMat: THREE.MeshLambertMaterial | null = null;
   private regTick = -1;
+  // Sandstorm Breakers: positions (worldgen pylon + player-placed) and the
+  // twice-a-second "am I standing in one's calm" check.
+  private breakers = new Set<string>();
+  private breakerTick = -1;
+  stormShieldOn = false;
   private regActive = false; // cached from regulatorGlow's twice-a-second room scan
   private mobileJump = false;
   private entitySeq = 1;
@@ -143,6 +151,18 @@ export class Game {
     // the wreck's ceiling lamps are worldgen (not deltas): light them explicitly
     if (this.world.get(-6, 35, 0) === LAMP) this.renderer.addPointLight(-6, 35, 0, "lamp");
     if (this.world.get(6, 35, 0) === LAMP) this.renderer.addPointLight(6, 35, 0, "lamp");
+    // Sandstorm Breakers: the wreck's pylon is worldgen (not a delta) — scan the
+    // hull; player-placed ones are already in the run's deltas.
+    for (let x = -10; x <= 8; x++) for (let z = -14; z <= 14; z++) for (let y = 28; y <= 36; y++)
+      if (this.world.get(x, y, z) === STORM_BREAKER) this.breakers.add(`${x},${y},${z}`);
+    for (const [k, d] of this.world.deltas) {
+      const [cx, cz] = k.split(",").map(Number);
+      for (const [i, id] of d) {
+        if (id !== STORM_BREAKER) continue;
+        const y = i % CH, rest = (i - y) / CH, lx = rest % CS;
+        this.breakers.add(`${cx * CS + lx},${y},${cz * CS + (rest - lx) / CS}`);
+      }
+    }
 
     hud.initBars();
     this.renderQuest();
@@ -1081,17 +1101,33 @@ export class Game {
       const jump = this.keys.has("Space") || this.mobileJump;
       this.player.sprinting = this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || this.sprintOn;
       this.player.update(dt, mx, mz, jump, this.speedMul, overencumbered);
+      // landing a fall: the first 4 blocks are free; ~16 without armour is lethal
+      if (this.player.lastFallDist > 0) {
+        const fd = this.player.lastFallDist;
+        this.player.lastFallDist = 0;
+        if (!this.player.inWater && fd > FALL_GRACE) {
+          const armor = 1 - (this.equip.body ? (ITEMS[this.equip.body.itemId].armor ?? 0) : 0);
+          const dmg = (fd - FALL_GRACE) * FALL_DMG_PER_BLOCK * armor;
+          this.survival.hurt(dmg, "fall");
+          hud.hitFlash();
+          this.audio.hurt();
+          if (this.survival.health > 0 && dmg >= 10) hud.toast("You hit the ground hard.");
+        }
+      }
       const fr = (this.timeSec % DAY_SECONDS) / DAY_SECONDS;
       const sa = (fr - 0.25) * Math.PI * 2;
       const sunDir = kf.sunElev > 0
         ? (() => { const inv = 1 / Math.hypot(Math.cos(sa), kf.sunElev, 0.4); return { x: Math.cos(sa) * inv, y: kf.sunElev * inv, z: 0.4 * inv }; })()
         : null;
+      this.stormShieldTick();
       this.survival.update(dt, this.world, this.player.pos, {
         sprinting: this.player.sprinting && (mx !== 0 || mz !== 0),
         overencumbered, biome, tSec: this.timeSec, sunElev: kf.sunElev, sunDir, inWater: this.player.inWater,
         warmth: this.fireWarmth(this.player.pos),
         regulator: (this.equip.regulator?.charges ?? 0) > 0,
         terrainH: (x, z) => heightAt(this.seed, x, z),
+        stormShield: this.stormShieldOn,
+        stormMul: this.equip.body && ITEMS[this.equip.body.itemId].stormResist ? 0.25 : 1,
       });
       // sandstorm: visuals follow the Survival intensity; announce the turn
       this.renderer.setStorm(this.survival.storm, this.survival.lastOpenSky);
@@ -1200,6 +1236,7 @@ export class Game {
 
     hud.updateHud(this.survival, this.inv, this.timeSec, this.dayNumber(), this.settings.units, now, {
       regulated: this.roomRegulated(),
+      stormBroken: this.stormShieldOn,
       napReady: this.timeSec - this.lastSleep >= DAY_SECONDS,
     });
     this.podFrame(dt);
@@ -1471,6 +1508,7 @@ export class Game {
       return;
     }
     if (id === LAMP || id === CAMPFIRE) this.renderer.removePointLight(x, y, z);
+    if (id === STORM_BREAKER) this.breakers.delete(`${x},${y},${z}`);
     this.world.set(x, y, z, AIR);
     const item = this.blockItemId(id);
     if (item) this.giveOrDrop(item, 1);
@@ -1881,6 +1919,8 @@ export class Game {
     if (slot.itemId === "bucket_full") { this.bucketPour(); return; }
     const def = ITEMS[slot.itemId];
     if (def.block === undefined) { hud.toast("Not a placeable block"); this.audio.error(); return; }
+    // raw materials (iron ore, scrap chunks) never stand as building blocks
+    if (!BLOCKS[def.block].placeable) { hud.toast(`${def.name} is raw material, not a block to place.`); this.audio.error(); return; }
     const t = this.raycastTarget();
     if (!t?.hit) return;
     const bx = t.hit.x + t.face.x, by = t.hit.y + t.face.y, bz = t.hit.z + t.face.z;
@@ -1947,6 +1987,7 @@ export class Game {
     }
     if (def.block === LAMP) this.renderer.addPointLight(bx, by, bz, "lamp");
     else if (def.block === CAMPFIRE) this.renderer.addPointLight(bx, by, bz, "fire");
+    if (def.block === STORM_BREAKER) this.breakers.add(`${bx},${by},${bz}`);
     if (def.block === CHEST) this.linkChests(bx, by, bz, chestOld);
     this.inv.slots.splice(this.inv.selected, 1);
     this.inv.selected = Math.min(this.inv.selected, Math.max(0, this.inv.slots.length - 1));
@@ -2313,6 +2354,23 @@ export class Game {
     this.audio.drink();
   }
 
+  // The Sandstorm Breaker's calm: standing within its radius of any pylon zeroes
+  // the body's storm terms and shows that pylon's faint red dome.
+  private stormShieldTick() {
+    const tick = Math.floor(this.timeSec * 2); // resampled twice a second
+    if (tick === this.breakerTick) return;
+    this.breakerTick = tick;
+    const p = this.player.pos;
+    let best: [number, number, number] | null = null, bd = Infinity;
+    for (const key of this.breakers) {
+      const [x, y, z] = key.split(",").map(Number);
+      const d = Math.hypot(p.x - (x + 0.5), p.y + 0.9 - (y + 0.5), p.z - (z + 0.5));
+      if (d <= STORM_BREAKER_R && d < bd) { bd = d; best = [x, y, z]; }
+    }
+    this.stormShieldOn = best !== null;
+    this.renderer.setStormDome(best ? [best[0] + 0.5, best[1] + 0.5, best[2] + 0.5] : null);
+  }
+
   // Heat Regulators light up while they are actively holding their sealed room at neutral.
   private regulatorGlow() {
     const tick = Math.floor(this.timeSec * 2); // resampled twice a second
@@ -2536,7 +2594,7 @@ export class Game {
   }
 
   private roomRegulated(): boolean { return this.regActive; }
-  private renderHeld() { hud.updateHud(this.survival, this.inv, this.timeSec, this.dayNumber(), this.settings.units, performance.now(), { regulated: this.regActive, napReady: this.timeSec - this.lastSleep >= DAY_SECONDS }); }
+  private renderHeld() { hud.updateHud(this.survival, this.inv, this.timeSec, this.dayNumber(), this.settings.units, performance.now(), { regulated: this.regActive, stormBroken: this.stormShieldOn, napReady: this.timeSec - this.lastSleep >= DAY_SECONDS }); }
 
   /** Distinct carried item types in pack order — the hotbar's rows. */
   private hotbarItems(): string[] {

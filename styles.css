@@ -229,6 +229,7 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 .chip { font-size: 11px; letter-spacing: 1.5px; padding: 3px 8px; border-radius: 3px;
   background: rgba(0, 0, 0, 0.45); border: 1px solid rgba(255, 255, 255, 0.22); }
 #chip-reg { color: #9fd8b4; }
+#chip-storm { color: #e8a08a; }
 #chip-nap { color: #b9c8e8; }
 
 /* UI size scale */

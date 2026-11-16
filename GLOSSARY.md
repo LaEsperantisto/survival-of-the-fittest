@@ -285,6 +285,10 @@ A Trader's offers: five straight goods-for-goods swaps per Camp, fixed for that 
 A passing state of the open desert: wind-borne sand that amplifies whatever the Air Temperature already is, drinks the player's Water faster, and scours bare skin. Walls, shade and Caves ride it out; only the open air changes.
 _Avoid_: dust storm, weather (there is nothing else)
 
+**Sandstorm Breaker**:
+A humming red pylon block. Standing within its radius, the Sandstorm loses all teeth on the body: no amplification, no extra Water drain, no scouring. The wreck holds one still-working pylon in its hall; more are craftable at a Crafting Bench, and each new one extends the calm. A Breaker's calm is visible as a faint red dome and a "STORM BROKEN" chip.
+_Avoid_: windmill, storm lantern (it is not a light)
+
 **Engine Core**:
 The single quest-exclusive item — the final quest artifact. Everything else in the game is eventually craftable.
 
@@ -322,7 +326,7 @@ _Avoid_: cave nest (dungeons are built, not grown)
 An armored cave predator, neutral until approached. Its Chitin and Stinger are crafting materials.
 
 **Chitin**:
-Dust Scorpion armor plates — component of tougher gear.
+Dust Scorpion armor plates — component of tougher gear. Body armour that carries it shrugs off the Sandstorm too: storm terms bite at a quarter while worn.
 
 **Stinger**:
 A Dust Scorpion's barb — tips the deadliest weapons.
@@ -365,7 +369,7 @@ A rare, blind, segmented deep predator: slow, nearly unkillable by early gear, a
 Sand Wurm skin — thick, heat-tempered plating for the toughest Body gear.
 
 **Wurmsuit**:
-Body-slot armour stitched from Wurm Hide and Chitin; shrugs off more of every hit than Reptile Armour.
+Body-slot armour stitched from Wurm Hide and Chitin; shrugs off most of every hit — less plate than a Cuirass-tier shell in exchange — and the Chitin layers keep the Sandstorm at a quarter strength against the wearer.
 
 **Sand Vulture**:
 A bold scavenger that follows misfortune: it keeps its distance from the healthy and dives only at prey that is already hurt. Its meat is food once cooked.
@@ -374,7 +378,7 @@ A bold scavenger that follows misfortune: it keeps its distance from the healthy
 A slow, high-tempered grazer armored in a spiked dome; it neither hunts nor flees. Its Shell is heavy armour material, and Traders covet it.
 
 **Tortoise Cuirass**:
-Body armour of layered Thornback shell plates — shrugs off more than Reptile Armour, less than a Wurmsuit.
+Body armour of layered Thornback shell plates — the heaviest plate per blow short of nothing; lighter Chitin armour gives ground to it in exchange for Sandstorm resistance.
 
 **Fennec Fox**:
 A small, enormous-eared desert fox that outruns everything and fights nothing; its Pelt is soft, warm and prized in trade.

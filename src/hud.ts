@@ -110,7 +110,7 @@ export function updateWaypoint(name: string | null, wx = 0, wz = 0, px = 0, pz =
 }
 
 export function updateHud(s: Survival, inv: Inventory, tSec: number, days: number, units: "C" | "F", now: number,
-  status?: { regulated: boolean; napReady: boolean }) {
+  status?: { regulated: boolean; napReady: boolean; stormBroken: boolean }) {
   const fill = (id: string) => document.querySelector(`#${id} .fill`) as HTMLElement;
   fill("bar-health").style.width = s.health + "%";
   fill("bar-water").style.width = s.water + "%";
@@ -134,6 +134,7 @@ export function updateHud(s: Survival, inv: Inventory, tSec: number, days: numbe
 
   // status chips beside the clock: what the current room and the bed currently allow
   $("chip-reg").classList.toggle("hidden", !status?.regulated);
+  $("chip-storm").classList.toggle("hidden", !status?.stormBroken);
   $("chip-nap").classList.toggle("hidden", !status?.napReady);
 
   const kg = inv.weight(), lim = inv.weightLimit();

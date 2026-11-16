@@ -5,7 +5,7 @@ import {
   WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING,
-  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT,
+  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT, STORM_BREAKER, STORM_BREAKER_R,
   isSolid, isWater, waterStrength,
 } from "./blocks";
 import { World, ckey, faceVisible } from "./world";
@@ -111,7 +111,7 @@ export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, G
   WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING,
-  IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT];
+  IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT, STORM_BREAKER];
 
 // extra face tiles, appended after the base tiles; each recipe is shaded with
 // the named block's base colour
@@ -778,6 +778,19 @@ export function getAtlasCanvas(): HTMLCanvasElement {
     for (const [sx, sy] of [[3, 2], [12, 4], [5, 13], [11, 12]] as const)                                 // stray sparks
       px(sx, sy, col(0.4, 1, 0.5, 0.1, -0.35));
   });
+  R(String(STORM_BREAKER), () => {
+    fbmFill((x, y, nn) => nn * 0.03 - 0.22 + (x % 4 === 0 ? -0.04 : 0));                                  // dark pylon casing
+    for (let y = 0; y < 16; y++) { px(2, y, col(-0.16)); px(13, y, col(-0.16)); }                         // side rails
+    for (const y of [2, 13]) for (let x = 3; x < 13; x++) px(x, y, col(0.12));                            // end bands
+    for (let y = 4; y <= 11; y++) {                                                                       // humming red core
+      const w = y === 4 || y === 11 ? 1 : 2;
+      for (let dx = -w; dx <= w; dx++) {
+        const hot = w - Math.abs(dx);
+        px(8 + dx, y, col(0.2 + hot * 0.15 + (y % 2) * 0.05, 1, 0.45 + hot * 0.1, 0.18, -0.5));
+      }
+    }
+    for (let i = 0; i < 6; i++) px(rng.int(3, 12), rng.int(3, 12), col(-0.05));                           // dents
+  });
 
   // paint every registered tile into its slot
   const paint = (key: string, t: number, rgb: readonly number[]) => {
@@ -1190,6 +1203,23 @@ export class Renderer {
   /** Sandstorm: fog, sky and light follow the Survival intensity (0..1);
    *  the grit cloud only rides when the player is under open sky. */
   setStorm(i: number, openSky: boolean): void { this.stormI = i; this.stormOpen = openSky; }
+  private stormDome: THREE.Mesh | null = null;
+  /** the Sandstorm Breaker's calm made visible: one faint red dome over the pylon
+   *  the player is standing under (null turns it off). */
+  setStormDome(center: [number, number, number] | null) {
+    if (!center) {
+      if (this.stormDome) { this.entityGroup.remove(this.stormDome); this.stormDome.geometry.dispose(); (this.stormDome.material as THREE.Material).dispose(); this.stormDome = null; }
+      return;
+    }
+    if (!this.stormDome) {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(STORM_BREAKER_R, 28, 18),
+        new THREE.MeshBasicMaterial({ color: 0xd85848, transparent: true, opacity: 0.05, side: THREE.BackSide, depthWrite: false }));
+      m.renderOrder = 2; // over the world mesh; depthWrite off so it hides nothing
+      this.stormDome = m;
+      this.entityGroup.add(m);
+    }
+    this.stormDome.position.set(center[0], center[1], center[2]);
+  }
 
   /**
    * Switch lighting at runtime (default "sky"). Flips the mode and shadow

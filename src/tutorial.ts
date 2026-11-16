@@ -37,7 +37,7 @@ interface TutStep {
 
 const STEPS: TutStep[] = [
   { t: "Getting Out",
-    cap: "The hull is what kept you breathing. Its one working exit is the stern hatch — follow the cyan beam, look at the door, press <b>E</b>, step outside.",
+    cap: "The hull is what kept you breathing. Its one working exit is the stern hatch — follow the cyan beam, look at the door, press <b>E</b>, step outside. Mind the drop: the first 4 blocks of a fall are free, every one after bites.",
     guide: { name: "Stern Hatch", x: -6, y: 31, z: 0 }, goal: "door", hold: 90 },
   { t: "The Furnace",
     cap: "Midday. Under open sky your body climbs toward 50 °C — watch the <b>TEMP</b> bar slide out of its white band. Walls, doors and shade push it back down.",

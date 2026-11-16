@@ -21,6 +21,7 @@ export class Survival {
   storm = 0;   // Sandstorm intensity 0..1 — raw outdoors: amplified air, hard sweat, sand blast
   lastAmbient = 0; lastAmbientEff = 0; lastShelterR = 0; lastTarget = 36.6; lastOpenSky = false;
   lastRoom: { size: number; sealed: boolean; regulators: number } = { size: 0, sealed: false, regulators: 0 };
+  regulatedAir = false; // standing in a sealed Space its Regulators hold at neutral
 
   private embedKey = "";
   private embedAir: { R: number; openSky: boolean; shelter: number; ambEff: number; room: ReturnType<World["roomInfo"]>; deep: boolean } | null = null;
@@ -55,6 +56,7 @@ export class Survival {
     sprinting: boolean; overencumbered: boolean; biome: number; tSec: number; sunElev: number;
     sunDir: { x: number; y: number; z: number } | null; inWater: boolean; warmth: number;
     regulator: boolean; terrainH: (x: number, z: number) => number;
+    stormShield: boolean; stormMul: number; // Breaker calm zeroes the storm; Chitin armour quarters it
   }) {
     if (this.health <= 0) return;
     if (this.surgeCooldown > 0) this.surgeCooldown -= dt;
@@ -114,10 +116,13 @@ export class Survival {
     // Walls, caves and sealed shade ride it out untouched.
     const stormTarget = this.stormAt(opts.tSec);
     this.storm += (stormTarget - this.storm) * Math.min(1, dt * 0.08);
-    const storm = this.storm;
+    // effective storm on the body: a Breaker's calm zeroes every storm term;
+    // Chitin armour quarters what's left. The visible storm (this.storm) is raw.
+    const storm = opts.stormShield ? 0 : this.storm * opts.stormMul;
     if (storm > 0.02 && !here.deep && here.shelter < 0.6)
       ambEff = 36.6 + (ambEff - 36.6) * (1 + 0.35 * storm);
     this.lastRoom = room;
+    this.regulatedAir = room.sealed && room.regulators * REGULATOR_ROOM_MAX >= room.size;
     if (opts.inWater) {
       // desert water is cold: it pulls hard against midday heat, and is a little
       // kinder than freezing night air — the average of air and water temperature
@@ -144,9 +149,13 @@ export class Survival {
     if (storm > 0.05 && here.shelter < 0.8) drain *= 1 + 0.7 * storm; // the wind drinks you
     this.water = Math.max(0, this.water - drain * dt);
 
-    // Damage — penalties are gentle: dying takes sustained, deep exposure
-    if (this.body > HOT_LIMIT) this.hurt((this.body - HOT_LIMIT) * 0.15, "heat stroke");
-    if (this.body < COLD_LIMIT) this.hurt((COLD_LIMIT - this.body) * 0.175, "hypothermia");
+    // Damage — penalties are gentle: dying takes sustained, deep exposure.
+    // Regulated air never hurts: while the room's Regulators hold it neutral,
+    // hot/cold damage is skipped outright — the body only drifts toward neutral.
+    if (!this.regulatedAir) {
+      if (this.body > HOT_LIMIT) this.hurt((this.body - HOT_LIMIT) * 0.15, "heat stroke");
+      if (this.body < COLD_LIMIT) this.hurt((COLD_LIMIT - this.body) * 0.175, "hypothermia");
+    }
     if (this.water <= 0) this.hurt(0.3, "dehydration");
     else if (this.water < WATER_LIMIT) this.hurt((WATER_LIMIT - this.water) * 0.0375, "dehydration");
     // full-strength storm on bare ground: endless scouring — a cut-short visit, not a killer

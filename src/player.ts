@@ -12,6 +12,8 @@ export class Player {
   sprinting = false;
   inWater = false;    // body touches water at feet or waist (checked at both)
   headUnder = false;
+  fallPeakY = this.pos.y; // highest point since last leaving the ground
+  lastFallDist = 0;       // metres of the fall that just landed (reset by the reader)
 
   constructor(private world: World) {}
 
@@ -37,6 +39,8 @@ export class Player {
 
   /** move & collide; returns true if a collision stopped horizontal motion this axis-step */
   update(dt: number, moveX: number, moveZ: number, jump: boolean, speedMul: number, slow: boolean) {
+    if (this.onGround) this.fallPeakY = this.pos.y;
+    else if (this.pos.y > this.fallPeakY) this.fallPeakY = this.pos.y;
     this.inWater = this.waterAt(0.1) || this.waterAt(1.0);
     this.headUnder = this.waterAt(EYE);
     const swim = this.inWater;
@@ -68,7 +72,7 @@ export class Player {
     this.moveAxis(this.vel.y * dt, 1);
 
     // fell out of world failsafe
-    if (this.pos.y < -5) { this.pos.set(0, 40, 0); this.vel.set(0, 0, 0); }
+    if (this.pos.y < -5) { this.pos.set(0, 40, 0); this.vel.set(0, 0, 0); this.fallPeakY = 40; this.lastFallDist = 0; }
     if (this.pos.y <= 0.5 && Math.abs(this.pos.x) <= 24 && Math.abs(this.pos.z) <= 24 && this.vel.y <= 0)
       this.onGround = true;
   }
@@ -84,7 +88,7 @@ export class Player {
       const nz = p.z + (axis === 2 ? step : 0);
       if (!this.collides(nx, ny, nz)) { p.set(nx, ny, nz); continue; }
       if (axis === 1) {
-        if (step < 0) this.onGround = true;
+        if (step < 0) { this.lastFallDist = Math.max(0, this.fallPeakY - p.y); this.onGround = true; }
         this.vel.y = 0;
       } else if (axis === 0) this.vel.x *= 0.25;
       else this.vel.z *= 0.25;
