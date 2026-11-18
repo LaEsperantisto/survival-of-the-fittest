@@ -5,7 +5,7 @@ import { Survival, REGULATOR_ROOM_MAX, SAFE_HI } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, type ItemDef, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable } from "./blocks";
+import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable } from "./blocks";
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
 import { heightAt, biomeAt, TOWN_L, CAMP_L, CAVE_MOUTH_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
@@ -158,7 +158,9 @@ export class Game {
 
   constructor(public meta: WorldMeta, run: RunSave | null, parent: HTMLElement, private settings: Settings, private audio: Audio) {
     this.seed = hashStr(meta.seedStr || meta.id);
-    this.world = new World(this.seed);
+    // Easy/Hard Start is fixed when the world is created; the run copy wins on load
+    this.worldMode = run?.worldMode ?? meta.mode ?? "easy";
+    this.world = new World(this.seed, this.worldMode);
     this.survival = new Survival(this.seed ^ 7);
     this.quests = loadQuestState(run?.quest);
     this.renderer = new Renderer(parent);
@@ -895,6 +897,13 @@ export class Game {
     hud.toast(`Chronicle — ${LESSON_BY_ID.get(id)!.title}`);
     this.audio.savePing();
     this.renderQuest();
+  }
+
+  /** The Chronicle re-teaches each wreck machine the first time it is built
+   *  (including a Husk repair — the lesson matters most to Hard starts). */
+  private craftLesson(out: string) {
+    if (out === "regulator") this.lesson("regulator");
+    if (out === "storm_breaker") this.lesson("breaker");
   }
 
   /** 0.4 s sampler: standing in/at a Landmark teaches it. */
@@ -1758,6 +1767,9 @@ export class Game {
         this.breaking = null; this.showBreakBar(null); return;
       }
       this.breaking = { x, y, z, need: cb.time, elapsed: 0 };
+      // the Chronicle nags before a Husk comes down: it drops only the frame,
+      // and the repair needs a Bench — break it without paying and the machine is lost
+      if (id === REGULATOR_HUSK || id === STORM_BREAKER_HUSK) this.lesson("husk");
     }
     this.breaking.elapsed += dt;
     this.audioTickAcc += dt;
@@ -3726,8 +3738,9 @@ export class Game {
         const left = doCraft(this.inv, r);
         if (left === null) { this.audio.error(); return; }
         if (left > 0) this.giveOrDrop(r.out, left);
-        this.tut?.notify("craft");
-        if (ITEMS[r.out]?.tool) this.questBump("tool");
+          this.tut?.notify("craft");
+          this.craftLesson(r.out);
+          if (ITEMS[r.out]?.tool) this.questBump("tool");
         this.audio.place();
         this.renderInv();
       };
@@ -3761,6 +3774,7 @@ export class Game {
           if (left === null) { this.audio.error(); return; }
           if (left > 0) this.giveOrDrop(r.out, left);
           this.tut?.notify("craft");
+          this.craftLesson(r.out);
           if (ITEMS[r.out]?.tool) this.questBump("tool");
           this.audio.place();
           this.renderCraft(mode);

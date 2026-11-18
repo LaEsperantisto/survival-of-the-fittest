@@ -6,6 +6,7 @@ import {
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING,
   CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT, STORM_BREAKER, ARMORY, STORM_BREAKER_R,
+  REGULATOR_HUSK, STORM_BREAKER_HUSK,
   isSolid, isWater, waterStrength,
 } from "./blocks";
 import { World, ckey, faceVisible } from "./world";
@@ -178,7 +179,8 @@ export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, G
   WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING,
-  IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT, STORM_BREAKER, ARMORY];
+  IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT, STORM_BREAKER, ARMORY,
+  REGULATOR_HUSK, STORM_BREAKER_HUSK];
 
 // extra face tiles, appended after the base tiles; each recipe is shaded with
 // the named block's base colour
@@ -538,6 +540,24 @@ export function getAtlasCanvas(): HTMLCanvasElement {
     px(5, 12, col(0.15, 1, -0.1, 0.12, 0.12)); px(10, 9, col(0.15, 1, -0.1, 0.12, 0.12)); // instrument dots
     for (let y = 7; y <= 14; y++) if (y % 2 === 1) px(14, y, col(-0.2));    // pipe stub
   });
+  R(String(REGULATOR_HUSK), () => {
+    // the same steel panel, burned out: fins intact, vent ring dead and hollow,
+    // casing scorched along the seams
+    const n = fbmFill((x, y, nn) => nn * 0.03 + (y % 2 === 0 ? 0.015 : -0.015) - 0.1); // duller steel
+    for (const ry of [1, 3, 5]) {
+      for (let x = 2; x <= 13; x++) px(x, ry, col(-0.28));
+      for (let x = 2; x <= 13; x += 3) px(x, ry - 1, col(0.08));            // fin highlights
+    }
+    for (let x = 4; x <= 11; x++) for (let y = 7; y <= 14; y++) {
+      const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 10.5));
+      if (d >= 3.2) px(x, y, col(0.05 + n[y * 16 + x] * 0.05));
+      else if (d >= 2.2) px(x, y, col(-0.3));                               // dead vent ring
+      else px(x, y, col(-0.42));                                            // hollow throat
+    }
+    for (const [cx, cy] of [[5, 12], [10, 9], [7, 8]] as const) px(cx, cy, col(-0.25)); // burnt-out instruments
+    for (let y = 7; y <= 14; y++) if (y % 2 === 1) px(14, y, col(-0.22));   // pipe stub, cold
+    for (let i = 0; i < 5; i++) px(rng.int(1, 14), rng.int(6, 15), col(-0.18)); // scorch speckle
+  });
   R(String(CACTUS), () => {
     const n = fbmFill((x, y, nn) => nn * 0.06);
     for (const rx of [2, 7, 12]) for (let y = 0; y < 16; y++) px(rx, y, col(-0.16 + n[y * 16 + rx] * 0.03)); // ribs
@@ -869,6 +889,16 @@ export function getAtlasCanvas(): HTMLCanvasElement {
       }
     }
     for (let i = 0; i < 6; i++) px(rng.int(3, 12), rng.int(3, 12), col(-0.05));                           // dents
+  });
+  R(String(STORM_BREAKER_HUSK), () => {
+    fbmFill((x, y, nn) => nn * 0.03 - 0.1 + (x % 4 === 0 ? -0.04 : 0));                                   // same casing, unfaded by the hum
+    for (let y = 0; y < 16; y++) { px(2, y, col(-0.1)); px(13, y, col(-0.1)); }                            // side rails
+    for (const y of [2, 13]) for (let x = 3; x < 13; x++) px(x, y, col(0.08));                             // end bands
+    for (let y = 4; y <= 11; y++) {                                                                        // dead core: soot where the light was
+      const w = y === 4 || y === 11 ? 1 : 2;
+      for (let dx = -w; dx <= w; dx++) px(8 + dx, y, col(-0.3 - (w - Math.abs(dx)) * 0.06));
+    }
+    for (let i = 0; i < 8; i++) px(rng.int(3, 12), rng.int(3, 12), col(-0.15));                            // burns
   });
   R(String(ARMORY), () => {
     fbmFill((x, y, nn) => nn * 0.04 - 0.18);                                                             // dark forge-room stone

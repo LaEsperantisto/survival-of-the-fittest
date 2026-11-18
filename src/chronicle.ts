@@ -56,6 +56,21 @@ export const LESSONS: Lesson[] = [
     hint: "use it (Q) to wake the next unknown place",
     text: "One use, then it's gone: the Tracker wakes the nearest place you have never found — a Town, camp, cave mouth, oasis or buried canister site — and marks it on your Map. The second wreck repeats nowhere; no Tracker will ever point at it.",
   },
+  {
+    id: "husk", title: "Husk Machinery",
+    hint: "a Husk breaks into a frame you repair at a Bench",
+    text: "The crash burned this machine out to a Husk — dead, but its shell is salvage. A Disassembler breaks it into the broken frame; a Crafting Bench repair (about half the normal recipe) makes it live again. Break the Husk before you can pay for the repair and the machine is lost for good.",
+  },
+  {
+    id: "regulator", title: "Heat Regulator",
+    hint: "sealed air pinned at body temperature",
+    text: "A live Heat Regulator pins a SEALED room's air near 37 °C whatever the sky does — up to 150 open cells per unit, and capacity stacks in bigger rooms. Sealed means sealed: one open Outside Door merges the room with the desert and switches the unit off. Draw a breath of neutral air from it any time with E.",
+  },
+  {
+    id: "breaker", title: "Sandstorm Breaker",
+    hint: "8 blocks of storm-proof calm",
+    text: "A built Sandstorm Breaker hums out the storm: within 8 blocks the Sandstorm loses all teeth — no scorching, no wind-thirst, no blast. Plant one before every long trip; the recipe (Iron Rods + Glass) carries no catalyst, so a whole Base can be storm-proofed.",
+  },
 ];
 
 export const LESSON_BY_ID = new Map(LESSONS.map((l) => [l.id, l]));

@@ -4,6 +4,7 @@ import {
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, BED, BED_EXT, GRASS, LEAVES, WOOD, SAPLING,
   CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, STORM_BREAKER, THRUSTER, THRUSTER_LIT, ARMORY,
+  REGULATOR_HUSK, STORM_BREAKER_HUSK,
 } from "./blocks";
 
 export interface ItemDef {
@@ -55,6 +56,9 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "bench", name: "Crafting Bench", desc: "Unlocks the full crafting list. Stands two blocks wide in the world.", w: 1, h: 2, mass: 6.0, block: BENCH, color: "#806647" }),
   I({ id: "campfire", name: "Campfire", desc: "Burns wood. Smelts sand into glass.", w: 1, h: 2, mass: 3.0, block: CAMPFIRE, color: "#e67333" }),
   I({ id: "regulator", name: "Heat Regulator", desc: "Holds a sealed room at comfortable body temperature — 100 open cells per Regulator, capacity stacks. Sealed means sealed — an open door disables it.", w: 1, h: 1, mass: 2.5, block: REGULATOR, color: "#59bfcc" }),
+  // Hard Start's wreck machinery burns out as Husks; breaking one yields this
+  // frame, and a Bench repair (about half the normal recipe) makes it live again.
+  I({ id: "regulator_broken", name: "Broken Heat Regulator", desc: "The gutted shell of a Heat Regulator. Repair it at a Crafting Bench — 2 Iron Rods, 1 Glass, 1 Salt — and it breathes neutral air again.", w: 1, h: 1, mass: 2.0, color: "#78868a" }),
   I({ id: "adobe", name: "Adobe Brick", desc: "Baked town mud. Warm, solid.", w: 1, h: 1, mass: 0.9, block: ADOBE, color: "#b3956b" }),
   I({ id: "chest", name: "Supply Chest", desc: "Stores gear in its own grid. Chests placed touching (orthogonally) merge into one bigger grid — 3×3 each, up to 3 wide, then taller.", w: 1, h: 1, mass: 5.0, block: CHEST, color: "#8a6d3b" }),
   I({ id: "canister_full", name: "Water Canister (full)", desc: "Drink to restore 25% Water. Refill at oases or the ship's water station.", w: 1, h: 2, mass: 1.0, color: "#3f8fe0" }),
@@ -99,6 +103,7 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "chest_connector", name: "Chest Connector", desc: "Steel rail between Supply Chests: links their grids into one bigger Inventory Grid. Stores nothing itself.", w: 1, h: 1, mass: 1, block: CHEST_CONNECTOR, color: "#8a744a" }),
   I({ id: "metal_plating", name: "Metal Plating", desc: "The ship's plated floor and skin. Same plate, same tools - disassemble it back.", w: 1, h: 1, mass: 1.2, block: METAL_PLATING, color: "#9aa0ac" }),
   I({ id: "storm_breaker", name: "Sandstorm Breaker", desc: "A humming red pylon. Stand within 8 blocks of one and the Sandstorm loses all teeth — no scorching, no wind-thirst, no sand blast.", w: 1, h: 1, mass: 4.0, block: STORM_BREAKER, color: "#c04838" }),
+  I({ id: "storm_breaker_broken", name: "Broken Sandstorm Breaker", desc: "The dead pylon's frame. Repair it at a Crafting Bench — 1 Iron Rod, 1 Glass — and the calm hums again.", w: 1, h: 1, mass: 3.0, color: "#8a6158" }),
   I({ id: "door_inner", name: "Inside Door", desc: "Interior bulkhead door. It divides rooms for sight and movement - and never insulates: in temperature terms it is just air, open or closed.", w: 1, h: 1, mass: 2, block: DOOR_INNER, color: "#82868e" }),
   I({ id: "bed", name: "Bed", desc: "Curtained sleep for 8 game hours, then the cool morning. One long sleep every 8 hours; press E at the bed. Takes a 2x1 floor span.", w: 2, h: 1, mass: 6, block: BED, color: "#a84a42" }),
   // ---- underground: minerals ----
@@ -153,6 +158,9 @@ BLOCK_TO_ITEM[MELON_2] = "dune_melon";
 BLOCK_TO_ITEM[WHEAT_1] = "seed_wheat";
 BLOCK_TO_ITEM[WHEAT_2] = "wheat";
 BLOCK_TO_ITEM[CACTUS_FRUIT] = "cactus";
+// Husks drop their broken frame — the item, not a placeable husk block
+BLOCK_TO_ITEM[REGULATOR_HUSK] = "regulator_broken";
+BLOCK_TO_ITEM[STORM_BREAKER_HUSK] = "storm_breaker_broken";
 
 // ---------------- Inventory Grid ----------------
 

@@ -5,7 +5,8 @@ import { DOOR_CLOSED, DOOR_OPEN, DOOR_UPPER } from "./blocks";
 // the player performs in the real game world. Coordinates are the main wreck's
 // fixed layout (gen.ts: interior x -5..3, z -4..4, floor y 30, interior y 31..33,
 // stern door at (-6,31,0), water tank (-4,30,4), regulator (-4,31,-4),
-// beacon (-4,31,-1), bench (0,31,-3)).
+// beacon (-4,31,-1)). Hard Start swaps the live machinery for Husks — the
+// hardCap/hardGuide variants teach the same lessons about the dead versions.
 
 export interface CineSeg {
   t0: number; t1: number;
@@ -28,7 +29,9 @@ type Goal = "door" | "surge" | "refill" | "drink" | "chest" | "craft" | "mine" |
 interface TutStep {
   t: string;
   cap: string;
+  hardCap?: string;          // Hard Start variant of the caption
   guide?: { name: string; x: number; y: number; z: number };
+  hardGuide?: { name: string; x: number; y: number; z: number };
   goal?: Goal;            // the event that ends the step early
   hold: number;           // seconds before the tour moves on regardless
   enter?: (g: Game) => void;
@@ -46,6 +49,18 @@ const STEPS: TutStep[] = [
   { t: "Sweat Surge",
     cap: "When the climb gets dangerous, press <b>X</b>: a Sweat Surge spends 10 water to force your body cool.",
     goal: "surge", hold: 22 },
+  { t: "The Regulator",
+    cap: "Inside the aft cabin hums a Heat Regulator: sealed inside the hull it pins the air near 37 °C no matter the sky — one unit holds up to 150 open cells, and units stack in bigger rooms. An <i>open</i> Outside Door merges the ship with the desert and switches it off. Look at it and press <b>E</b> to draw a breath of neutral air.",
+    hardCap: "Inside the aft cabin sits a Heat Regulator Husk — the crash burned its heart out. It does nothing. A live Regulator pins sealed air near 37 °C (up to 150 open cells, units stack). Break this husk with a Disassembler for its frame, then repair it at a Crafting Bench — or craft a new one (Iron Rods + Glass + Salt).",
+    guide: { name: "Heat Regulator", x: -4, y: 31, z: -4 },
+    hardGuide: { name: "Regulator Husk", x: -4, y: 31, z: -4 },
+    hold: 16 },
+  { t: "The Storm Breaker",
+    cap: "The red pylon in the hall is a Sandstorm Breaker. When the sky goes to work against you — a Sandstorm drinks Water and scours bare skin — its calm reaches 8 blocks out and turns the storm aside. Craft more before any long trip: Iron Rods + Glass, no catalyst.",
+    hardCap: "The grey pylon in the hall is a Sandstorm Breaker Husk — dead, and its calm is gone. When the Sandstorm comes, shelter beats stubbornness — until you build a Breaker (Iron Rods + Glass at a Crafting Bench) or repair this husk's frame. The recipe carries no catalyst: a whole Base can be storm-proofed.",
+    guide: { name: "Sandstorm Breaker", x: -1, y: 31, z: 1 },
+    hardGuide: { name: "Breaker Husk", x: -1, y: 31, z: 1 },
+    hold: 16 },
   { t: "Water",
     cap: "Back inside — the ship's tank sits in the aft-left compartment. Look into the pool and press <b>E</b>; an empty canister is already in your pack.",
     guide: { name: "Water Tank", x: -4, y: 30, z: 4 }, goal: "refill",
@@ -58,8 +73,8 @@ const STEPS: TutStep[] = [
     cap: "The cockpit's Supply Chest is stocked — look at it and press <b>E</b>. Chests are real blocks: place them anywhere, and touching ones share one bigger grid.",
     guide: { name: "Supply Chest", x: 3, y: 31, z: 0 }, goal: "chest", hold: 60 },
   { t: "Craft",
-    cap: "The wreck's Crafting Bench stands in the hall — press <b>E</b> at it and make a Wood shovel; there is dead wood in your pack.",
-    guide: { name: "Crafting Bench", x: 0, y: 31, z: -3 }, goal: "craft",
+    cap: "The wreck kept no bench — hand crafting is yours now: open the <b>Inventory</b>, press <b>Craft by hand</b>, and make a Wood shovel from the dead wood in your pack. Four more dead wood build a real Crafting Bench for the tougher recipes.",
+    goal: "craft",
     enter: (g) => g.giveOrDrop("deadwood", 4), hold: 60 },
   { t: "Mine",
     cap: "Select the shovel on the bottom hotbar — click it, scroll, or press its number — then hold <b>Left-click</b> on sand until it breaks. Rock outcrops need a pickaxe; you will craft one soon enough.",
@@ -130,8 +145,9 @@ export class Tutorial {
     this.acc = 0;
     this.advanceAt = null;
     const s = STEPS[i];
-    this.setCard(s.t, s.cap);
-    this.g.tutGuide = s.guide ?? null;
+    const hard = this.g.worldMode === "hard";
+    this.setCard(s.t, hard && s.hardCap ? s.hardCap : s.cap);
+    this.g.tutGuide = (hard && s.hardGuide ? s.hardGuide : s.guide) ?? null;
     s.enter?.(this.g);
   }
 

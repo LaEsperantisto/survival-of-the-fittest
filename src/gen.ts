@@ -1,8 +1,9 @@
 import {
   AIR, SAND, SANDSTONE, ROCK, GRAVEL, SALT, DEADWOOD, DIRT, HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL_PLATING, BEACON, CAMPFIRE,
-  WATER, ADOBE, INSGLASS, BENCH, BENCH_EXT, ENGINECORE, CS, CH, REGULATOR, CACTUS, CACTUS_FRUIT,
+  WATER, ADOBE, INSGLASS, ENGINECORE, CS, CH, REGULATOR, REGULATOR_HUSK, CACTUS, CACTUS_FRUIT,
   DOOR_INNER, DOOR_INNER_UPPER, CHEST, BED, BED_EXT, MELON_2, WHEAT_1, WHEAT_2, FARMLAND, GRASS, WOOD, LEAVES,
-  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, THRUSTER, STORM_BREAKER,
+  STORM_BREAKER, STORM_BREAKER_HUSK,
+  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, THRUSTER,
 } from "./blocks";
 import { fbm2, ridge2, value2, hash2, Rng } from "./noise";
 
@@ -467,7 +468,7 @@ export function dungeonEntrance(seed: number, townX: number, townZ: number): { x
  *  All bulkhead doors are Inside Doors and start closed: open one and the two
  *  spaces behind it share one temperature. The wreck is plated — Metal Plating
  *  floors and skin, never rods. */
-function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
+function paintShip(set: (x: number, y: number, z: number, id: number) => void, hard: boolean) {
   const Y0 = 30, Y1 = 34;
   // solid shell outline in plan view (rounded corners, tapered bow/stern tips)
   const outline = (x: number, z: number): boolean => {
@@ -522,9 +523,8 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
 
   // cockpit windscreen: insulating glass, rare but heat-safe
   for (let z = -2; z <= 2; z++) for (let y = 32; y <= 33; y++) set(4, y, z, INSGLASS);
-  // the pilot's bunk along the cockpit's port wall — the door approach at
-  // z 0 stays clear
-  set(2, 31, -2, BED); set(3, 31, -2, BED_EXT);
+  // no bunk, no bench: the wreck keeps its shell, tank, beacon and plating —
+  // everything craftable the player hand-crafts and builds themselves
 
   // water compartment: the ship's tank is a pool sunk into the ground —
   // look at the water in the hole and press E to refill canisters
@@ -536,15 +536,15 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void) {
   set(-4, 28, 4, DIRT); // pit bottom
   set(-3, 30, 3, DIRT); set(-5, 30, 4, DIRT); // exposed compartment floor around the rim
   // one heat regulator, pre-installed in the small regulator room — the
-  // wreck's heart stays body-neutral while you fly out
-  set(-4, 31, -4, REGULATOR);
+  // wreck's heart stays body-neutral while you fly out. Hard Start burns it
+  // out: the husk is dead machinery, breakable only for its broken frame.
+  set(-4, 31, -4, hard ? REGULATOR_HUSK : REGULATOR);
   // save room beacon
   set(-4, 31, -1, BEACON);
-  // crafting bench in the hall — the bench is a two-block structure
-  set(0, 31, -3, BENCH); set(0, 31, -2, BENCH_EXT);
   // Sandstorm Breaker: the wreck's one still-humming pylon, planted in the hall
   // so the calm it grants is visible from the very first night — and craftable.
-  set(-1, 31, 1, STORM_BREAKER);
+  // Hard Start leaves the same pylon dead and cold.
+  set(-1, 31, 1, hard ? STORM_BREAKER_HUSK : STORM_BREAKER);
   // ceiling lamps, one per room
   for (const [lx, lz] of [[3, 0], [0, 0], [-4, 3], [-4, -3], [-5, 0]] as const) set(lx, Y1, lz, LAMP);
   // scattered plating salvage — kept clear of every doorway approach
@@ -958,7 +958,7 @@ function paintCamp(set: (x: number, y: number, z: number, id: number) => void, c
   }
 }
 
-export function genChunk(seed: number, st: Structures, cx: number, cz: number): Uint8Array {
+export function genChunk(seed: number, st: Structures, cx: number, cz: number, worldMode: "easy" | "hard" = "easy"): Uint8Array {
   const c = new Uint8Array(CS * CS * CH);
   const setW = (wx: number, wy: number, wz: number, id: number) => {
     const x = wx - cx * CS, z = wz - cz * CS;
@@ -1080,7 +1080,7 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number): 
     }
   }
 
-  if (cx >= -1 && cx <= 0 && cz >= -1 && cz <= 0) paintShip(setW);
+  if (cx >= -1 && cx <= 0 && cz >= -1 && cz <= 0) paintShip(setW, worldMode === "hard");
   for (const o of st.oases)
     if (Math.abs(cx * CS + 8 - o.x) < o.r + 24 && Math.abs(cz * CS + 8 - o.z) < o.r + 24) paintOasis(setW, o, seed);
   // Towns on an unbounded lattice: check which lattice cells touch this chunk.

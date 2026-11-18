@@ -100,6 +100,10 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 .world-row button { padding: 6px 12px; font-size: 13px; }
 #newworld { display: flex; flex-direction: column; gap: 10px; width: min(440px, 92vw); }
 #newworld input[type=text] { width: 100%; padding: 10px; font-size: 15px; }
+#mode-wrap { display: flex; align-items: center; gap: 10px; color: #9aa3b2; font-size: 12px;
+  letter-spacing: 1px; text-transform: uppercase; }
+#newworld select { flex: 1; background: #22262e; color: #e8e0d0; border: 1px solid #6b7280;
+  border-radius: 6px; padding: 8px; font-size: 14px; }
 #newworld button { padding: 12px; font-size: 16px; }
 #btn-create { color: #14161c; background: #d8b74f; border-color: #d8b74f; }
 #btn-create:hover { background: #f0cf6a; border-color: #f0cf6a; }

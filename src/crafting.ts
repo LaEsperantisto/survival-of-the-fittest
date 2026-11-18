@@ -46,6 +46,8 @@ export const RECIPES: Recipe[] = [
   { out: "backpack1", count: 1, needs: { deadwood: 6, metal: 2 }, station: "armory" },
   { out: "insglass", count: 2, needs: { sand: 2, catalyst: 1, metal: 1 }, station: "bench" },
   { out: "regulator", count: 1, needs: { metal: 4, glass: 1, salt: 2 }, station: "bench" },
+  // Husk repairs: the broken frame plus about half the build recipe.
+  { out: "regulator", count: 1, needs: { regulator_broken: 1, metal: 2, glass: 1, salt: 1 }, station: "bench" },
   { out: "chest", count: 1, needs: { deadwood: 6, metal: 1 }, station: "bench" },
   { out: "visor", count: 1, needs: { metal: 2, glass: 1, salt: 2 }, station: "armory" },
   { out: "reptile_armor", count: 1, needs: { snake_skin: 3 }, station: "armory" },
@@ -57,6 +59,7 @@ export const RECIPES: Recipe[] = [
   { out: "door_inner", count: 1, needs: { metal: 1 }, station: "bench" },
   // Sandstorm Breaker: catalyst-free on purpose — storm-proofing must be expandable.
   { out: "storm_breaker", count: 1, needs: { metal: 2, glass: 1 }, station: "bench" },
+  { out: "storm_breaker", count: 1, needs: { storm_breaker_broken: 1, metal: 1, glass: 1 }, station: "bench" },
   { out: "bucket", count: 1, needs: { metal: 2 }, station: "bench" },
   { out: "bed", count: 1, needs: { deadwood: 3, snake_skin: 2 }, station: "bench" },
   // ---- the Map kit ----

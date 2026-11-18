@@ -564,6 +564,27 @@ function drawArt(id: string, w: number, h: number, color: string, tier = ""): HT
       g.fillStyle = "#c8d2da"; g.fillRect(4, 4, 1, 1); g.fillRect(11, 4, 1, 1);
       return cv;
     }
+    case "regulator_broken": {
+      // the same steel housing, gutted: cracked face, dead gauge, scorch
+      rect(g, 5, 1, 6, 2, "#525c66");                                        // vent stack, dented
+      rect(g, 3, 3, 10, 11, "#6a7278"); outline(g, 3, 3, 10, 11, "#2e353c"); // dull steel housing
+      rect(g, 3, 3, 10, 2, "#7d858b");
+      for (let x = 4; x <= 11; x += 2) rect(g, x, 6, 1, 6, "#46505a");       // cooling fins
+      rect(g, 7, 7, 3, 4, "#24282c"); rect(g, 7, 7, 3, 1, "#3a4046");        // dead gauge well
+      line(g, 7, 7, 9, 10, "#9aa0a6", 1);                                    // cracked glass
+      g.fillStyle = "#1c1e22"; g.fillRect(4, 9, 2, 2); g.fillRect(10, 5, 2, 1); g.fillRect(9, 12, 3, 1); // burn holes
+      rect(g, 3, 12, 10, 2, "#2e353c");
+      return cv;
+    }
+    case "storm_breaker_broken": {
+      // dead pylon: dark rails, hollow sooty core
+      rect(g, 4, 1, 8, 14, "#4c4640"); outline(g, 4, 1, 8, 14, "#26221e");   // casing
+      rect(g, 4, 2, 8, 1, "#5e574f"); rect(g, 4, 12, 8, 1, "#5e574f");       // end bands
+      for (let y = 4; y <= 11; y++) rect(g, 5, y, 1, 1, "#38332e");          // rail shadow
+      rect(g, 7, 4, 3, 8, "#1e1b18");                                        // soot-filled core
+      g.fillStyle = "#2c2723"; g.fillRect(6, 5, 1, 2); g.fillRect(10, 8, 1, 3); // flaking scorch
+      return cv;
+    }
     case "engine_core": {
       g.fillStyle = "#c468e8"; g.globalAlpha = 0.25;
       g.beginPath(); g.arc(8, 8, 7.5, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;

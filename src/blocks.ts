@@ -9,7 +9,8 @@ export const AIR = 0, SAND = 1, SANDSTONE = 2, ROCK = 3, GRAVEL = 4, DIRT = 5, S
   CHEST_CONNECTOR = 39, METAL_PLATING = 40, DOOR_INNER = 41, DOOR_INNER_UPPER = 42,
   DOOR_INNER_OPEN = 43, BED = 44, BED_EXT = 45, GRASS = 46, WOOD = 47, LEAVES = 48, SAPLING = 49,
   CURVED_HULL = 50, HULL_SLOPE = 51, IRON_ORE = 52, COPPER_ORE = 53, ALABASTER = 54,
-  COBALT_ORE = 55, THRUSTER = 56, THRUSTER_LIT = 57, STORM_BREAKER = 58, ARMORY = 59;
+  COBALT_ORE = 55, THRUSTER = 56, THRUSTER_LIT = 57, STORM_BREAKER = 58, ARMORY = 59,
+  REGULATOR_HUSK = 60, STORM_BREAKER_HUSK = 61;
 
 export type ToolType = "pickaxe" | "shovel" | "axe" | "disassembler";
 
@@ -166,6 +167,10 @@ export const BLOCKS: BlockDef[] = [
   // It comes down only for an Alloy Disassembler.
   def({ id: STORM_BREAKER, name: "Sandstorm Breaker", solid: true, opaque: true, transparent: false, emissive: true, R: 0.3, breakTime: 5, tool: "disassembler", minTier: 2, placeable: true, color: [0.72, 0.28, 0.24] }),
   def({ id: ARMORY, name: "Armoury", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.45, 0.4, 0.36] }),
+  // Husks: Hard Start's burned-out wreck machinery. Dead — no regulation, no calm —
+  // but breakable into the broken frame, which a Bench repair brings back to life.
+  def({ id: REGULATOR_HUSK, name: "Heat Regulator Husk", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: "disassembler", minTier: 1, placeable: false, color: [0.4, 0.44, 0.46] }),
+  def({ id: STORM_BREAKER_HUSK, name: "Sandstorm Breaker Husk", solid: true, opaque: true, transparent: false, emissive: false, R: 0.3, breakTime: 5, tool: "disassembler", minTier: 2, placeable: false, color: [0.44, 0.32, 0.28] }),
 ];
 
 /** Radius (blocks) of a Sandstorm Breaker's calm. */

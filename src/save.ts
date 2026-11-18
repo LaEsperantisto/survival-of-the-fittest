@@ -2,7 +2,7 @@
 // and JSON file export/import so a world can exceed the localStorage cap and
 // travel between devices.
 
-export interface WorldMeta { id: string; name: string; seedStr: string; updated: number; }
+export interface WorldMeta { id: string; name: string; seedStr: string; updated: number; mode?: "easy" | "hard"; }
 
 const K_INDEX = "sotf:index", K_SET = "sotf:settings", K_BEST = "sotf:best";
 
@@ -35,9 +35,9 @@ export function listWorlds(): WorldMeta[] {
 }
 function writeIndex(list: WorldMeta[]) { localStorage.setItem(K_INDEX, JSON.stringify(list)); }
 
-export function createWorld(name: string, seedStr: string): WorldMeta {
+export function createWorld(name: string, seedStr: string, mode: "easy" | "hard" = "easy"): WorldMeta {
   const id = "w" + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
-  const meta = { id, name: name || seedStr || "world", seedStr, updated: Date.now() };
+  const meta = { id, name: name || seedStr || "world", seedStr, updated: Date.now(), mode };
   const list = listWorlds();
   list.unshift(meta);
   writeIndex(list);

@@ -26,7 +26,7 @@ export class World {
   private waterQ = new Set<string>();
   gen: Structures;
 
-  constructor(public seed: number) {
+  constructor(public seed: number, public worldMode: "easy" | "hard" = "easy") {
     this.gen = new Structures(seed);
   }
 
@@ -34,7 +34,7 @@ export class World {
     const k = ckey(cx, cz);
     let c = this.chunks.get(k);
     if (!c) {
-      c = genChunk(this.seed, this.gen, cx, cz);
+      c = genChunk(this.seed, this.gen, cx, cz, this.worldMode);
       const d = this.deltas.get(k);
       if (d) for (const [i, id] of d) c[i] = id;
       this.chunks.set(k, c);

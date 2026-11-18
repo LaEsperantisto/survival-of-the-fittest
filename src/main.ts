@@ -310,14 +310,16 @@ function renderInstructions() {
 $("btn-create").onclick = () => {
   const seedStr = $v("seed-input").trim() || Math.random().toString(36).slice(2, 10);
   const name = $v("world-name").trim() || seedStr;
-  const meta = createWorld(name, seedStr);
+  const mode = (($("mode-select") as HTMLSelectElement).value === "hard" ? "hard" : "easy") as "easy" | "hard";
+  const meta = createWorld(name, seedStr, mode);
   startGame(meta, null);
 };
 
 $("btn-guest").onclick = () => {
   // never enters the world index, never autosaves, random seed every time
   const seedStr = Math.random().toString(36).slice(2, 10);
-  startGame({ id: "guest:" + Date.now().toString(36), name: "Guest world", seedStr, updated: Date.now() }, null);
+  const mode = (($("mode-select") as HTMLSelectElement).value === "hard" ? "hard" : "easy") as "easy" | "hard";
+  startGame({ id: "guest:" + Date.now().toString(36), name: "Guest world", seedStr, updated: Date.now(), mode }, null);
 };
 
 $("btn-import").onclick = () => $("import-file").click();
