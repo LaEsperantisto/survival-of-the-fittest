@@ -852,6 +852,7 @@ export class Game {
       if (ke.code === "KeyX") this.surge();
       if (ke.code === "KeyT") this.toggleLantern();
       if (ke.code === "KeyI") this.toggleInv();
+      if (ke.code === "KeyC" && this.ui === "inv") { this.invCraft = !this.invCraft; this.renderCraftTab(); }
       if (ke.code === "KeyR" && this.ui === "inv") {
         if (this.temp) {
           this.temp.rot = !this.temp.rot; // temp is off-grid: always free to rotate
@@ -897,6 +898,7 @@ export class Game {
     });
     on("keyup", (e) => this.keys.delete((e as KeyboardEvent).code));
     document.getElementById("surge-btn")!.onclick = () => this.surge();
+    document.getElementById("btn-inv-craft")!.onclick = () => { this.invCraft = !this.invCraft; this.renderCraftTab(); };
     document.getElementById("hotbar")!.addEventListener("pointerdown", (e) => {
       const b = (e.target as HTMLElement).closest("[data-hb]");
       if (!b) return;
@@ -912,7 +914,7 @@ export class Game {
       document.getElementById("ui-inventory")!.addEventListener("touchstart", (e) => {
         if (this.ui !== "inv" || this.inv.selected === -1) return;
         const t = e.target as HTMLElement;
-        if (t.closest(".invcell, .equip-cell, #inv-temp, button")) return;
+        if (t.closest(".invcell, .equip-cell, #inv-temp, #inv-bin, button")) return;
         this.inv.selected = -1;
         this.renderInv();
       });
@@ -2882,6 +2884,8 @@ export class Game {
   }
   // item currently lifted out of the grid ("temporary storage")
   temp: Slot | null = null;
+  // the Craft tab of the Inventory UI (by-hand recipes, no station needed)
+  invCraft = false;
 
   renderInv() {
     this.renderGrid(this.inv, document.getElementById("inv-grid")!);
@@ -2903,7 +2907,7 @@ export class Game {
       tempEl.style.backgroundImage = `url(${itemTiles(this.temp.itemId, this.temp.charges)[0] ?? ""})`;
       tempEl.onmousedown = (e) => {
         if (Date.now() - this.lastTouchTs < 700) { this.tapTemp(); return; }
-        this.startTempDrag(e);
+        if (this.temp) this.startTempDrag(e);
       };
       dropTemp.textContent = `Drop ${d.name}`;
       dropTemp.onclick = () => {
@@ -2917,7 +2921,10 @@ export class Game {
       tempEl.classList.remove("filled");
       tempEl.style.background = "";
       tempEl.style.backgroundImage = "";
-      tempEl.onmousedown = null;
+      // handler stays live: tapping the EMPTY shelf lifts the selected item onto it
+      tempEl.onmousedown = (e) => {
+        if (Date.now() - this.lastTouchTs < 700) this.tapTemp();
+      };
       dropTemp.onclick = null;
     }
     dropTemp.classList.toggle("hidden", !this.temp);
@@ -2954,16 +2961,20 @@ export class Game {
 
     // rebuild the side panel from scratch every render (accumulating text/buttons bug)
     const side = document.getElementById("inv-side")!;
+    this.renderCraftTab();
     const fInv = this.gridFocus === "chest" && this.chestInv ? this.chestInv : this.inv;
     const sel = fInv.selectedSlot();
     const shown = this.temp ?? sel;
     const kg = this.inv.weight() + (this.temp ? ITEMS[this.temp.itemId].mass : 0);
     const lim = this.inv.weightLimit();
     const dims = shown ? slotDims(shown) : null;
-    side.textContent = shown
+    side.innerHTML = "";
+    const txt = document.createElement("div");
+    txt.id = "side-text";
+    txt.textContent = (shown
       ? `${ITEMS[shown.itemId].name} — ${ITEMS[shown.itemId].desc}`
-      : "Click an item to inspect it; drag to move it.";
-    side.textContent += ` Weight ${kg.toFixed(1)} / ${lim} kg`;
+      : "Click an item to inspect it; drag to move it.") + ` Weight ${kg.toFixed(1)} / ${lim} kg`;
+    side.appendChild(txt);
     if (shown && dims && dims.w !== dims.h) {
       const rotBtn = document.createElement("button");
       rotBtn.textContent = "Rotate";
@@ -3052,7 +3063,14 @@ export class Game {
         cell.style.backgroundImage = `url(${tiles[Math.min(idx, tiles.length - 1)] ?? ""})`;
         const si = inv.slots.indexOf(s);
         if (si === inv.selected) cell.classList.add("active");
-        cell.onmouseenter = () => { document.getElementById("inv-side")!.textContent = `${d.name} — ${d.desc}`; };
+        // hover preview must only rewrite the description line, and never on
+        // touch: the synthesised mouseenter after a tap used to wipe the panel's
+        // buttons and weight line out from under the player
+        cell.onmouseenter = () => {
+          if (Date.now() - this.lastTouchTs < 700) return;
+          const t = document.getElementById("side-text");
+          if (t) t.textContent = `${d.name} — ${d.desc}`;
+        };
         cell.onmousedown = (e) => {
           // touch taps synthesise mousedown: recent touch means this tap selects/moves, not drags
           if (Date.now() - this.lastTouchTs < 700) this.tapCell(inv, x, y);
@@ -3067,12 +3085,43 @@ export class Game {
     }
   }
 
-  /** Touch semantics: tap selects; tapping another cell moves the selected item there — swapping when occupied. There is ONE selection across pack and chest grids: tapping the far grid pulls the selected item across. */
+  /** Touch semantics: tap selects; tapping another cell moves the selected item there — swapping when occupied. A lifted item (temporary storage) lands wherever the next cell tap falls. There is ONE selection across pack and chest grids: tapping the far grid pulls the selected item across. */
   private tapCell(inv: Inventory, x: number, y: number) {
     const hit = inv.slots.find((s) => {
       const d = slotDims(s);
       return x >= s.x && x < s.x + d.w && y >= s.y && y < s.y + d.h;
     });
+    if (this.temp) {
+      const t = this.temp;
+      const d = slotDims(t);
+      const ax = Math.min(x, inv.w - d.w), ay = Math.min(y, inv.h - d.h);
+      if (ax >= 0 && ay >= 0) {
+        const s: Slot = { ...t, x: ax, y: ay };
+        const oi = hit ? inv.slots.indexOf(hit) : -1;
+        if (oi >= 0) inv.slots.splice(oi, 1); // open hole so the swap legs see the real board
+        if (inv.fits(ax, ay, d.w, d.h, s)) {
+          inv.slots.push(s);
+          if (hit && !Game.placeSlotFree(inv, hit)) {
+            inv.slots.splice(inv.slots.indexOf(s), 1); // no spot for the occupant: undo both legs
+            inv.slots.splice(oi, 0, hit);
+            hud.toast("No room to swap.");
+            this.audio.error();
+            return;
+          }
+          this.temp = null;
+          this.tempOrigin = null;
+          this.setSel(inv, inv.slots.indexOf(s));
+          this.audio.place();
+          this.renderInv();
+          this.renderHeld();
+          return;
+        }
+        if (hit) inv.slots.splice(oi, 0, hit);
+      }
+      hud.toast("No room there.");
+      this.audio.error();
+      return;
+    }
     const other = inv === this.inv ? this.chestInv : this.inv;
     if (other) {
       const oSel = other.selectedSlot();
@@ -3327,6 +3376,39 @@ export class Game {
     }
     this.renderInv();
     this.renderHeld();
+  }
+
+  /** The Craft tab of the Inventory UI: every by-hand recipe — no station needed. */
+  private renderCraftTab() {
+    const btn = document.getElementById("btn-inv-craft")!;
+    const panel = document.getElementById("inv-craft")!;
+    btn.textContent = this.invCraft ? "Close Craft" : "Craft by hand";
+    btn.classList.toggle("on", this.invCraft);
+    panel.classList.toggle("hidden", !this.invCraft);
+    if (!this.invCraft) return;
+    panel.innerHTML = "";
+    for (const r of RECIPES) {
+      if (r.station !== null) continue;
+      const row = document.createElement("div");
+      row.className = "craft-row";
+      const label = `${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""}`;
+      const needs = Object.entries(r.needs).map(([id, n]) => `${n}× ${ITEMS[id].name}`).join(", ");
+      row.innerHTML = `<span class="what"><img class="craft-art" src="${itemArtUrl(r.out)}" alt="">${label} <span class="needs">(${needs})</span></span>`;
+      const b = document.createElement("button");
+      b.textContent = "Craft";
+      b.disabled = !canCraft(this.inv, r);
+      b.onclick = () => {
+        const left = doCraft(this.inv, r);
+        if (left === null) { this.audio.error(); return; }
+        if (left > 0) this.giveOrDrop(r.out, left);
+        this.tut?.notify("craft");
+        if (ITEMS[r.out]?.tool) this.questBump("tool");
+        this.audio.place();
+        this.renderInv();
+      };
+      row.appendChild(b);
+      panel.appendChild(row);
+    }
   }
 
   renderCraft(mode: "bench" | "smelt" | "armory") {

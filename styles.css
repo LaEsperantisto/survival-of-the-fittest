@@ -159,6 +159,18 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 .equip-lab { font-size: 11px; color: #aab3c0; margin-top: 3px; }
 .equip-hint { font-size: 12px; color: #8a93a5; margin-left: 8px; }
 #inv-side { margin-top: 14px; min-height: 44px; font-size: 15px; color: #c9c2b4; }
+#inv-craft-bar { margin-top: 12px; }
+#inv-craft-bar button.on { background: #d8b74f; border-color: #d8b74f; color: #14161c; }
+#inv-craft { margin-top: 8px; max-height: 40vh; overflow-y: auto; }
+/* Mobile: a 460px floor used to push the Bin and temp shelf off a phone screen */
+@media (max-width: 720px) {
+  .panel { min-width: 0; padding: 16px 14px; }
+  #ui-inventory { width: 96vw; }
+  #inv-main { flex-wrap: wrap; gap: 12px; }
+  #inv-temp-wrap, #inv-bin-wrap { border-left: none; padding-left: 0; min-width: 0; }
+  #equip-row { flex-wrap: wrap; gap: 10px; }
+  .equip-hint { display: none; }
+}
 .craft-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 4px;
   font-size: 15px; border-bottom: 1px solid #333a45; }
 .craft-row .needs { color: #9aa0aa; font-size: 13px; }
