@@ -388,7 +388,7 @@ Sand Wurm skin — thick, heat-tempered plating for the toughest Body gear.
 Body-slot armour stitched from Wurm Hide and Chitin; shrugs off most of every hit — less plate than a Cuirass-tier shell in exchange — and the Chitin layers keep the Sandstorm at a quarter strength against the wearer.
 
 **Sand Vulture**:
-A bold scavenger that follows misfortune: it keeps its distance from the healthy and dives only at prey that is already hurt. Its meat is food once cooked.
+A dark scavenger that soars the sky in slow banked circles, never walking the sand. It keeps its distance from the healthy and drops from the sky only at prey that is already hurt. Its meat is food once cooked.
 
 **Thornback Tortoise**:
 A slow, high-tempered grazer armored in a spiked dome; it neither hunts nor flees. Its Shell is heavy armour material, and Traders covet it.

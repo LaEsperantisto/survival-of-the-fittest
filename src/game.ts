@@ -34,6 +34,8 @@ export interface Mob {
   kind: MobKind; hp: number; x: number; y: number; z: number;
   homeX: number; homeZ: number;
   yaw: number; biteCd: number; wanderT: number; wanderYaw: number; wanderOn: boolean;
+  flyBase: number; // vulture cruise height above the terrain below it
+  bank: number;    // circling direction (±1) while soaring
   hitFlash?: number;  // seconds left of the red damage flash
   flashOn?: boolean;  // whether the visual currently has flash materials swapped in
   vis: MobVisual;
@@ -1604,10 +1606,13 @@ export class Game {
     vis.group.position.set(x, y, z);
     vis.group.rotation.y = Math.random() * Math.PI * 2;
     this.renderer.addSceneObject(vis.group);
-    this.mobs.push({
+    const m: Mob = {
       kind, hp: MOB_DEFS[kind].hp, x, y, z, homeX: x, homeZ: z, yaw: vis.group.rotation.y,
-      biteCd: 0, wanderT: Math.random() * 3, wanderYaw: Math.random() * Math.PI * 2, wanderOn: false, vis,
-    });
+      biteCd: 0, wanderT: Math.random() * 3, wanderYaw: Math.random() * Math.PI * 2, wanderOn: false,
+      flyBase: 5 + Math.random() * 4, bank: Math.random() < 0.5 ? -1 : 1, vis,
+    };
+    if (kind === "vulture") { m.y += m.flyBase; vis.group.position.y = m.y; } // born in the air
+    this.mobs.push(m);
   }
 
   private killMob(m: Mob) {
@@ -1842,6 +1847,7 @@ export class Game {
         m.vis.animate(t, moving);
         continue;
       }
+      if (m.kind === "vulture") { this.vultureFrame(m, p, t, dt); continue; }
       const dx = p.x - m.x, dz = p.z - m.z;
       const dist = Math.hypot(dx, dz);
       if (dist > 110) { this.renderer.removeSceneObject(m.vis.group); this.mobs = this.mobs.filter((x) => x !== m); continue; }
@@ -1849,10 +1855,8 @@ export class Game {
       // a snake can only reach you through open column between its head and your
       // feet: one lurking under the floor you stand on stays lurking
       const canReach = this.columnClear(m.x, m.z, m.y + 0.2, p.y + 1.4);
-      // Vultures are cowards: they only commit to prey that is already bleeding
-      const prey = m.kind === "vulture" && this.survival.health < 60;
-      const aggroR = m.kind === "vulture" ? (prey ? def.aggroR : 0) : def.aggroR;
-      const fleeR = m.kind === "vulture" && !prey ? def.fleeR : (m.kind === "vulture" ? 0 : def.fleeR);
+      const aggroR = def.aggroR;
+      const fleeR = def.fleeR;
       if (aggroR > 0 && dist < aggroR && dist > 0.01 && canReach) {
         vx = (dx / dist) * def.speed; vz = (dz / dist) * def.speed;
         m.yaw = Math.atan2(vx, vz);
@@ -1882,6 +1886,61 @@ export class Game {
       m.vis.group.rotation.y = m.yaw;
       m.vis.animate(t, moving);
     }
+  }
+
+  /** Soaring Sand Vulture: it cruises 5–9 m over the dunes in slow banked
+   *  circles, never walks the sand, and only drops down to strike prey that
+   *  is already bleeding. Fleeing stays airborne; obstacles at flight height
+   *  bank the circle away instead of climbing the slope. */
+  private vultureFrame(m: Mob, p: { x: number; y: number; z: number }, t: number, dt: number): void {
+    const def = MOB_DEFS[m.kind];
+    const dx = p.x - m.x, dz = p.z - m.z, dist = Math.hypot(dx, dz);
+    if (dist > 110) { this.renderer.removeSceneObject(m.vis.group); this.mobs = this.mobs.filter((x) => x !== m); return; }
+    let vx = 0, vz = 0, bank = 0, targetY: number;
+    const surf = this.mobSurface(m.x, m.z);
+    // Cowards: they only commit to prey that is already bleeding.
+    if (this.survival.health < 60 && dist < 14 && dist > 0.01) {
+      // committed: come down onto the sand and close in
+      targetY = this.mobGround(m, m.x, m.z);
+      vx = (dx / dist) * def.speed; vz = (dz / dist) * def.speed;
+      m.yaw = Math.atan2(vx, vz);
+      if (dist < 1.2 + def.hitR && m.biteCd <= 0 && m.y <= targetY + 0.6) {
+        m.biteCd = def.biteCd;
+        const armor = 1 - (this.equip.body ? (ITEMS[this.equip.body.itemId].armor ?? 0) : 0);
+        this.survival.hurt(def.biteDmg * armor, "sand vulture strike");
+        hud.toast(armor < 1 ? "A sand vulture strikes you — the armour soaks some of it." : "A sand vulture strikes!");
+      }
+    } else if (dist < def.fleeR && dist > 0.01) {
+      // spooked: airborne away, gaining height
+      targetY = surf + m.flyBase + 2;
+      vx = (-dx / dist) * def.speed; vz = (-dz / dist) * def.speed;
+      m.yaw = Math.atan2(vx, vz);
+    } else {
+      // thermalling: one slow banked circle until it picks another
+      m.wanderT -= dt;
+      if (m.wanderT <= 0) { m.wanderT = 6 + Math.random() * 6; m.bank = Math.random() < 0.5 ? -1 : 1; }
+      m.wanderYaw += m.bank * 0.45 * dt;
+      vx = Math.sin(m.wanderYaw) * def.speed * 0.6; vz = Math.cos(m.wanderYaw) * def.speed * 0.6;
+      m.yaw = m.wanderYaw;
+      targetY = surf + m.flyBase + Math.sin(t * 0.13 + m.homeX * 0.7) * 1.2;
+      bank = m.bank;
+    }
+    m.biteCd -= dt;
+    if (vx !== 0 || vz !== 0) {
+      const nx = m.x + vx * dt, nz = m.z + vz * dt;
+      // clear-cell at flight height instead of mobCanStand: dune or butte
+      // rising into the path turns the bird instead of shoving it uphill
+      if (this.mobSurface(nx, nz) + 1.8 < m.y) { m.x = nx; m.z = nz; }
+      else { m.bank = -m.bank; m.wanderYaw = m.yaw = m.yaw + bank * 0.4; }
+    }
+    const rise = targetY - m.y;
+    m.y += Math.max(-2.5 * dt, Math.min(2.2 * dt, rise));
+    m.vis.group.position.set(m.x, m.y, m.z);
+    m.vis.group.rotation.y = m.yaw;
+    // visible wing-drop through the turn
+    const tilt = bank * 0.3;
+    m.vis.group.rotation.z += (tilt - m.vis.group.rotation.z) * Math.min(1, dt * 3);
+    m.vis.animate(t, vx !== 0 || vz !== 0 ? 1 : 0);
   }
 
   // ---------- Armour Slots: equip / unequip ----------

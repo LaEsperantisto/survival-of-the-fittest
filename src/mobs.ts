@@ -222,23 +222,23 @@ function wurmTex(): THREE.CanvasTexture {
   });
 }
 
-/** Vulture plumage: dusty tan-grey base, dark ragged feather streaks, pale neck frill band. */
+/** Vulture plumage: dark slate-brown base, darker ragged feather streaks, pale neck frill band. */
 function vultureTex(): THREE.CanvasTexture {
   return canvasTex((g, rnd) => {
-    g.fillStyle = "#a8906a";
+    g.fillStyle = "#574a41";
     g.fillRect(0, 0, 64, 64);
     for (let i = 0; i < 640; i++) {
-      g.fillStyle = rnd() > 0.5 ? "#b9a179" : "#8f7854";
+      g.fillStyle = rnd() > 0.5 ? "#6b5c50" : "#463b34";
       g.fillRect((rnd() * 64) | 0, (rnd() * 64) | 0, 1, 1);
     }
     // ragged feather streaks
     for (let i = 0; i < 70; i++) {
-      g.fillStyle = "#75603f";
+      g.fillStyle = "#382f28";
       g.fillRect((rnd() * 64) | 0, (rnd() * 50) | 0, 2, 4);
     }
     // pale frill band (top rows)
     for (let y = 0; y < 6; y++) {
-      g.fillStyle = y >= 3 ? "#c9b68e" : "#b8a37b";
+      g.fillStyle = y >= 3 ? "#cfc4ae" : "#bcae92";
       g.fillRect(0, y, 64, 1);
     }
   });
@@ -735,71 +735,82 @@ function makeWurm(): MobShape {
   return { group, animate };
 }
 
-// sand vulture: ~0.9 m tall hunched scavenger; faces +Z (head at +Z)
+// sand vulture: ~1.1 m soaring scavenger, ~2 m wingspan; faces +Z (head at +Z)
 function makeVulture(): MobShape {
   const mats = getVultureMats();
   const group = new THREE.Group();
-  const pivot = new THREE.Group(); // hunch bob + forward lean
+  const pivot = new THREE.Group(); // gentle soaring sway
   group.add(pivot);
 
-  // hunched plump body, tilted forward
-  const body = sph(0.52, 0.5, 0.68, mats.plumage, 0, 0.44, -0.06);
-  body.rotation.x = -0.12;
+  // dark horizontal body, slightly tail-heavy
+  const body = sph(0.32, 0.34, 0.6, mats.plumage, 0, 0.66, -0.08);
+  body.rotation.x = 0.06;
   pivot.add(body);
 
-  // bald pinkish neck leaning forward-up into a small head
+  // spread tail: a fan of flat feather slats at the back
+  for (const s of [-1, 0, 1]) {
+    const tail = box(0.1, 0.03, 0.36, mats.feather, s * 0.08, 0.62, -0.62);
+    tail.rotation.y = s * 0.32;
+    pivot.add(tail);
+  }
+
+  // long bare neck, pale frill at its root, small bald head with a hooked beak
   const neck = new THREE.Group();
-  neck.position.set(0, 0.60, 0.20);
-  neck.rotation.x = 0.25;
-  neck.add(box(0.13, 0.22, 0.13, mats.skin, 0, 0.09, 0));
-  neck.add(box(0.26, 0.09, 0.26, mats.plumage, 0, -0.02, -0.01)); // pale frill collar
+  neck.position.set(0, 0.78, 0.34);
+  neck.rotation.x = 0.18;
+  neck.add(box(0.11, 0.3, 0.11, mats.skin, 0, 0.15, 0)); // long bare pinkish neck
+  neck.add(box(0.22, 0.07, 0.22, mats.plumage, 0, 0.0, -0.01)); // pale frill collar
   const headRoot = new THREE.Group();
-  headRoot.position.set(0, 0.22, 0.02);
-  headRoot.add(sph(0.19, 0.17, 0.2, mats.skin, 0, 0, 0.03));
-  headRoot.add(box(0.09, 0.09, 0.13, mats.beak, 0, -0.01, 0.14)); // hooked dark beak
-  const hook = box(0.05, 0.07, 0.06, mats.beak, 0, -0.06, 0.20);
-  hook.rotation.x = 0.5;
+  headRoot.position.set(0, 0.32, 0.01);
+  headRoot.add(sph(0.13, 0.12, 0.15, mats.skin, 0, 0, 0.02));
+  headRoot.add(box(0.08, 0.07, 0.12, mats.beak, 0, -0.01, 0.12)); // dark beak
+  const hook = box(0.05, 0.06, 0.05, mats.beak, 0, -0.055, 0.175); // hooked tip
+  hook.rotation.x = 0.6;
   headRoot.add(hook);
-  headRoot.add(box(0.03, 0.03, 0.02, mats.eye, -0.08, 0.04, 0.10));
-  headRoot.add(box(0.03, 0.03, 0.02, mats.eye, 0.08, 0.04, 0.10));
+  headRoot.add(box(0.025, 0.025, 0.02, mats.eye, -0.06, 0.03, 0.08));
+  headRoot.add(box(0.025, 0.025, 0.02, mats.eye, 0.06, 0.03, 0.08));
   neck.add(headRoot);
   pivot.add(neck);
 
-  // ragged folded wings: flattened layered boxes slumped at the sides
+  // broad tapered wings: wide root plank narrowing to long dark tips
   const wings: THREE.Group[] = [];
   for (const side of [-1, 1]) {
     const wing = new THREE.Group();
-    wing.position.set(side * 0.26, 0.52, -0.04);
-    wing.rotation.z = side * 0.35;
-    wing.add(box(0.08, 0.34, 0.5, mats.plumage, 0, -0.08, 0));
-    wing.add(box(0.05, 0.28, 0.42, mats.feather, side * 0.04, -0.2, -0.06)); // darker folded tips
+    wing.position.set(side * 0.16, 0.72, -0.02);
+    wing.add(box(0.55, 0.05, 0.46, mats.plumage, side * 0.28, 0, 0.01));
+    const tip = box(0.5, 0.04, 0.36, mats.feather, side * 0.75, 0, -0.03);
+    tip.rotation.z = side * 0.1; // slight dihedral
+    wing.add(tip);
     wings.push(wing);
     pivot.add(wing);
   }
 
-  // stubby scaled legs + dark talon feet
-  const legs: THREE.Mesh[] = [];
+  // long bare legs with dark talons, trailing in flight
+  const legs: THREE.Group[] = [];
   for (const side of [-1, 1]) {
-    const leg = box(0.09, 0.2, 0.09, mats.feather, side * 0.13, 0.1, 0.02);
+    const leg = new THREE.Group();
+    leg.position.set(side * 0.1, 0.5, 0.02);
+    leg.add(box(0.05, 0.34, 0.05, mats.skin, 0, -0.17, 0));
+    leg.add(box(0.07, 0.03, 0.14, mats.beak, 0, -0.35, 0.05)); // talon foot
     legs.push(leg);
-    pivot.add(leg, box(0.1, 0.04, 0.16, mats.beak, side * 0.13, 0.02, 0.08));
+    pivot.add(leg);
   }
 
   const animate = (t: number, moving: number): void => {
     const mv = Math.max(0, Math.min(1, moving));
-    // idle hunch bob; walking adds a hopped bob + forward lean
-    pivot.position.y = Math.sin(t * 1.6) * 0.008 + Math.abs(Math.sin(t * (3 + 2.6 * mv))) * 0.02 * mv;
-    pivot.rotation.x = 0.12 * mv + Math.sin(t * 1.3) * 0.012 * (1 - mv);
-    // ragged wings flutter when moving, sag at rest
+    // airborne: deep even flaps; on the sand: wings half-folded, fluttering
     for (let i = 0; i < 2; i++) {
       const side = i === 0 ? -1 : 1;
-      const flap = Math.sin(t * (4.5 + 3 * mv) + i * 0.9) * (0.05 + 0.22 * mv);
-      wings[i].rotation.z = side * (0.35 + flap);
+      const flap = Math.sin(t * (2.2 + 2.6 * mv) + i * 0.5);
+      const fold = 0.14 - 0.5 * mv; // folded at rest, raised mid-flap in flight
+      wings[i].rotation.z = side * (fold + flap * (0.06 + 0.42 * mv));
     }
-    // head tucks into the hunch at rest, peers out while walking
-    headRoot.rotation.x = -0.18 + 0.28 * mv + Math.sin(t * 1.1) * 0.04 * (1 - mv);
-    const lp = t * (3.4 + 3 * mv);
-    for (let i = 0; i < legs.length; i++) legs[i].rotation.x = Math.sin(lp + i * Math.PI) * 0.4 * mv;
+    // body sways with the beat; neck leads a touch
+    pivot.position.y = Math.sin(t * 2.2) * 0.015 * mv;
+    pivot.rotation.x = 0.04 * Math.sin(t * 2.2 + 1.2) * mv;
+    headRoot.rotation.x = -0.1 + 0.12 * Math.sin(t * 0.9);
+    // legs hang straight and trail while flying, stiff on the ground
+    for (const leg of legs) leg.rotation.x = -0.5 * mv + Math.sin(t * 3.4 + 0.7) * 0.08 * mv;
   };
   return { group, animate };
 }
