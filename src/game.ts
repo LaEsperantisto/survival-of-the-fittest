@@ -34,6 +34,8 @@ export interface Mob {
   kind: MobKind; hp: number; x: number; y: number; z: number;
   homeX: number; homeZ: number;
   yaw: number; biteCd: number; wanderT: number; wanderYaw: number; wanderOn: boolean;
+  hitFlash?: number;  // seconds left of the red damage flash
+  flashOn?: boolean;  // whether the visual currently has flash materials swapped in
   vis: MobVisual;
 }
 export interface Raycast { hit: { x: number; y: number; z: number } | null; water: { x: number; y: number; z: number } | null; face: THREE.Vector3 }
@@ -1406,6 +1408,7 @@ export class Game {
         const it = sel ? ITEMS[sel.itemId] : null;
         const weapon = it?.weapon;
         mb.hp -= weapon ? weapon.dmg : 3 + (it?.tool?.tier ?? 0);
+        mb.hitFlash = 0.18;
         this.audio.thud();
         const kx = mb.x - this.player.pos.x, kz = mb.z - this.player.pos.z;
         const kl = Math.max(0.2, Math.hypot(kx, kz));
@@ -1807,6 +1810,10 @@ export class Game {
     const p = this.player.pos, t = this.timeSec;
     for (const m of this.mobs.slice()) {
       const def = MOB_DEFS[m.kind];
+      // damage feedback: swap the visual to red while hitFlash ticks down
+      if (m.hitFlash) m.hitFlash = Math.max(0, m.hitFlash - dt);
+      const flashing = (m.hitFlash ?? 0) > 0;
+      if (flashing !== (m.flashOn ?? false)) { m.vis.setFlash(flashing); m.flashOn = flashing; }
       // a Trader paces its stall — a slow beat within a few blocks of the
       // awning, never far from the spot it was placed at — and keeps an
       // eye on whoever is bargaining with it

@@ -1084,6 +1084,11 @@ export class Renderer {
    *  unlit fires, the game owns the map and mutates it in place. */
   fires = new Map<string, number>();
   private ghost: THREE.Mesh | null = null;
+  private ghostGeos = new Map<string, THREE.BufferGeometry>();
+  private matGhost = new THREE.MeshBasicMaterial({
+    map: this.atlas, vertexColors: true, transparent: true, opacity: 0.55,
+    depthWrite: false, side: THREE.DoubleSide,
+  });
 
   constructor(canvasParent: HTMLElement) {
     this.three = new THREE.WebGLRenderer({ antialias: false });
@@ -1187,22 +1192,68 @@ export class Renderer {
     this.dynLights.splice(i, 1);
   }
 
-  /** Translucent preview of the block the held item would place at x,y,z. */
-  setGhost(x: number, y: number, z: number, id: number) {
+  /** Translucent preview of the block the held item would place at x,y,z —
+   *  the block's real shape and texture, drawn full-bright at 55 %. */
+  setGhost(x: number, y: number, z: number, id: number, rot = 0) {
     if (!this.ghost) {
-      const mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.35, depthWrite: false });
-      this.ghost = new THREE.Mesh(new THREE.BoxGeometry(1.001, 1.001, 1.001), mat);
+      this.ghost = new THREE.Mesh(new THREE.BufferGeometry(), this.matGhost);
       const edges = new THREE.LineSegments(
         new THREE.EdgesGeometry(new THREE.BoxGeometry(1.02, 1.02, 1.02)),
         new THREE.LineBasicMaterial({ color: 0xd8b74f, transparent: true, opacity: 0.7 }));
+      edges.position.set(0.5, 0.5, 0.5);
       this.ghost.add(edges);
       this.ghost.renderOrder = 5;
       this.scene.add(this.ghost);
     }
-    const c = BLOCKS[id].color;
-    (this.ghost.material as THREE.MeshBasicMaterial).color.setRGB(c[0], c[1], c[2]);
-    this.ghost.position.set(x + 0.5, y + 0.5, z + 0.5);
+    const key = `${id}:${rot}`;
+    let geo = this.ghostGeos.get(key);
+    if (!geo) { geo = this.buildGhostGeo(id, rot); this.ghostGeos.set(key, geo); }
+    this.ghost.geometry = geo;
+    this.ghost.position.set(x, y, z);
     this.ghost.visible = true;
+  }
+
+  /** Real-shape faces for one cell: models where the block has one, textured
+   *  cubes otherwise — no neighbour culling, no light, geometry is cell-local. */
+  private buildGhostGeo(id: number, rot: number): THREE.BufferGeometry {
+    let faces: ShapeFace[];
+    if (DOOR_BLOCKS.has(id)) faces = always(slabFaces(0.04, 0, 0.02, 0.96, 1, 0.16));
+    else if (CROSS_BLOCKS.has(id)) faces = always([
+      shapeFace([1, 0, 1], 2, 0.92, [[0, 0, 0], [1, 0, 1], [1, 1, 1], [0, 1, 0]], (p) => [p[0], p[1]]),
+      shapeFace([1, 0, -1], 2, 0.92, [[0, 0, 1], [1, 0, 0], [1, 1, 0], [0, 1, 1]], (p) => [p[0], p[1]]),
+    ]);
+    else if (id === CURVED_HULL || id === HULL_SLOPE) faces = HULL_SHAPES[id].filter((f) => !f.fill);
+    else if (id === BENCH) faces = BENCH_MODEL;
+    else if (id === BENCH_EXT) faces = BENCHX_MODEL;
+    else if (id >= WATER7 && id <= WATER1) faces = slabFaces(0, 0, 0, 1, (33 - id) / 8, 1);
+    else faces = FACES.map((f, fi) => ({
+      dir: f.dir, kind: (fi === 0 ? 0 : fi === 1 ? 1 : 2) as 0 | 1 | 2,
+      pts: f.corners as [number, number, number][], sh: f.shade,
+      uv: (p: [number, number, number]) => [p[f.uv[0]], p[f.uv[1]]] as [number, number],
+    }));
+    // only the shape-bearing blocks turn with the rotation nibble
+    if (rot && (DOOR_BLOCKS.has(id) || id === CURVED_HULL || id === HULL_SLOPE || id === BENCH || id === BENCH_EXT))
+      faces = rotShapes(faces, rot);
+    const P: number[] = [], C: number[] = [], U: number[] = [], I: number[] = [];
+    for (const f of faces) {
+      const ft = FACE_T[id * 6 + f.kind];
+      const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
+      const base = P.length / 3;
+      for (const p of f.pts) {
+        P.push(p[0], p[1], p[2]);
+        C.push(f.sh, f.sh, f.sh);
+        const [u, v] = f.uv(p);
+        U.push((tx0 + 0.5 + u * (TILE_PX - 1)) / ATLAS_PX, (ty0 + 0.5 + v * (TILE_PX - 1)) / ATLAS_PX);
+      }
+      for (let t = 1; t + 1 < f.pts.length; t++) I.push(base, base + t, base + t + 1);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(P, 3));
+    geo.setAttribute("color", new THREE.Float32BufferAttribute(C, 3));
+    geo.setAttribute("uv", new THREE.Float32BufferAttribute(U, 2));
+    geo.setIndex(I);
+    geo.computeVertexNormals();
+    return geo;
   }
   clearGhost() { if (this.ghost) this.ghost.visible = false; }
 
@@ -1335,7 +1386,7 @@ export class Renderer {
     }
     if (!this.stormDome) {
       const m = new THREE.Mesh(new THREE.SphereGeometry(STORM_BREAKER_R, 28, 18),
-        new THREE.MeshBasicMaterial({ color: 0xd85848, transparent: true, opacity: 0.05, side: THREE.BackSide, depthWrite: false }));
+        new THREE.MeshBasicMaterial({ color: 0xd85848, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false }));
       m.renderOrder = 2; // over the world mesh; depthWrite off so it hides nothing
       this.stormDome = m;
       this.entityGroup.add(m);

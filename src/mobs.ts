@@ -437,6 +437,7 @@ function getTraderMats(): TraderMats {
 export interface MobVisual {
   group: THREE.Group;                        // origin = feet on the ground
   animate(t: number, moving: number): void;  // t = seconds, moving 0..1 gait blend
+  setFlash(on: boolean): void;               // hit feedback: all meshes to flat red
 }
 
 function box(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number): THREE.Mesh {
@@ -450,7 +451,7 @@ interface Seg { mesh: THREE.Mesh; bx: number; w: number; h: number; d: number; }
 interface Ridge { mesh: THREE.Mesh; w: number; }
 
 // snake: ~1.5 m long, ~0.25 m thick; faces +Z (head at +Z)
-function makeSnake(): MobVisual {
+function makeSnake(): MobShape {
   const mats = getSnakeMats();
   const group = new THREE.Group();
 
@@ -502,7 +503,7 @@ function makeSnake(): MobVisual {
 }
 
 // kangaroo rat: ~0.55 m long, 0.45 m tall; faces +Z
-function makeRat(): MobVisual {
+function makeRat(): MobShape {
   const mats = getRatMats();
   const group = new THREE.Group();
   const pivot = new THREE.Group(); // hopped up/down by animate
@@ -577,7 +578,7 @@ function sph(w: number, h: number, d: number, mat: THREE.Material, x: number, y:
 }
 
 // dust scorpion: ~1.1 m body, ~0.5 m tall with raised tail; faces +Z (head at +Z)
-function makeScorpion(): MobVisual {
+function makeScorpion(): MobShape {
   const mats = getScorpionMats();
   const group = new THREE.Group();
   const pivot = new THREE.Group(); // subtle walk bob
@@ -685,7 +686,7 @@ function makeScorpion(): MobVisual {
 }
 
 // sand wurm: ~2.4 m long plated worm, ~0.9 m tall; faces +Z (head at +Z), sits on the ground
-function makeWurm(): MobVisual {
+function makeWurm(): MobShape {
   const mats = getWurmMats();
   const group = new THREE.Group();
 
@@ -735,7 +736,7 @@ function makeWurm(): MobVisual {
 }
 
 // sand vulture: ~0.9 m tall hunched scavenger; faces +Z (head at +Z)
-function makeVulture(): MobVisual {
+function makeVulture(): MobShape {
   const mats = getVultureMats();
   const group = new THREE.Group();
   const pivot = new THREE.Group(); // hunch bob + forward lean
@@ -804,7 +805,7 @@ function makeVulture(): MobVisual {
 }
 
 // thornback tortoise: ~1.1 m long, ~0.75 m tall domed shell rimmed with thorns; faces +Z
-function makeTortoise(): MobVisual {
+function makeTortoise(): MobShape {
   const mats = getTortoiseMats();
   const group = new THREE.Group();
   const pivot = new THREE.Group(); // slow plod bob
@@ -860,7 +861,7 @@ function makeTortoise(): MobVisual {
 }
 
 // fennec fox: ~0.55 m long, sandy body with huge triangular ears; faces +Z
-function makeFennec(): MobVisual {
+function makeFennec(): MobShape {
   const mats = getFennecMats();
   const group = new THREE.Group();
   const pivot = new THREE.Group(); // trot bob
@@ -924,7 +925,7 @@ function makeFennec(): MobVisual {
 }
 
 // trader: 1.8 m tall robed humanoid merchant; paces its stall, faces +Z
-function makeTrader(): MobVisual {
+function makeTrader(): MobShape {
   const mats = getTraderMats();
   const group = new THREE.Group();
   const pivot = new THREE.Group(); // slow weight-shift sway
@@ -968,15 +969,29 @@ function makeTrader(): MobVisual {
   return { group, animate };
 }
 
+// what the model factories build; the wrapper adds hit-flash
+type MobShape = { group: THREE.Group; animate(t: number, moving: number): void; setFlash?(on: boolean): void };
+
+// flat full-bright red swapped in while a mob is taking a hit — one shared
+// material, originals parked on each mesh
+const FLASH_MAT = new THREE.MeshBasicMaterial({ color: 0xc83830 });
+function attachFlash(vis: MobShape): MobVisual {
+  const meshes: THREE.Mesh[] = [];
+  vis.group.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
+  const orig = meshes.map((m) => m.material);
+  vis.setFlash = (on: boolean) => meshes.forEach((m, i) => { m.material = on ? FLASH_MAT : orig[i]; });
+  return vis as MobVisual;
+}
+
 export function makeMobMesh(kind: MobKind): MobVisual {
   switch (kind) {
-    case "snake": return makeSnake();
-    case "rat": return makeRat();
-    case "scorpion": return makeScorpion();
-    case "wurm": return makeWurm();
-    case "trader": return makeTrader();
-    case "vulture": return makeVulture();
-    case "tortoise": return makeTortoise();
-    case "fennec": return makeFennec();
+    case "snake": return attachFlash(makeSnake());
+    case "rat": return attachFlash(makeRat());
+    case "scorpion": return attachFlash(makeScorpion());
+    case "wurm": return attachFlash(makeWurm());
+    case "trader": return attachFlash(makeTrader());
+    case "vulture": return attachFlash(makeVulture());
+    case "tortoise": return attachFlash(makeTortoise());
+    case "fennec": return attachFlash(makeFennec());
   }
 }
