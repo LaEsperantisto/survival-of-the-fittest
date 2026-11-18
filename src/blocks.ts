@@ -161,10 +161,11 @@ export const BLOCKS: BlockDef[] = [
   // a lit one keeps burning when re-placed.
   def({ id: THRUSTER, name: "Broken Thruster", solid: true, opaque: true, transparent: false, emissive: false, R: 1, breakTime: 5, tool: "disassembler", minTier: 0, placeable: true, color: [0.42, 0.44, 0.5] }),
   def({ id: THRUSTER_LIT, name: "Thruster (lit)", solid: true, opaque: true, transparent: false, emissive: true, R: 1, breakTime: 5, tool: "disassembler", minTier: 0, placeable: true, color: [0.9, 0.6, 0.3] }),
-  def({ id: ARMORY, name: "Armoury", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.45, 0.4, 0.36] }),
   // Sandstorm Breaker: a humming red pylon. Within STORM_BREAKER_R of it the
   // Sandstorm loses all teeth — no heat amplification, no wind-thirst, no blast.
-  def({ id: STORM_BREAKER, name: "Sandstorm Breaker", solid: true, opaque: true, transparent: false, emissive: true, R: 0.3, breakTime: 5, tool: "disassembler", minTier: 0, placeable: true, color: [0.72, 0.28, 0.24] }),
+  // It comes down only for an Alloy Disassembler.
+  def({ id: STORM_BREAKER, name: "Sandstorm Breaker", solid: true, opaque: true, transparent: false, emissive: true, R: 0.3, breakTime: 5, tool: "disassembler", minTier: 2, placeable: true, color: [0.72, 0.28, 0.24] }),
+  def({ id: ARMORY, name: "Armoury", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.45, 0.4, 0.36] }),
 ];
 
 /** Radius (blocks) of a Sandstorm Breaker's calm. */

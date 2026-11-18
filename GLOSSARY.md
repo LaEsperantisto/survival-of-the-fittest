@@ -298,7 +298,7 @@ A passing state of the open desert: wind-borne sand that amplifies whatever the 
 _Avoid_: dust storm, weather (there is nothing else)
 
 **Sandstorm Breaker**:
-A humming red pylon block. Standing within its radius, the Sandstorm loses all teeth on the body: no amplification, no extra Water drain, no scouring. The wreck holds one still-working pylon in its hall; more are craftable at a Crafting Bench, and each new one extends the calm. A Breaker's calm is visible as a faint red dome and a "STORM BROKEN" chip.
+A humming red pylon block. Standing within its radius, the Sandstorm loses all teeth on the body: no amplification, no extra Water drain, no scouring. The wreck holds one still-working pylon in its hall; more are craftable at a Crafting Bench, and each new one extends the calm. A Breaker's calm is visible as a faint red dome and a "STORM BROKEN" chip. The housing only comes down for an Alloy Disassembler.
 _Avoid_: windmill, storm lantern (it is not a light)
 
 **Engine Core**:
@@ -404,7 +404,7 @@ _Avoid_: fennec (bare, in prose)
 The Portable Light worn in the Light slot: toggled at will, it burns fuel charges and must be refueled — the only way to carry a Cave's worth of darkness back out.
 
 **Backpack**:
-An upgrade worn in the Backpack slot, expanding the Inventory Grid and/or raising the Weight Limit. (Backpack I, then the larger Backpack II.)
+An upgrade worn in the Backpack slot, expanding the Inventory Grid and/or raising the Weight Limit. The bare Grid is 5×4; Backpack I grows it to 6×5 and adds 20 kg, then the larger Backpack II to 7×6 and 40 kg.
 
 **Voidbreaker**:
 A Cheat Menu tool that shatters any block on the spot — Tool tiers, break times and unbreakable blocks (even a Broken Thruster) all lose the argument. It has no recipe and exists only for play-mode mischief.

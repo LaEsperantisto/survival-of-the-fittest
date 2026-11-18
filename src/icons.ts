@@ -108,6 +108,22 @@ function drawArt(id: string, w: number, h: number, color: string, tier = ""): HT
       g.fillRect(4, 1, 2, 1); g.fillRect(7, 0, 2, 1); g.fillRect(11, 1, 2, 1);
       return cv;
     }
+    case "snake_skin": { // a hide peeled off in one piece and hung up: diamond-scaled, forked tail
+      const hide = [[5, 1], [11, 1], [13, 6], [12, 20], [10, 26], [9, 31], [8, 28], [7, 31], [6, 26], [4, 20], [3, 6]];
+      poly(g, hide, "#b3946a");
+      g.strokeStyle = "#7a5f3e"; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(hide[0][0], hide[0][1]);
+      for (const [x, y] of hide) g.lineTo(x, y);
+      g.closePath(); g.stroke();
+      rect(g, 4, 3, 8, 1, "#8a6f4c");                 // neck ring where it was cut
+      rect(g, 7, 4, 2, 22, "#cfae84");                // pale belly stripe
+      g.fillStyle = "#8a6f4c";                        // diamond scale rows
+      for (let y = 6; y <= 22; y += 4)
+        for (let x = 5 + ((y / 4) % 2); x <= 11; x += 3) g.fillRect(x, y, 2, 1);
+      g.fillStyle = "#6e5636";                        // ragged tail split
+      g.fillRect(8, 26, 1, 5);
+      return cv;
+    }
     case "sword": // forged blade: steel edge, crossguard, wrapped grip
       rect(g, 8, 0, 1, 1, "#eef3f8"); rect(g, 7, 1, 3, 17, "#c9d2dc");
       rect(g, 8, 1, 1, 17, "#eef3f8");

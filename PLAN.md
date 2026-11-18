@@ -1,67 +1,70 @@
-# Feature Plan (2026-11-16)
+# Feature Plan (2026-11-18)
 
-Grouped into six execution batches. Each batch: edit → `npx tsc --noEmit` → live verify in browser → `npm run build` → commit/push both repos (root + `dist/` frontend), per AGENTS.md.
+Five execution batches. Each batch: edit → `npx tsc --noEmit` → live verify in dev browser
+(`npm run dev`, Playwright tab) → `npm run build` → commit+push **both** repos (root + `dist/`), per AGENTS.md.
 
-## Batch 1 — HUD/CSS micro-fixes (low risk)
+## Batch 1 — copy, icons, block defs (low risk)
+1. **Favicon = the Sun**: replace the PNG data-URI in `index.html` with an inline SVG favicon — orange
+   disc + rays matching the `#warn-hot` overheating indicator (☀ U+2600, `#ff7a2e`, styles.css:213).
+2. **Storm Breaker needs an Alloy Disassembler**: `STORM_BREAKER` def (blocks.ts:167) `minTier: 0` → `2`
+   (disassemblers top out at tier 2 = alloy). Same for `THRUSTER`/`THRUSTER_LIT`? — no, only the
+   breaker was asked.
+3. **Bag sizes**: default grid 3×4 → **5×4** (`items.ts:167` `w=3;h=4`, `game.ts bagSize()` fallback
+   `{w:3,h:4}`); Backpack I bag 4×5 → **6×5** (items.ts:77, desc too); Backpack II bag 5×6 → **7×6**
+   (items.ts:112, desc too) and its item footprint 2×2 → **3×2**. Update GLOSSARY Backpack entry and any
+   README grid numbers.
+4. **Mobile button labels** (`index.html:61-62`): "Act" → "Use Block", "Use" → "Use Item".
+5. **Snake Skin item icon**: `icons.ts` has no `snake_skin` case → renders transparent. Add a case:
+   a 1×2 hanging hide pelt with scale pattern, base `#b3946a`.
+6. **Armoury / Sandstorm Breaker popup names swapped** (user-reported): code defs look correct
+   (blocks.ts:167-169); reproduce live first (place both, look, read `#block-name`), then fix whatever
+   layer is swapped (id map, display name, or model texture pairing).
 
-1. **Quest pop-up above surge button — move up**: `#waypoint` `bottom: 64px` → ~96px (styles.css:61). Visual check whether the intended popup is `#waypoint` or `#tut-card` (bottom 170px); the one overlapping the surge-button row is `#waypoint`.
-2. **Quest panel (top corner) — lower**: `#quest` `top: 44px` → ~56px (styles.css:38).
-3. **Mining bar — lower**: `#breakbar` `top: 54%` → ~57% (styles.css:26).
-4. **Sweat-surge cooldown halved**: `survival.ts:189` `surgeCooldown = 10` → `5`; update the controls-list text in `main.ts:237`.
-5. **Favicon**: inline PNG data-URI `<link rel="icon">` in `index.html` head, drawn from the game's tile art.
-6. **"E: Open / Close Door"**: `promptFor()` (game.ts:1267-1276) for DOOR_INNER / DOOR_INNER_UPPER (and Sealed Doors if currently asymmetric).
-7. **Multi-block display names**: name map for variant blocks (BENCH_EXT, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED_EXT, curved variants) → main block's name in the block-name tooltip, prompts, and break toasts.
+## Batch 2 — renderer polish
+7. **Storm dome**: `renderer.setStormDome` — `opacity 0.05` → `0.12`, `side: BackSide` → `DoubleSide`
+   (visible from inside AND outside).
+8. **Ghost block = real texture/model**: `renderer.setGhost` currently shows a flat coloured cube.
+   Rebuild: geometry from the block's actual look — atlas-tiled cube (with the block's TILE faces),
+   chamfer shapes for curved hull/slope, bench/bed models, door slab, crossed quads for sapling/crops.
+   Constant full-bright vertex colours, `MeshBasicMaterial` + atlas map, opacity ~0.55, `depthWrite: false`,
+   cache geometry per `(id, rot)`.
+9. **Mobs flash red when hit**: `MobVisual` gains `setFlash(on)`; at model build, collect every mesh;
+   while flashing swap to a shared red material, then restore. Trigger: game.ts:1408 attack →
+   `m.hitFlash = 0.15`; decay in `mobFrame`. A few frames of pure red, no tint blending.
 
-## Batch 2 — Rod consolidation & recipe tweaks
+## Batch 3 — caves
+10. **Ore density ÷10**: wall-crust thresholds (gen.ts:996-999: cobalt 0.72, iron 0.665, copper 0.7,
+    alabaster 0.715). Measure current ore-cell rate with a tsx sampling script against the real noise
+    functions, find thresholds giving ~10 % of the current yield, apply, re-measure to confirm.
+11. **Cave openings to the surface**: add a deterministic breach field (value noise at ~1/9 scale) —
+    inside a breach patch the cave ceiling rises to the surface so the cave band carves an actual hole
+    (genChunk underground loop already carves any `caveC` cell up to the local `top`; keep `caveAt` and
+    the chunk loop consistent via a shared `caveCeil(seed,x,z,h)`). Guards stay: crash site, oasis
+    seals, town plots. Verify from the air (screenshot) and by standing in a hole.
 
-8. **Metal Rod ≡ Iron Rod** (item id is `metal`, name "Metal Rod"): rename `metal` → display "Iron Rod" everywhere (items.ts:52, crafting.ts, quests, tutorial, instructions, catalog, GLOSSARY); **delete the separate `ironrod` item** (items.ts:63) and the `2×ironrod → metal` recipe; SMELT: iron ore → directly Iron Rod (×2 per ore, as the ore description already promises); all consumers of `needs: { metal: n }` keep working (id unchanged — clean rename, no aliases).
-9. **Iron Rod texture grey**: icons.ts rod art + `color` → grey steel (the old orange ironrod art disappears with the item).
-10. **Inside Door costs 1 Iron Rod**: crafting.ts:56 `{ metal: 1, deadwood: 1 }` → `{ metal: 1 }`.
-11. **Wood Log → 2× Dead Wood**: new hand-craftable recipe `{ out: deadwood ×2, needs: { wood: 1 } }` (crafting.ts).
+## Batch 4 — vultures
+12. **Flight**: vultures are airborne — cruise 5–9 m above terrain, slow circling wander (banked yaw),
+    no gravity/ground-snap, no `mobCanStand` (instead: clear-cell check at flight height); descend to
+    ground to bite committed (bleeding) prey, fly away from non-prey (flee unchanged but airborne).
+    Spawn height handled in spawn code; despawn unchanged.
+13. **Vulture model**: replace the hunched 0.9 m walker: dark body, long pale neck + small bald head with
+    hooked beak, broad tapered wings that flap on `animate(t, moving)`, spread tail, long bare legs.
+    Verify with close-range screenshots from several angles.
 
-## Batch 3 — Survival systems
+## Batch 5 — rotation & multi-block placement
+14. **R rotates, G drops**: field R key handler (game.ts:858) stops throwing items — R rotates a held
+    rotatable block only (no-op otherwise, keep the inventory-grid R behaviour). New G key: drop the
+    currently-held item (same path as the old throw branch + mobile Drop parity). Update the controls
+    list in main.ts:238 and README instructions sentence.
+15. **Rotation actually does something on placement**: `place()` picks the bench peer cell and the bed's
+    second cell from `slot.blockRot` direction (0→+x, 1→+z, 2→−x, 3→−z) instead of the first open
+    neighbour / fixed +x; store the rot nibble on every constituent cell. Meshing already derives
+    orientation from partner position + stored rot — verify bench, bed, curved hull visibly turn with R.
+16. **Multi-block placement validation**: Bed — require BOTH cells air, solid floor under both, refuse
+    with a toast if the rotated partner cell is blocked (no more silent 1×1 beds). Bench — peer cell must
+    be air at the rotated direction AND have solid floor; doors — floor under the lower cell required.
+    Check every multi-block pair (bed+pillow, bench+ext, door+upper) for the same hole/occupancy bugs.
 
-12. **Fall damage**: player.ts physics — record the y where the fall began; on landing, damage ≈ `k × (fallDist − 4)` above a 4-block grace, lethal ≈ 16 blocks; cause `"fall"`; tutorial/instructions text updated.
-13. **No heat damage in regulated air**: survival.ts damage gate — when the player's cell sits in a sealed Space with enough Heat Regulator capacity (same check that lights the `chip-reg` "REGULATED" chip), skip hot/cold body damage entirely; drift toward neutral still applies.
-14. **Sandstorm Breaker (new block)**: next free id; `tool: "disassembler"`, hand-unbreakable; one instance placed by `paintShip` (gen.ts:455+) inside the wreck. Radius R (recommend 8): survival.ts receives a `stormShield` flag when the player is within R of a breaker — storm amplification (survival.ts:118), water-drain multiplier (:144), and sand blast (:153) all zero. HUD chip "STORM BROKEN" (pattern of `chip-reg`); renderer draws a faint red sphere (`MeshBasicMaterial`, `side: BackSide`, low opacity) at each breaker's radius only while the player is inside one.
-15. **Chitin rebalance**: chitin-containing body armour loses ~10pp damage reduction (Wurmsuit 0.55 → 0.45; any other chitin gear likewise), and chitin gear grants **75% sandstorm resistance** (storm terms ×0.25 while worn — stacks under a Breaker trivially). Glossary entries for Chitin/Wurmsuit updated at implementation time.
-16. **Ores not placeable**: `placeable: false` on IRON_ORE / COPPER_ORE / COBALT_ORE / ALABASTER block defs (blocks.ts); mining still yields the item; placement path already respects the flag.
-
-## Batch 4 — New items, station, caches
-
-17. **Armoury (new block + station)**: openable like BENCH (`openStation` mode); hosts all armour-slot gear recipes — reptile armour, chitin gear, Tortoise Cuirass, Wurmsuit, Body Heat Regulator, Backpacks, Visors (migrated from `bench: true`); Armoury block itself craftable at the bench for ~4 deadwood + 2 iron rods.
-18. **Hot Water Pouch**: new item; made by standing at a lit Campfire holding `canister_full` — new prompt "E: Heat the water" → pouch into pack; using it (Q): body Heat pulse toward hot (recommend +10 °C instantaneous) and a `canister_empty` returned.
-19. **Broken & Lit Thruster items**: breaking THRUSTER / THRUSTER_LIT (currently `breakTime: -1`) — see decision below — drops `thruster_broken` / `thruster_lit` item; re-placing restores the block in that state; lit thruster keeps emissive.
-20. **Death Indicator**: vertical translucent beam at every death-Cache location (death kind only, not Reward Caches); beam **and** the existing ground mark (`markerEid`) are removed the moment the cache is emptied, or if it held nothing.
-
-## Batch 5 — Renderer, rotation, fire
-
-21. **Rotation system**: per-position rotation nibble — sparse `Map<"x,y,z", rot>` in world.ts, persisted in run-save deltas (no block-id explosion). Applied by renderer.ts chunk meshing (rotate face sets) and by placement (`place()` stores the held item's current rotation). Only non-natural blocks carry rotation; natural terrain stays rot 0.
-22. **Rotate with R + ghost block**: translucent preview mesh at the `place()` target whenever the held item is placeable; **R rotates it when the held item is a rotatable placeable block** — see conflict note below.
-23. **Ship & structure orientation**: gen.ts stamp code records rotations so CURVED_HULL / HULL_SLOPE chamfer the correct edges around the hull, doors face out, etc.
-24. **Curved-block light leaks fixed** (user decision 2026-11-16): light must keep passing through curved blocks exactly as today — the fix is purely in meshing: geometry merging must never merge across the curved-block ↔ full-block boundary (bridge faces close the corners on their own), so no seam exposes the neighbour's culled face.
-25. **Crafting Bench looks like a bench**: custom model in the renderer's ShapeFace path (working top + drawer/legs frame spanning the 2 cells); BENCH_EXT stays part of the 2-block logic but is named "Crafting Bench" (item 7).
-26. **Campfire lit only with fuel**: emissive + point light gated on `campCharges > 0`; empty fire = cold coals (no light, no smelting — matches existing charge checks).
-27. **Campfire refuelling**: at a Campfire holding **Wood Log** → +2 charges; **Kindling** → +0.5; prompt "E: Feed the fire".
-28. **Head Lantern stronger**: higher intensity/range on the carried light (renderer light params).
-
-## Batch 6 — Items, fuel persistence, mob polish, ship tweaks
-
-29. **Fuel rides the item**: lantern/regulator `charges` move onto the inventory `Slot` itself — preserved across unequip, drag, drop, death-cache, chest transfer, and save/load (currently only equip slots persist, game.ts:432).
-30. **Fuel-level textures**: lamp and Body Regulator textures change at charge thresholds (empty / low / full) in world texture **and** item art.
-31. **Item art pass** (icons.ts): real silhouettes for tools (shovel / pickaxe / axe / bucket / disassembler), new art for **Reptile Armour** (currently missing), grey rods, pouch, thruster items, canister states.
-32. **Wheat → Farmland bug**: game.ts:1406 and :2084 replace WHEAT with FARMLAND on break — change to AIR (breaking wheat leaves bare dirt it was planted on, not tilled land).
-33. **Water compartment dirt floor**: paintShip (gen.ts:509) — DIRT ring around the sunken tank (and inside the compartment floor where exposed).
-34. **Tutorial rework**: remove dirt from the tour's granted items (dirt is now in the ship); **skip** (Esc/button) → grant the full set of tour-given items immediately, and snap the camera straight back to the player (kill the cine tween).
-35. **Traders wander**: mobs.ts `trader.speed: 0` → small wander loop within ~5 blocks of their stall mesh; while the trade UI is open, the trader faces the player.
-
-## Open decisions (recommended defaults — say the word and they're locked)
-
-- **R conflict**: R currently drops the held item. Plan: R *rotates* only while holding a placeable rotatable block; otherwise it still drops. Alternative: rotate on G, keep R pure-drop. Recommended: the context-sensitive first option.
-- **Thruster breaking**: to drop items, thrusters must become breakable — recommendation: only with a Disassembler, and a lit thruster stays lit when re-placed. (Quest guard "immovable until nozzle" stays.)
-- **Sandstorm Breaker recipe**: recommendation: bench-craftable (2 iron rods + 1 glass, catalyst-free) so expansion is possible; radius 8.
-- **Numbers to set and tune visibly**: fall grace 4 blocks, pouch +10 °C, chitin gear −10pp armour, Armoury recipe 4 deadwood + 2 iron rods, campfire charge semantics otherwise unchanged.
-
-## Glossary
-
-New entries as each lands: **Sandstorm Breaker**, **Armoury**, **Hot Water Pouch**, **Death Indicator**; revised **Chitin / Wurmsuit / Metal Rod (→ Iron Rod)** entries.
+## Docs
+GLOSSARY: Backpack entry (new grids), Sandstorm Breaker (alloy disassembler only), Cave Mouth entry
+(surface openings), Vulture (flies). README: controls (R/G), backpack grid numbers if present.

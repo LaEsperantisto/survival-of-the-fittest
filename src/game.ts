@@ -1890,7 +1890,7 @@ export class Game {
 
   private bagSize(): { w: number; h: number; kg: number } {
     const b = this.equip.backpack ? ITEMS[this.equip.backpack.itemId].bag : null;
-    return b ?? { w: 3, h: 4, kg: 0 };
+    return b ?? { w: 5, h: 4, kg: 0 };
   }
 
   private applyEquip() {
@@ -1931,8 +1931,8 @@ export class Game {
   private unequipSlot(slot: "backpack" | "head" | "body" | "regulator" | "light") {
     const it = this.equip[slot];
     if (!it) return;
-    // when the pack comes off, contents must fit the base 3x4 grid it shrinks to
-    const b = slot === "backpack" ? { w: 3, h: 4 } : this.bagSize();
+    // when the pack comes off, contents must fit the base 5×4 grid it shrinks to
+    const b = slot === "backpack" ? { w: 5, h: 4 } : this.bagSize();
     if (!this.gridFits(b.w, b.h)) {
       hud.toast("Your pack is too full — make room before taking it off.");
       this.audio.error();
@@ -1940,7 +1940,7 @@ export class Game {
     }
     this.equip[slot] = null;
     if (slot === "light") this.lanternOn = false;
-    this.applyEquip(); // grid may shrink to 3×4 before the item lands back in it
+    this.applyEquip(); // grid may shrink to 5×4 before the item lands back in it
     this.inv.addSlot(it); // same Slot object — fuel charges ride along
     this.audio.place();
     hud.toast(`${ITEMS[it.itemId].name} taken off.`);
