@@ -55,7 +55,7 @@ A sub-space of the Ship or a Base separated by Insulating Blocks and a Door, sea
 The ship's insulating wall block.
 
 **Ship**:
-The small wreck at the world origin — a rounded hull with broken wings — split into sealable Compartments: a forward cockpit (its Chest and a pilot's Bed), a central hall, a Save Room whose stern Door is the wreck's only opening to the outside, a water compartment, and a regulator room. Fully customizable: any block can be broken or placed, so the Ship can be expanded anywhere.
+The small wreck at the world origin — a rounded hull with broken wings — split into sealable Compartments: a forward cockpit (its Chest), a central hall, a Save Room whose stern Door is the wreck's only opening to the outside, a water compartment, and a regulator room. On Easy Start the hall and regulator room hold a working Storm Breaker and Heat Regulator; on Hard Start they hold only their Husks. It holds no Crafting Bench and no Bed — bench and bunk must be earned. Fully customizable: any block can be broken or placed, so the Ship can be expanded anywhere.
 
 **Save Room**:
 The wreck's Compartment containing the starting Save Beacon, reachable only through the hall — the safest room in the crash site.
@@ -75,7 +75,8 @@ Chosen or randomly generated at world creation. The same Seed yields the same wo
 Terrain regions: Dunes, Rocky Desert, Badlands/mountains, Salt Flats, dry canyons.
 
 **Oasis**:
-A structure with a finite water source, green trees and plants that can be farmed.
+A recurring Landmark of the deep desert — open water ringed by green trees and plants that can be farmed. Widely spaced, never scarce per world; the danger is the walk, not the shortage.
+_Avoid_: watering hole, spring
 
 **Town**:
 A settlement out in the world: huts, Supply Chests with rare loot, Beds, and the only source of Desert Wheat Seed. No living soul is home — yet.
@@ -198,14 +199,14 @@ Not in scope for M1 or M2; a definite later addition.
 Two parts: days survived and Main Quest progress. Completing the game scores higher with fewer days. Best score persists across deaths.
 
 **Water Canister**:
-A drinkable item (1×2 in the Inventory Grid). Buried in the world, or waiting in the Supply Chest; finite per world. Oases provide finite water; a late-game method synthesizes water.
+A drinkable item (1×2 in the Inventory Grid). Buried sites dot the desert on a recurring spacing — containers, not water, so finding them never makes drinking easy. Oases provide finite water; a late-game method synthesizes water. A buried site marks the Map only once one of its canisters is dug up.
 
 **Hot Water Pouch**:
 A full Water Canister heated at a lit Campfire — it costs the fire one fuel charge. Using it (Q) is a heat pulse: +10 °C toward body-warm, clamped at the top of the safe zone so it can never overshoot, and the empty canister comes back.
 _Avoid_: canteen, thermos, heat pack (the wearable is the Hot Pad idea, dead)
 
 **Campfire**:
-A fuel-charged heat source. It glows and warms only while it has charges; an empty fire is cold charcoal — no light, no glow, no smelting. Feed it (E, holding fuel): a Wood Log adds 2 charges, Kindling half a charge. Charges decay over time; smelting and heating draw from them.
+A fuel-charged heat source. It glows and warms only while it has charges; an empty fire is cold charcoal — no light, no glow, no smelting. Feed it (E, holding fuel): a Wood Log adds 2 charges, Kindling half a charge. Charges are spent by use — heating and smelting — never by decay. Its Fuel Slot also takes fuel pushed into it by a powered Inserter.
 _Avoid_: bonfire, furnace
 
 **Water Bucket**:
@@ -258,7 +259,8 @@ How much mass the Inventory Grid may hold. Exceedable by at most 10% — while O
 The state of carrying above the Weight Limit (max +10%): incredibly slow, draining Water.
 
 **Visor**:
-Head-slot gear powering the player's HUD. Upgradeable to show more: heat fluctuations, marked points (the Ship, the player's Base). Upgrades count only while equipped.
+Head-slot gear powering the player's HUD. While equipped it draws the Map, beams Caches, Supply Chests, and Pins through walls, and marks known Landmarks — the marked points being the Ship and the player's Base. Upgradeable to show more: heat fluctuations. Upgrades count only while equipped.
+_Avoid_: goggles, HUD (the thing it powers, not it)
 
 **Waypoint**:
 The HUD's guide to the active quest: a compass heading, a distance, and a marker at the target. A Surveyor's Visor equipped in the Head slot — a craftable Visor upgrade — additionally marks every Cache and Supply Chest through walls.
@@ -298,7 +300,7 @@ A passing state of the open desert: wind-borne sand that amplifies whatever the 
 _Avoid_: dust storm, weather (there is nothing else)
 
 **Sandstorm Breaker**:
-A humming red pylon block. Standing within its radius, the Sandstorm loses all teeth on the body: no amplification, no extra Water drain, no scouring. The wreck holds one still-working pylon in its hall; more are craftable at a Crafting Bench, and each new one extends the calm. A Breaker's calm is visible as a faint red dome and a "STORM BROKEN" chip. The housing only comes down for an Alloy Disassembler.
+A humming red pylon block. Standing within its radius, the Sandstorm loses all teeth on the body: no amplification, no extra Water drain, no scouring. The Ship's hall holds a working one on Easy Start, and only its Husk on Hard Start; more are craftable at a Crafting Bench, and each new one extends the calm. A Breaker's calm is visible as a faint red dome and a "STORM BROKEN" chip. The housing only comes down for an Alloy Disassembler.
 _Avoid_: windmill, storm lantern (it is not a light)
 
 **Engine Core**:
@@ -411,3 +413,63 @@ A Cheat Menu tool that shatters any block on the spot — Tool tiers, break time
 
 **Settings**:
 Menu with units (Celsius/Fahrenheit), controls, and rendering options.
+
+### Home and automation
+
+**Base**:
+a Sealed Space that holds at least one anchor — a Campfire, a Bed, a Storm Breaker, or a Power Panel. Only then does the desert call it home: muffled wind, warm light, a hearth that tends itself.
+_Avoid_: home, shelter (as a mechanic), camp
+
+**Easy Start / Hard Start**:
+the two beginnings a world is made with, chosen at world creation and fixed for the run. Easy's wreck still works — a living Heat Regulator and Storm Breaker; Hard offers only their Husks. Both are stripped of Bench and bunk.
+_Avoid_: easy/hard mode (nothing else changes)
+
+**Husk**:
+a dead wrecked fixture — a Regulator or Storm Breaker frozen mid-failure, teaching what might have been. Breaking it yields the broken thing; repairing it (about half a fresh build's parts) sets it working again.
+
+**Grid**:
+a connected network of Power Poles and powered blocks under one Power Panel. No Panel, no power; when draw outstrips supply the Panel trips and the Grid goes dark until someone resets it.
+
+**Power Panel**:
+the Grid's mandatory supervisor — the box you visit to relight the world after a trip.
+_Avoid_: breaker (reserved for the Sandstorm Breaker), fuse box, supervisor
+
+**Power Pole**:
+carries power to whatever stands within its reach, and links to Poles within twice that; higher tiers reach farther.
+
+**Inserter**:
+a powered block that takes one item from the block in front of it and puts it into the block behind. The universal atom of automation — no filters, no reach.
+_Avoid_: arm, conveyor (belts move things sideways; Inserters push between blocks)
+
+**Planter**:
+a powered block that sits under Farm Land, takes seed from the block beneath it, and plants the empty cell two cells up.
+
+**Harvester**:
+a powered block that reaps the ripe crop directly beneath it and spills the yield into the block directly above.
+
+**Fuel Slot**:
+the Campfire's open door for fuel — hand or Inserter alike can feed a fire.
+
+### Map and lessons
+
+**Map**:
+the panel the Surveyor's Visor draws while worn — local terrain, known Landmarks, Pins, and your own heading; maximised on demand.
+_Avoid_: minimap, radar
+
+**Landmark**:
+a named feature the Map knows: Towns, Oases, Trader Camps, Cave Mouths, wrecks, buried canister sites. A Landmark becomes known by reaching it, by the Tracker, or (canisters) by digging one up; known ones mark themselves on the Map.
+
+**Pin**:
+a player-marked point planted by a craftable Surveyor's Pin, freely named. A Pin named "Base" is a marked point the Visor beams.
+
+**Hidden Landmark Tracker**:
+a one-use device: it finds the nearest never-known Landmark and marks it, then vanishes. It finds only what the world repeats — never the second wreck.
+_Avoid_: compass (the Map's arrow is something else)
+
+**Chronicle**:
+the running lessons of the world — guided side goals and first-time discoveries that teach how its systems work. The current step rides under the main Quest in the HUD; the full log lives in the pause menu.
+_Avoid_: tutorial (the guided first minutes), achievement
+
+**Codex**:
+knowledge earned by holding a thing: the first time you carry or craft an item or block, its Catalog entry teaches itself. Unlearned entries stay locked.
+_Avoid_: wiki, bestiary
