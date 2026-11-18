@@ -317,6 +317,23 @@ export const structuresOf = (seed: number): Structures => {
   return s;
 };
 
+/** Breach patches: inside these the cave band climbs all the way to the
+ *  surface and carves a real cave mouth instead of a sealed band. Constant y
+ *  in the lattice keeps this a pure 2D field. */
+const caveBreach = (seed: number, x: number, z: number): boolean =>
+  noise3(x / 9, 0.37, z / 9, seed + 309) > 0.75;
+
+/** The cave band's top for one column, shared by caveAt and genChunk so the
+ *  chunk loop and edge cells always agree. Oasis floors stay sealed, the
+ *  crash site's footing stays solid, breach columns open to the sky. */
+function caveCeil(seed: number, x: number, z: number, h: number): number {
+  if (x * x + z * z < 240) return caveTop(h); // the crash site never opens
+  for (const o of structuresOf(seed).oases)
+    if (Math.abs(x - o.x) <= o.r + 1 && Math.abs(z - o.z) <= o.r + 1)
+      return Math.min(caveTop(h), Math.round(heightAt(seed, o.x, o.z)) - 5); // pools stay sealed
+  return caveBreach(seed, x, z) ? h : caveTop(h);
+}
+
 /** Is (x,y,z) cave air? One big-cheese 3D-noise field: two scales mixed, the
  *  threshold easing a little deeper down. Floor never below y=2, the crash
  *  site's footing stays whole, and the bowl under an oasis pool stays dry.
@@ -325,10 +342,7 @@ function caveAt(seed: number, x: number, y: number, z: number, h?: number): bool
   if (y < 3) return false;
   if (x * x + z * z < 240) return false; // the crash site's footing stays solid
   const hs = h ?? Math.round(heightAt(seed, x, z));
-  let top = caveTop(hs);
-  for (const o of structuresOf(seed).oases)
-    if (Math.abs(x - o.x) <= o.r + 1 && Math.abs(z - o.z) <= o.r + 1)
-      top = Math.min(top, Math.round(heightAt(seed, o.x, o.z)) - 5); // keep pools sealed
+  const top = caveCeil(seed, x, z, hs);
   if (y > top) return false;
   const a = noise3(x / 9, y / 5.5, z / 9, seed + 301);
   const b = noise3(x / 23, y / 15, z / 23, seed + 307);
@@ -976,7 +990,7 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number): 
       const h = Math.round(heightAt(seed, wx, wz));
       for (let y = 0; y <= h; y++) c[(x * CS + z) * CH + y] = surfaceBlock(seed, wx, wz, y, h);
       const atCrash = wx * wx + wz * wz < 240; // keep the crash site clear of scenery
-      const top = caveTop(h); // cave ceiling: >= 4 solid cells under the surface
+      const top = caveCeil(seed, wx, wz, h); // cave band top (breach columns reach the surface)
 
       // ── the underground band: caves, ores crusting the walls, rare pools ──
       if (!atCrash) for (let y = 3; y <= top; y++) {
@@ -992,18 +1006,21 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number): 
         if (base !== ROCK && base !== SANDSTONE) continue;
         if (!(caveC(wx + 1, y, wz) || caveC(wx - 1, y, wz) || caveC(wx, y + 1, wz) ||
               caveC(wx, y - 1, wz) || caveC(wx, y, wz + 1) || caveC(wx, y, wz - 1))) continue;
-        // wall crust: 3D-noise blobs clinging to the cave skin
+        // wall crust: rare 3D-noise blobs clinging to the cave skin
+        // (thresholds picked so each ore covers ~1/10 of the wall as before)
         if (y <= 15 && hash2(wx * 5 + y, wz * 7 - y, seed + 333) < 0.4 &&
-            noise3(wx / 5 + 40, y / 5, wz / 5, seed + 331) > 0.72) c[idx] = COBALT_ORE;
-        else if (y >= 12 && noise3(wx / 5, y / 5, wz / 5, seed + 313) > 0.665) c[idx] = IRON_ORE;
-        else if (y >= 12 && noise3(wx / 5, y / 5 + 60, wz / 5, seed + 317) > 0.7) c[idx] = COPPER_ORE;
-        else if (y >= 8 && y <= 24 && noise3(wx / 5, y / 5, wz / 5 + 70, seed + 321) > 0.715) c[idx] = ALABASTER;
+            noise3(wx / 5 + 40, y / 5, wz / 5, seed + 331) > 0.886) c[idx] = COBALT_ORE;
+        else if (y >= 12 && noise3(wx / 5, y / 5, wz / 5, seed + 313) > 0.864) c[idx] = IRON_ORE;
+        else if (y >= 12 && noise3(wx / 5, y / 5 + 60, wz / 5, seed + 317) > 0.878) c[idx] = COPPER_ORE;
+        else if (y >= 8 && y <= 24 && noise3(wx / 5, y / 5, wz / 5 + 70, seed + 321) > 0.883) c[idx] = ALABASTER;
       }
 
       // occasional 1x1 entrance shaft: one column punched straight down from
       // the surface into the cave band, with a rock floor — never at the
-      // crash, under a Town (its stair shaft owns those columns) or an oasis
+      // crash, under a Town (its stair shaft owns those columns), an oasis,
+      // or a breach column (those already stand open to the sky)
       if (!atCrash && h >= 12 && hash2(wx, wz, seed + 201) > 0.984 &&
+          !caveBreach(seed, wx, wz) &&
           st.townNear(wx, wz, 14) === null && st.nearOasis(wx, wz) === null) {
         const d = top - 4; // a little open headroom at the cave floor
         if (d >= 7) {

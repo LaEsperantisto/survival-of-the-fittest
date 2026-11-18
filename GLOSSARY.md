@@ -312,7 +312,7 @@ _Avoid_: tunnel, hole, mine (as the natural hollow)
 A rare standing Water Source deep underground: drinkable supply, paid for in danger and darkness.
 
 **Cave Mouth**:
-An arched opening into the Caves, gaping in the side of a rocky slope — the natural way down. Distinct from a Dungeon's built, sealed entrance.
+An opening into the Caves where the cave band carves all the way up through the crust — the natural way down, ringed by broken sandstone lips. Distinct from a Dungeon's built, sealed entrance.
 _Avoid_: sinkhole, mine entrance
 
 **Ore Vein**:
