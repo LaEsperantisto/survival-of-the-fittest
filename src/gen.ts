@@ -13,12 +13,11 @@ export const BIOME_NAMES = ["Dunes", "Rocky Desert", "Salt Flats", "Badlands", "
 
 const SP = 1e6; // structure id salt
 
-export interface Oasis { x: number; z: number; r: number; }
+export interface Oasis { x: number; z: number; r: number; key: string; }
 /** One block of a staged Living Tree: b is the block id, stage 1 trunk base,
  *  2 full trunk + branches, 3 leaf canopy. Stamped in stage order. */
 export interface TreePart { x: number; y: number; z: number; b: number; stage: number }
 export interface Town { x: number; z: number; }
-export interface CanisterSpawn { x: number; z: number; buried: boolean; }
 /** A trader camp on the CAMP_L lattice: 0 windmill, 1 hut, 2 farmstead. */
 export interface Camp { x: number; z: number; type: 0 | 1 | 2; }
 
@@ -34,37 +33,83 @@ export const CAMP_L = 380;
  *  descends into the cave band and opens on a small rock chamber. */
 export const CAVE_MOUTH_L = 150;
 
+/** Oases sit on this lattice: a jittered pool per cell, forever — the desert
+ *  horizon never runs out of water. Centers jitter up to ±80 from the cell. */
+export const OASIS_L = 240;
+
+/** Buried canisters sit on this lattice — landmarks, not containers: the
+ *  Map only shows a dig site once its canister has actually been dug.
+ *  Sites jitter up to ±55 from their cell. */
+export const CANISTER_L = 150;
+
 export class Structures {
-  oases: Oasis[] = [];
   secondShip = { x: 0, z: 0 };
   /** A guaranteed Town at a second-wreck's distance, so the goal chain can't dead-end. */
   homeTown: Town = { x: 0, z: 0 };
-  canisters: CanisterSpawn[] = [];
 
   constructor(public seed: number) {
     const r = new Rng(seed ^ 0x5f3a);
-    for (let i = 0; i < 6; i++) {
-      const a = r.range(0, Math.PI * 2), d = r.range(160, 900);
-      this.oases.push({ x: Math.round(Math.cos(a) * d), z: Math.round(Math.sin(a) * d), r: r.int(3, 5) });
-    }
-    {
-      const a = r.range(0, Math.PI * 2), d = r.range(450, 700);
-      this.secondShip = { x: Math.round(Math.cos(a) * d), z: Math.round(Math.sin(a) * d) };
-    }
-    {
-      const ta = Math.atan2(this.secondShip.z, this.secondShip.x) + 0.9;
-      const td = Math.hypot(this.secondShip.x, this.secondShip.z) * r.range(0.8, 1.15);
-      this.homeTown = { x: Math.round(Math.cos(ta) * td), z: Math.round(Math.sin(ta) * td) };
-    }
-    for (let i = 0; i < 13; i++) {
-      const a = r.range(0, Math.PI * 2), d = r.range(30, 600);
-      this.canisters.push({ x: Math.round(Math.cos(a) * d), z: Math.round(Math.sin(a) * d), buried: r.next() < 0.4 });
-    }
+    const a = r.range(0, Math.PI * 2), d = r.range(450, 700);
+    this.secondShip = { x: Math.round(Math.cos(a) * d), z: Math.round(Math.sin(a) * d) };
+    const ta = Math.atan2(this.secondShip.z, this.secondShip.x) + 0.9;
+    const td = Math.hypot(this.secondShip.x, this.secondShip.z) * r.range(0.8, 1.15);
+    this.homeTown = { x: Math.round(Math.cos(ta) * td), z: Math.round(Math.sin(ta) * td) };
   }
 
+  /** Is there an oasis on lattice cell (ix,iz)? Never atop the crash, never
+   *  on the home Town's plot. */
+  oasisAt(ix: number, iz: number): boolean {
+    if (hash2(ix, iz, this.seed + 71) >= 0.62) return false;
+    const c = this.oasisCenter(ix, iz);
+    if (c.x * c.x + c.z * c.z < 12100) return false; // 110 m clear of the wreck
+    if (Math.hypot(c.x - this.homeTown.x, c.z - this.homeTown.z) < 30) return false;
+    return true;
+  }
+
+  /** Jittered centre of the oasis on lattice cell (ix,iz). */
+  oasisCenter(ix: number, iz: number): { x: number; z: number } {
+    const jx = (hash2(ix, iz, this.seed + 73) - 0.5) * 160;
+    const jz = (hash2(ix, iz, this.seed + 75) - 0.5) * 160;
+    return { x: Math.round(ix * OASIS_L + jx), z: Math.round(iz * OASIS_L + jz) };
+  }
+
+  /** The full oasis for a lattice cell, or null. */
+  oasisOf(ix: number, iz: number): Oasis | null {
+    if (!this.oasisAt(ix, iz)) return null;
+    const c = this.oasisCenter(ix, iz);
+    return { x: c.x, z: c.z, r: 3 + (hash2(ix, iz, this.seed + 77) * 3 | 0), key: `${ix},${iz}` };
+  }
+
+  /** The oasis whose pool covers (x,z). */
   nearOasis(x: number, z: number): Oasis | null {
-    for (const o of this.oases) if (Math.abs(o.x - x) <= o.r + 1 && Math.abs(o.z - z) <= o.r + 1) return o;
-    return null;
+    return oasisNearSeed(this.seed, x, z, 1);
+  }
+
+  /** The oasis nearest (x,z) within a few lattice cells — for waypoints. */
+  nearestOasis(x: number, z: number, span = 4): Oasis | null {
+    const cx = Math.floor(x / OASIS_L), cz = Math.floor(z / OASIS_L);
+    let best: Oasis | null = null, bd = Infinity;
+    for (let ix = cx - span; ix <= cx + span; ix++) for (let iz = cz - span; iz <= cz + span; iz++) {
+      const o = this.oasisOf(ix, iz);
+      if (!o) continue;
+      const dd = (o.x - x) ** 2 + (o.z - z) ** 2;
+      if (dd < bd) { bd = dd; best = o; }
+    }
+    return best;
+  }
+
+  /** Is there a buried canister site on lattice cell (ix,iz)? Never atop the crash. */
+  canisterAt(ix: number, iz: number): boolean {
+    if (hash2(ix, iz, this.seed + 81) >= 0.7) return false;
+    const c = this.canisterSite(ix, iz);
+    return c.x * c.x + c.z * c.z >= 12100;
+  }
+
+  /** Jittered centre of the canister site on lattice cell (ix,iz). */
+  canisterSite(ix: number, iz: number): { x: number; z: number } {
+    const jx = (hash2(ix, iz, this.seed + 83) - 0.5) * 110;
+    const jz = (hash2(ix, iz, this.seed + 85) - 0.5) * 110;
+    return { x: Math.round(ix * CANISTER_L + jx), z: Math.round(iz * CANISTER_L + jz) };
   }
 
   /** Jittered center of the Town on lattice cell (tx,tz) — deterministic. */
@@ -84,8 +129,7 @@ export class Structures {
     if (Math.abs(tx) < 2 && Math.abs(tz) < 2) return false;
     if (hash2(tx, tz, this.seed + 51) >= 0.4) return false;
     const c = this.townCenter(tx, tz);
-    for (const o of this.oases)
-      if (Math.hypot(o.x - c.x, o.z - c.z) < o.r + 14) return false;
+    if (oasisNearSeed(this.seed, c.x, c.z, 14)) return false;
     if (Math.hypot(this.secondShip.x - c.x, this.secondShip.z - c.z) < 30) return false;
     return true;
   }
@@ -318,6 +362,24 @@ export const structuresOf = (seed: number): Structures => {
   return s;
 };
 
+/** The oasis whose pool, inflated by `rad`, reaches (x,z) — scanning only the
+ *  lattice cells that could. Centers jitter ±80, radii reach 5, so 86 covers
+ *  the worst offset. Pure in the seed: heightAt guards and callers agree. */
+function oasisNearSeed(seed: number, x: number, z: number, rad: number): Oasis | null {
+  const st = structuresOf(seed);
+  const m = 86 + rad;
+  const i0 = Math.floor((x - m) / OASIS_L), i1 = Math.floor((x + m) / OASIS_L);
+  const j0 = Math.floor((z - m) / OASIS_L), j1 = Math.floor((z + m) / OASIS_L);
+  let best: Oasis | null = null, bd = Infinity;
+  for (let ix = i0; ix <= i1; ix++) for (let iz = j0; iz <= j1; iz++) {
+    const o = st.oasisOf(ix, iz);
+    if (!o) continue;
+    const d = Math.hypot(o.x - x, o.z - z);
+    if (d <= o.r + rad && d < bd) { bd = d; best = o; }
+  }
+  return best;
+}
+
 /** Breach patches: inside these the cave band climbs all the way to the
  *  surface and carves a real cave mouth instead of a sealed band. Constant y
  *  in the lattice keeps this a pure 2D field. */
@@ -329,9 +391,8 @@ const caveBreach = (seed: number, x: number, z: number): boolean =>
  *  crash site's footing stays solid, breach columns open to the sky. */
 function caveCeil(seed: number, x: number, z: number, h: number): number {
   if (x * x + z * z < 240) return caveTop(h); // the crash site never opens
-  for (const o of structuresOf(seed).oases)
-    if (Math.abs(x - o.x) <= o.r + 1 && Math.abs(z - o.z) <= o.r + 1)
-      return Math.min(caveTop(h), Math.round(heightAt(seed, o.x, o.z)) - 5); // pools stay sealed
+  const o = oasisNearSeed(seed, x, z, 1.5);
+  if (o) return Math.min(caveTop(h), Math.round(heightAt(seed, o.x, o.z)) - 5); // pools stay sealed
   return caveBreach(seed, x, z) ? h : caveTop(h);
 }
 
@@ -849,8 +910,7 @@ export function campAtSeed(seed: number, tx: number, tz: number): boolean {
   if (hash2(tx, tz, seed + 401) >= 0.8) return false;
   const c = campCenterSeed(seed, tx, tz);
   const st = structuresOf(seed); // pure in the seed — the same world any live Structures holds
-  for (const o of st.oases)
-    if (Math.hypot(o.x - c.x, o.z - c.z) < o.r + 20) return false;
+  if (oasisNearSeed(seed, c.x, c.z, 20)) return false;
   if (Math.hypot(st.secondShip.x - c.x, st.secondShip.z - c.z) < 40) return false;
   if (st.townNear(c.x, c.z, 25) !== null) return false;
   return true;
@@ -1081,8 +1141,14 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number, w
   }
 
   if (cx >= -1 && cx <= 0 && cz >= -1 && cz <= 0) paintShip(setW, worldMode === "hard");
-  for (const o of st.oases)
-    if (Math.abs(cx * CS + 8 - o.x) < o.r + 24 && Math.abs(cz * CS + 8 - o.z) < o.r + 24) paintOasis(setW, o, seed);
+  // Oases on an unbounded lattice: centers jitter ±80, the painted footprint
+  // reaches r+24, so the scan window adds a cell of slack on each side.
+  const ox0 = Math.floor((cx * CS - 104) / OASIS_L), ox1 = Math.floor((cx * CS + CS - 1 + 104) / OASIS_L);
+  const oz0 = Math.floor((cz * CS - 104) / OASIS_L), oz1 = Math.floor((cz * CS + CS - 1 + 104) / OASIS_L);
+  for (let ix = ox0; ix <= ox1; ix++) for (let iz = oz0; iz <= oz1; iz++) {
+    const o = st.oasisOf(ix, iz);
+    if (o && Math.abs(cx * CS + 8 - o.x) < o.r + 24 && Math.abs(cz * CS + 8 - o.z) < o.r + 24) paintOasis(setW, o, seed);
+  }
   // Towns on an unbounded lattice: check which lattice cells touch this chunk.
   // Centers jitter up to ±55 from their lattice point (the home Town can sit a
   // whole half-cell away), so the scan window adds a cell of slack.

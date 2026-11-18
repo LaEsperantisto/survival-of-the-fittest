@@ -8,7 +8,7 @@ import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, type ItemDef, type Slot } fr
 import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable } from "./blocks";
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
-import { heightAt, biomeAt, TOWN_L, CAMP_L, CAVE_MOUTH_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
+import { heightAt, biomeAt, TOWN_L, CAMP_L, CAVE_MOUTH_L, OASIS_L, CANISTER_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
 import { offersFor, Offer } from "./trades";
 import { RECIPES, SMELT, canCraft, doCraft } from "./crafting";
 import { QUESTS, currentQuest, loadQuestState, questEvent, type QuestDef, type QuestState } from "./quests";
@@ -30,7 +30,7 @@ const FALL_GRACE = 4, FALL_DMG_PER_BLOCK = 8.5;
 export interface DroppedItem {
   id: number; x: number; y: number; z: number; itemId: string;
   charges?: number; // fuel carried by gear (Head Lantern, Regulator) survives a drop
-  buried?: boolean; buriedAt?: [number, number, number]; srcIndex?: number; fall?: number;
+  buried?: boolean; buriedAt?: [number, number, number]; srcKey?: string; fall?: number;
   repickAt?: number; // game time before which auto-pickup is suppressed (manual drops)
   age?: number; // seconds since the item hit the sand; loose items rot away (buried ones never do)
 }
@@ -90,7 +90,7 @@ export class Game {
   lanternOn = false;
   private lanternAcc = 0;   // seconds burned toward the next lantern charge
   private regulatorAcc = 0; // seconds burned toward the next coolant charge
-  collected = new Set<number>();
+  collected = new Set<string>();
   running = false;
   paused = false;
   escAt = 0;
@@ -201,13 +201,9 @@ export class Game {
   // ---------- setup / persistence ----------
 
   private spawnStarterEntities() {
-    // generated loot is only the buried canisters — nothing lies loose on the sand;
-    // ready water comes from the Supply Chest in the cockpit
-    this.world.gen.canisters.forEach((c, i) => {
-      if (!c.buried) return;
-      const gy = Math.round(heightAt(this.seed, c.x, c.z));
-      this.entities.push({ id: this.entitySeq++, x: c.x + 0.5, y: gy, z: c.z + 0.5, itemId: "canister_full", buried: c.buried, buriedAt: c.buried ? [c.x, gy, c.z] : undefined, srcIndex: i });
-    });
+    // generated loot is only the buried canisters — nothing lies loose on the
+    // sand; they sit on the CANISTER_L lattice and are planted near the
+    // player on demand (canisterSweep), never as loose drops
     this.spawnStarterChest();
   }
 
@@ -411,17 +407,8 @@ export class Game {
     this.chronLast = this.chronicle.size ? [...this.chronicle].pop()! : null;
     this.codex = loadIdSet(run.codex, new Set([...Object.keys(ITEMS), ...BLOCKS.map((_, i) => "b:" + i)]));
     this.trees = new Map(run.trees ?? []);
-    this.collected = new Set(run.collected ?? []);
-    const collected = this.collected;
-    let idx = 0;
+    this.collected = new Set((run.collected ?? []).map((c) => String(c)));
     const fresh: typeof this.entities = [];
-    this.world.gen.canisters.forEach((c) => {
-      if (c.buried && !collected.has(idx)) {
-        const gy = Math.round(heightAt(this.seed, c.x, c.z));
-        fresh.push({ id: this.entitySeq++, x: c.x + 0.5, y: gy, z: c.z + 0.5, itemId: "canister_full", buried: c.buried, buriedAt: c.buried ? [c.x, gy, c.z] : undefined, srcIndex: idx });
-      }
-      idx++;
-    });
     for (const e of run.entities) {
       // old saves may hold stacked drops; split them — one item per entity
       const n = e.count ?? 1;
@@ -500,7 +487,7 @@ export class Game {
         },
       },
       beaconMarks: this.beaconMarks,
-      collected: this.collectedCanisterIndices(),
+      collected: [...this.collected],
       entities: this.entities.filter((e) => !e.buried).map((e) => ({ x: e.x, y: e.y, z: e.z, itemId: e.itemId, charges: e.charges, age: Math.floor(e.age ?? 0) })),
       pods: this.pods,
       won: this.won || undefined,
@@ -519,10 +506,6 @@ export class Game {
       chronicle: [...this.chronicle],
       codex: [...this.codex],
     };
-  }
-
-  private collectedCanisterIndices(): number[] {
-    return [...this.collected];
   }
 
   get isGuest() { return this.meta.id.startsWith("guest"); }
@@ -728,6 +711,7 @@ export class Game {
     // explored chunks are the Map's memory — every streamed chunk counts
     for (const k of this.world.chunks.keys()) this.visited.add(k);
     this.chronTick();
+    this.canisterSweep();
 
     const t = this.tut ? this.tutGuide : this.waypointTarget();
     if (t) {
@@ -767,6 +751,25 @@ export class Game {
     this.drawMap();
   }
 
+  /** Buried canisters live on the CANISTER_L lattice: while a site is within
+   *  reach it stands as a buried entity — invisible until the sand over it is
+   *  dug. Once its canister is in hand the site is `collected` forever. */
+  private canisterSeen = new Set<string>();
+  private canisterSweep() {
+    const p = this.player.pos, g = this.world.gen, R = 360;
+    const ix0 = Math.floor((p.x - R) / CANISTER_L), ix1 = Math.floor((p.x + R) / CANISTER_L);
+    const iz0 = Math.floor((p.z - R) / CANISTER_L), iz1 = Math.floor((p.z + R) / CANISTER_L);
+    for (let ix = ix0; ix <= ix1; ix++) for (let iz = iz0; iz <= iz1; iz++) {
+      const key = `${ix},${iz}`;
+      if (this.canisterSeen.has(key) || this.collected.has(key) || !g.canisterAt(ix, iz)) continue;
+      const c = g.canisterSite(ix, iz);
+      const gy = Math.round(heightAt(this.seed, c.x, c.z));
+      this.entities.push({ id: this.entitySeq++, x: c.x + 0.5, y: gy, z: c.z + 0.5,
+        itemId: "canister_full", buried: true, buriedAt: [c.x, gy, c.z], srcKey: key });
+      this.canisterSeen.add(key);
+    }
+  }
+
   private waypointTarget(): { name: string; x: number; y: number; z: number; lmKey?: string } | null {
     const q = currentQuest(this.quests);
     if (!q) return null;
@@ -779,10 +782,8 @@ export class Game {
     };
     switch (q.kind) {
       case "oasis": {
-        let bi = -1, bd = Infinity;
-        this.world.gen.oases.forEach((o, i) => { const d = (o.x - p.x) ** 2 + (o.z - p.z) ** 2; if (d < bd) { bd = d; bi = i; } });
-        const o = bi >= 0 ? this.world.gen.oases[bi] : null;
-        return o ? { name: "Oasis", x: o.x + 0.5, y: ground(o.x, o.z), z: o.z + 0.5, lmKey: `oasis:${bi}` } : null;
+        const o = this.world.gen.nearestOasis(p.x, p.z);
+        return o ? { name: "Oasis", x: o.x + 0.5, y: ground(o.x, o.z), z: o.z + 0.5, lmKey: `oasis:${o.key}` } : null;
       }
       case "water_home":
       case "finish": {
@@ -945,16 +946,28 @@ export class Game {
     out.push({ key: "ship", x: 0, z: 0, kind: "ship", label: "The Crash" }); // you started here — always known
     const s = g.secondShip;
     if (this.landmarkKnown("wreck2", s.x, s.z)) out.push({ key: "wreck2", x: s.x, z: s.z, kind: "wreck", label: "Second Wreck" });
-    for (let i = 0; i < g.oases.length; i++) {
-      const o = g.oases[i], k = `oasis:${i}`;
-      if (Math.abs(o.x - px) <= rad && Math.abs(o.z - pz) <= rad && this.landmarkKnown(k, o.x, o.z))
-        out.push({ key: k, x: o.x, z: o.z, kind: "oasis", label: "Oasis" });
+    { // Oases on their lattice: known = walked, quest-guided or Tracker-revealed
+      const i0 = Math.floor((px - rad) / OASIS_L) - 1, i1 = Math.floor((px + rad) / OASIS_L) + 1;
+      const j0 = Math.floor((pz - rad) / OASIS_L) - 1, j1 = Math.floor((pz + rad) / OASIS_L) + 1;
+      for (let ix = i0; ix <= i1; ix++) for (let iz = j0; iz <= j1; iz++) {
+        const o = g.oasisOf(ix, iz);
+        if (!o) continue;
+        const k = `oasis:${o.key}`;
+        if (Math.abs(o.x - px) <= rad && Math.abs(o.z - pz) <= rad && this.landmarkKnown(k, o.x, o.z))
+          out.push({ key: k, x: o.x, z: o.z, kind: "oasis", label: "Oasis" });
+      }
     }
-    g.canisters.forEach((c, i) => {
-      if (!this.collected.has(i)) return; // a buried site only appears once one of its canisters is dug
-      if (Math.abs(c.x - px) <= rad && Math.abs(c.z - pz) <= rad)
-        out.push({ key: `can:${i}`, x: c.x, z: c.z, kind: "canister", label: "Canister Site" });
-    });
+    { // a buried site only appears once one of its canisters is dug (or Tracker-revealed)
+      const i0 = Math.floor((px - rad) / CANISTER_L), i1 = Math.floor((px + rad) / CANISTER_L);
+      const j0 = Math.floor((pz - rad) / CANISTER_L), j1 = Math.floor((pz + rad) / CANISTER_L);
+      for (let ix = i0; ix <= i1; ix++) for (let iz = j0; iz <= j1; iz++) {
+        const k = `${ix},${iz}`;
+        if (!g.canisterAt(ix, iz) || (!this.collected.has(k) && !this.revealed.has(`can:${k}`))) continue;
+        const c = g.canisterSite(ix, iz);
+        if (Math.abs(c.x - px) <= rad && Math.abs(c.z - pz) <= rad)
+          out.push({ key: `can:${k}`, x: c.x, z: c.z, kind: "canister", label: "Canister Site" });
+      }
+    }
     const lat = (L: number, mk: (tx: number, tz: number) => { x: number; z: number }, kind: string, label: string) => {
       const t0 = Math.floor((px - rad) / L), t1 = Math.floor((px + rad) / L);
       const s0 = Math.floor((pz - rad) / L), s1 = Math.floor((pz + rad) / L);
@@ -987,8 +1000,19 @@ export class Game {
     const px = this.player.pos.x, pz = this.player.pos.z;
     const g = this.world.gen;
     const cands: { key: string; x: number; z: number; kind: string; label: string }[] = [];
-    g.oases.forEach((o, i) => { if (!this.landmarkKnown(`oasis:${i}`, o.x, o.z)) cands.push({ key: `oasis:${i}`, x: o.x, z: o.z, kind: "oasis", label: "an Oasis" }); });
-    g.canisters.forEach((c, i) => { if (!this.collected.has(i) && !this.revealed.has(`can:${i}`)) cands.push({ key: `can:${i}`, x: c.x, z: c.z, kind: "canister", label: "a Buried Canister site" }); });
+    { const cx = Math.floor(px / OASIS_L), cz = Math.floor(pz / OASIS_L);
+      for (let ix = cx - 3; ix <= cx + 3; ix++) for (let iz = cz - 3; iz <= cz + 3; iz++) {
+        const o = g.oasisOf(ix, iz);
+        if (o && !this.landmarkKnown(`oasis:${ix},${iz}`, o.x, o.z))
+          cands.push({ key: `oasis:${ix},${iz}`, x: o.x, z: o.z, kind: "oasis", label: "an Oasis" });
+      } }
+    { const cx = Math.floor(px / CANISTER_L), cz = Math.floor(pz / CANISTER_L);
+      for (let ix = cx - 4; ix <= cx + 4; ix++) for (let iz = cz - 4; iz <= cz + 4; iz++) {
+        const k = `${ix},${iz}`;
+        if (!g.canisterAt(ix, iz) || this.collected.has(k) || this.revealed.has(`can:${k}`)) continue;
+        const c = g.canisterSite(ix, iz);
+        cands.push({ key: `can:${k}`, x: c.x, z: c.z, kind: "canister", label: "a Buried Canister site" });
+      } }
     const scan = (L: number, at: (tx: number, tz: number) => boolean, mk: (tx: number, tz: number) => { x: number; z: number }, kind: string, label: string, span: number) => {
       const cx = Math.floor(px / L), cz = Math.floor(pz / L);
       for (let tx = cx - span; tx <= cx + span; tx++) for (let tz = cz - span; tz <= cz + span; tz++) {
@@ -1588,7 +1612,7 @@ export class Game {
       if (e.buried && e.buriedAt && this.world.get(e.buriedAt[0], e.buriedAt[1], e.buriedAt[2]) !== AIR) {
         if (mesh) this.renderer.removeEntityMesh(e.id);
       } else if (!mesh) {
-        if (e.buried && e.srcIndex !== undefined) { this.lesson("canister"); this.revealed.add(`can:${e.srcIndex}`); }
+        if (e.buried && e.srcKey !== undefined) { this.lesson("canister"); this.revealed.add(`can:${e.srcKey}`); }
         this.renderer.addEntityMesh(e.id, [e.x, e.y, e.z], parseInt(ITEMS[e.itemId].color.slice(1), 16));
       }
     }
@@ -3009,7 +3033,7 @@ export class Game {
       if (p.distanceTo(new THREE.Vector3(e.x, e.y, e.z)) < 1.3) {
         // addSlot, not addItem: a lantern or Regulator picked off the sand keeps its fuel
         if (this.inv.addSlot({ itemId: e.itemId, x: 0, y: 0, charges: e.charges })) {
-          if (e.srcIndex !== undefined) this.collected.add(e.srcIndex);
+          if (e.srcKey !== undefined) this.collected.add(e.srcKey);
           this.entities.splice(i, 1);
           this.renderer.removeEntityMesh(e.id);
           this.audio.pickup();

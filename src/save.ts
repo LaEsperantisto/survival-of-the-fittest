@@ -62,7 +62,7 @@ export interface RunSave {
   equip?: { backpack?: string; head?: string; body?: string; regulator?: string; light?: string;
             charges?: { regulator?: number; light?: number } };
   beaconMarks: { x: number; y: number; z: number }[];
-  collected: number[];
+  collected: string[];
   entities: { x: number; y: number; z: number; itemId: string; count?: number; charges?: number; age?: number }[];
   pods?: { x: number; z: number; t: number; itemId: string; n: number; ringEid?: number; beamEid?: number }[];
   won?: boolean;
