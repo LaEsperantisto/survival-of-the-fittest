@@ -235,7 +235,8 @@ const DESKTOP_KEYS: [string, string][] = [
   ["Mouse", "look (click the world to capture the pointer)"], ["Left click, hold", "mine a block or hit a mob (right tool tier matters)"],
   ["Metal Sword", "Crafting Bench: 2 Iron Rods + 1 Dead Wood — far harder hits, longer reach (snake dies in 2 swings, rat in 1)"],
   ["Right click", "place the selected block"], ["E", "interact: doors, beacon save, bench, campfire (hold Wood or Kindling and press E to feed the fire), Heat Regulator (set body to 37 °C), oasis / water-station refill, death caches, trade with a camp Trader, Broken Thruster on a wingtip (needs a Thruster Nozzle)"],
-  ["R", "turn a held built block a quarter turn (Crafting Bench, Bed, Thruster, walls …); R with anything else tosses it away"],
+  ["R", "turn a held built block a quarter turn (Crafting Bench, Bed, Thruster, walls …) — it places facing that way"],
+  ["G", "toss the held item away"],
   ["T", "toggle the Head Lantern — it burns one fuel charge per 4 game-minutes; refuel it at a Campfire"],
   ["Q", "use the held item: drink a full canister (+25 water, cools you a little), or eat food"], ["X", "sweat surge: spend 10 water to force your body cool (needs 20+ water, 5 s cooldown)"], ["I", "inventory — Equip gear"],
   ["1-9 / mouse wheel / click hotbar", "select item — press the number or click the already-held item to empty your hands"],
@@ -243,7 +244,7 @@ const DESKTOP_KEYS: [string, string][] = [
 ];
 const MOBILE_KEYS: [string, string][] = [
   ["Left stick", "move"], ["Drag the right half of the screen", "look"],
-  ["JUMP / BREAK / PLACE / ACT / DRINK / SURGE / LAMP / ITEM / BAG", "buttons on the right"],
+  ["JUMP / BREAK / PLACE / ACT / DRINK / SURGE / LAMP / ITEM / DROP / BAG", "buttons on the right"],
   ["BREAK, aimed at a mob", "fight it — hold the Metal Sword for far harder hits and longer reach"],
   ["Tap an item, then another cell", "move it there (occupants swap); tap an Armour Slot to wear the selected gear; tap empty space to deselect"],
   ["Bottom hotbar", "tap a slot to select that item; the ITEM button cycles through it"],

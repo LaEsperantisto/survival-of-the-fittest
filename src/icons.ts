@@ -544,13 +544,6 @@ function drawArt(id: string, w: number, h: number, color: string, tier = ""): HT
       g.fillStyle = "#8a6a44"; g.beginPath(); g.arc(13.5, 8, 2, 0, Math.PI * 2); g.fill();
       g.strokeStyle = "#5c4630"; g.lineWidth = 1; g.beginPath(); g.arc(13.5, 8, 2, 0, Math.PI * 2); g.stroke();
       return cv;
-    case "metal":
-      line(g, 3, 13, 12, 3, "#9aa0aa", 3);                                   // salvaged steel rod
-      line(g, 3, 12, 12, 2, "#c8d2da", 1);
-      line(g, 4, 14, 12, 5, "#6a707a", 1);
-      g.fillStyle = "#6a707a"; g.fillRect(9, 7, 1, 2);                       // nick
-      g.fillStyle = "#e2e8f0"; g.fillRect(6, 9, 1, 1);
-      return cv;
     case "lamp": {
       g.fillStyle = "#fff0a0"; g.globalAlpha = 0.28;
       g.beginPath(); g.arc(8, 8, 7, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;

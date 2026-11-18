@@ -19,6 +19,10 @@ import * as hud from "./hud";
 
 const isDoorHalf = (i: number) => i === DOOR_CLOSED || i === DOOR_UPPER || i === DOOR_INNER || i === DOOR_INNER_UPPER;
 
+// quarter-turn index -> partner-cell offset, matching the renderer's bench
+// orientation indexing (0=+X, 1=+Z, 2=-X, 3=-Z)
+const ROT_DIRS: ReadonlyArray<readonly [number, number]> = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+
 // Falls: the first 4 blocks are free, ~16 without armour is lethal.
 const FALL_GRACE = 4, FALL_DMG_PER_BLOCK = 8.5;
 
@@ -861,7 +865,7 @@ export class Game {
       }
       if (ke.code === "KeyR" && !this.ui && !this.paused && !this.cine && !this.liftoff) {
         // in the field: R turns a held rotatable block a quarter turn;
-        // anything else is tossed away
+        // anything else is left alone (G throws it away)
         const s = this.inv.selectedSlot();
         if (s) {
           const blk = ITEMS[s.itemId].block;
@@ -869,15 +873,10 @@ export class Game {
             s.blockRot = ((s.blockRot ?? 0) + 1) & 3;
             this.renderHeld();
             this.audio.place();
-          } else {
-            this.inv.slots.splice(this.inv.selected, 1);
-            this.inv.selected = Math.min(this.inv.selected, Math.max(0, this.inv.slots.length - 1));
-            this.dropEntity(s.itemId, 1, 1, s.charges);
-            this.renderHeld();
-            this.audio.place();
           }
         }
       }
+      if (ke.code === "KeyG" && !this.ui && !this.paused && !this.cine && !this.liftoff) this.dropHeld();
       if (ke.code === "Escape") {
         if (this.liftoff) return; // the Ship is mid-flight; nothing to close
         if (this.tut && !this.ui) { this.tut.finish(true); return; }
@@ -1001,6 +1000,7 @@ export class Game {
       mb("m-surge", () => this.surge());
       mb("m-lamp", () => this.toggleLantern());
       mb("m-next", () => this.cycleItem(1));
+      mb("m-drop", () => this.dropHeld());
       mb("m-inv", () => this.toggleInv());
       mb("m-pause", () => this.escape());
     }
@@ -1511,11 +1511,11 @@ export class Game {
       return;
     }
     if (id === BED || id === BED_EXT) {
-      // a bed is a pair: breaking either half removes the whole bed
+      // a bed is a pair: breaking either half removes the whole bed, in
+      // whichever direction the pillow half was turned
       this.world.set(x, y, z, AIR);
-      const px = x + (id === BED ? 1 : -1);
-      const peer = this.world.get(px, y, z);
-      if (peer === BED || peer === BED_EXT) this.world.set(px, y, z, AIR);
+      const peer = this.bedPeer(x, y, z);
+      if (peer) this.world.set(peer[0], peer[1], peer[2], AIR);
       this.giveOrDrop("bed", 1);
       this.audio.blockBreak();
       return;
@@ -2022,6 +2022,15 @@ export class Game {
     return null;
   }
 
+  /** The other half of a two-block Bed, in whichever direction it was turned. */
+  private bedPeer(x: number, y: number, z: number): [number, number, number] | null {
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const id = this.world.get(x + dx, y, z + dz);
+      if (id === BED || id === BED_EXT) return [x + dx, y, z + dz];
+    }
+    return null;
+  }
+
   private blockItemId(id: number): string | null {
     return BLOCK_TO_ITEM[id] ?? null;
   }
@@ -2032,6 +2041,17 @@ export class Game {
       this.dropEntity(itemId, left);
       hud.toast(`No room: dropped ${ITEMS[itemId].name}`);
     }
+  }
+
+  /** Toss the held item onto the sand in front of you (G key, Drop button). */
+  private dropHeld() {
+    const s = this.inv.selectedSlot();
+    if (!s) return;
+    this.inv.slots.splice(this.inv.selected, 1);
+    this.inv.selected = Math.min(this.inv.selected, Math.max(0, this.inv.slots.length - 1));
+    this.dropEntity(s.itemId, 1, 1, s.charges);
+    this.renderHeld();
+    this.audio.place();
   }
 
   /** Drop items in front of the player; if that lands inside geometry, try other
@@ -2091,18 +2111,33 @@ export class Game {
         this.chests.delete(k);
       }
     }
-    // the Crafting Bench stands two blocks wide: it needs an open neighbour
+    // the Crafting Bench stands two blocks wide: the open neighbour sits where
+    // the held rotation points (R turns it before you place)
     let benchPeer: [number, number, number] | null = null;
-    if (def.block === BENCH) {
+    const floorAt = (x: number, y: number, z: number) => isSolid(this.world.get(x, y - 1, z));
+    const inPlayer = (bx: number, by: number, bz: number) => {
       const p = this.player.pos;
-      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-        const nx = bx + dx, nz = bz + dz;
-        if (this.world.get(nx, by, nz) !== AIR) continue;
-        if (nx + 1 > p.x - 0.3 && nx < p.x + 0.3 && nz + 1 > p.z - 0.3 && nz < p.z + 0.3 && by + 1 > p.y && by < p.y + 1.8) continue;
-        benchPeer = [nx, by, nz];
-        break;
-      }
-      if (!benchPeer) { hud.toast("The Crafting Bench needs an open block beside it."); this.audio.error(); return; }
+      return bx + 1 > p.x - 0.3 && bx < p.x + 0.3 && bz + 1 > p.z - 0.3 && bz < p.z + 0.3 && by + 1 > p.y && by < p.y + 1.8;
+    };
+    if (def.block === BENCH) {
+      const [dx, dz] = ROT_DIRS[(slot.blockRot ?? 0) & 3];
+      const nx = bx + dx, nz = bz + dz;
+      if (this.world.get(nx, by, nz) !== AIR) { hud.toast("The Bench's far half has no room there — press R to turn it."); this.audio.error(); return; }
+      if (!floorAt(nx, by, nz)) { hud.toast("The Bench's far half needs solid ground under it."); this.audio.error(); return; }
+      if (inPlayer(nx, by, nz)) { hud.toast("Step out of the Bench's footprint first."); this.audio.error(); return; }
+      benchPeer = [nx, by, nz];
+    }
+    let bedPeer: [number, number, number] | null = null;
+    if (def.block === BED) {
+      const [dx, dz] = ROT_DIRS[(slot.blockRot ?? 0) & 3];
+      const nx = bx + dx, nz = bz + dz;
+      if (this.world.get(nx, by, nz) !== AIR) { hud.toast("The Bed needs an empty block for its pillow half — press R to turn it."); this.audio.error(); return; }
+      if (!floorAt(bx, by, bz) || !floorAt(nx, by, nz)) { hud.toast("The Bed needs solid ground under both halves."); this.audio.error(); return; }
+      if (inPlayer(nx, by, nz)) { hud.toast("Step off the Bed's footprint first."); this.audio.error(); return; }
+      bedPeer = [nx, by, nz];
+    }
+    if (def.block === DOOR_CLOSED || def.block === DOOR_INNER) {
+      if (!floorAt(bx, by, bz)) { hud.toast("A Door needs solid ground under it."); this.audio.error(); return; }
     }
     if (def.block === MELON_1 || def.block === WHEAT_1 || def.block === CACTUS || def.block === SAPLING) {
       // seeds only take in tilled ground; a cactus pad also accepts loose sand;
@@ -2117,11 +2152,17 @@ export class Game {
       }
     }
     this.world.set(bx, by, bz, def.block);
-    if (benchPeer) this.world.set(benchPeer[0], benchPeer[1], benchPeer[2], BENCH_EXT);
     if (slot.blockRot && rotatable(def.block)) this.world.setRot(bx, by, bz, slot.blockRot);
+    if (benchPeer) {
+      this.world.set(benchPeer[0], benchPeer[1], benchPeer[2], BENCH_EXT);
+      if (slot.blockRot) this.world.setRot(benchPeer[0], benchPeer[1], benchPeer[2], slot.blockRot);
+    }
     if (def.block === DOOR_CLOSED && this.world.get(bx, by + 1, bz) === AIR) this.world.set(bx, by + 1, bz, DOOR_UPPER);
     if (def.block === DOOR_INNER && this.world.get(bx, by + 1, bz) === AIR) this.world.set(bx, by + 1, bz, DOOR_INNER_UPPER);
-    if (def.block === BED && this.world.get(bx + 1, by, bz) === AIR) this.world.set(bx + 1, by, bz, BED_EXT); // a bed spans 2 blocks
+    if (bedPeer) { // a bed spans 2 blocks, pillow where you turned it
+      this.world.set(bedPeer[0], bedPeer[1], bedPeer[2], BED_EXT);
+      if (slot.blockRot) this.world.setRot(bedPeer[0], bedPeer[1], bedPeer[2], slot.blockRot);
+    }
     if (def.block === MELON_1 || def.block === WHEAT_1) { this.crops.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); }
     if (def.block === SAPLING) { this.trees.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); hud.toast("Seed in the soil. Keep water within 6 blocks and it climbs, stage by stage."); }
     if (def.block === ENGINECORE) {

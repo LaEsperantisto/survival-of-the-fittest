@@ -36,7 +36,9 @@ The build is fully static — `dist/` can be dropped on GitHub Pages or any stat
 | Space | Jump |
 | E | Interact (doors, crops, beds, chests, canisters, benches, campfires, beacons, caches, Heat Regulators, trade at a camp stall) |
 | Q | Use the held item: full canister drinks (+25 Water, −1.5 °C body), food eats; a shovel also tills Dirt into Farm Land; a Bucket at a Source scoops it |
-| X | Sweat Surge — force your body cool: −10 Water, −1.5 °C body, 10 s cooldown (needs ≥20 Water) |
+| X | Sweat Surge — force your body cool: −10 Water, −1.5 °C body, 5 s cooldown (needs ≥20 Water) |
+| R | Turn a held built block a quarter turn (bench, bed, thruster, walls …) — the bench's far half and the bed's pillow land where you turned it |
+| G | Toss the held item away (on touch: the Drop button) |
 | Left click (hold) | Mine / break (tool tier matters) — aimed at a mob, attack it |
 | Right click / place | Place selected block |
 | 1–9 / scroll / click hotbar | Select item — pressing/clicking the already-held one empties your hands |

@@ -1524,12 +1524,15 @@ export class Renderer {
           d = world.get(wx2 + 1, y, wz2) === BENCH_EXT ? 0 : world.get(wx2, y, wz2 + 1) === BENCH_EXT ? 1
             : world.get(wx2 - 1, y, wz2) === BENCH_EXT ? 2 : 3;
           base = BENCH_MODEL;
-          rr = r;
+          // the partner sits exactly where the stored rotation points, so the
+          // nibble already carries the pair direction - never add both
+          if (r !== 0) { d = 0; rr = r; } else rr = 0;
         } else {
           d = world.get(wx2 - 1, y, wz2) === BENCH ? 0 : world.get(wx2, y, wz2 - 1) === BENCH ? 1
             : world.get(wx2 + 1, y, wz2) === BENCH ? 2 : 3;
           base = BENCHX_MODEL;
           rr = world.getRot(wx2 + (d === 0 ? -1 : d === 2 ? 1 : 0), y, wz2 + (d === 1 ? -1 : d === 3 ? 1 : 0));
+          if (rr !== 0) d = 0;
         }
         this.emitShape(rotShapes(base, (d + rr) & 3), pos, col, idx, uvs, lite, id, world, x, y, z, cx * CS, cz * CS, faceLight);
         continue;
