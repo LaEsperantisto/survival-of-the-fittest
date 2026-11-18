@@ -1,0 +1,69 @@
+// Chronicle: the running lessons of the world — first-time discoveries that
+// teach how its systems work. The current step rides under the main Quest in
+// the HUD; the full log lives in the pause menu (screen-chronicle).
+// New factory-system lessons land with their batches.
+
+export interface Lesson { id: string; title: string; text: string; hint: string; }
+
+export const LESSONS: Lesson[] = [
+  {
+    id: "storm", title: "The Sandstorm Rises",
+    hint: "shelter now; a Sandstorm Breaker calms the air",
+    text: "The sky went to work against you: a Sandstorm amplifies the air, drinks your Water, and scours bare skin. It is a regime, not an event — it eases on its own. Answer it at a Crafting Bench: a Sandstorm Breaker (Iron Rods + Glass) calms the air around it and turns the storm aside. Until then, shelter beats stubbornness.",
+  },
+  {
+    id: "oasis", title: "First Oasis",
+    hint: "open water — refill your canisters here",
+    text: "Open water on the horizon: an Oasis. Refill your canisters here — the water itself is finite, the walk to it is the price. Oases never run out across the world; they are just far apart.",
+  },
+  {
+    id: "town", title: "First Town",
+    hint: "Supply Chests in the shells hold loot",
+    text: "The desert was lived in before you. Towns are adobe shells with Supply Chests — the first chest of a cluster holds the loot. Take what you need; the dwellers are not coming back.",
+  },
+  {
+    id: "camp", title: "First Trader Camp",
+    hint: "no coin — barter goods with the Trader",
+    text: "A windmill, a hut, a market stall — and a Trader who never moves. There is no coin here: every deal swaps goods, five per camp per day. Bring shells, pelts and worked metal.",
+  },
+  {
+    id: "mouth", title: "First Cave Mouth",
+    hint: "the way down — take a Head Lantern",
+    text: "An arch dug into a hillside: the way down into the Caves. Two or more cells under the terrain the air sits at a constant mild ~22 °C — the refuge, but it is dark. Take a Head Lantern before you commit.",
+  },
+  {
+    id: "cave", title: "Deep in the Caves",
+    hint: "mild dark air; ore waits in the walls",
+    text: "Underground the desert's heat and cold cannot reach you — and the walls hold Iron, Copper, Alabaster and, deepest of all, Cobalt. Ore doubled at a Campfire: the dig is the expensive part, not the fire.",
+  },
+  {
+    id: "canister", title: "A Buried Canister",
+    hint: "buried sites mark the Map once dug",
+    text: "You dug a Water Canister out of the open desert. Buried sites dot the dunes on recurring spacing — containers, not water. A site marks the Map only once one of its canisters is in your hands.",
+  },
+  {
+    id: "wreck2", title: "The Second Wreck",
+    hint: "its Engine Core is your way off-world",
+    text: "Another ship came down out here — and at its heart glows an Engine Core. That is your way off this planet: carry the Core home beside a Save Beacon.",
+  },
+  {
+    id: "pin", title: "Surveyor's Pins",
+    hint: "maximise the Map (M) to name a Pin \"Base\"",
+    text: "A Surveyor's Pin planted with E marks the Map forever — name it from the maximised Map. A Pin named \"Base\" is the point your Surveyor's Visor beams you back to, through walls.",
+  },
+  {
+    id: "tracker", title: "Hidden Landmark Tracker",
+    hint: "use it (Q) to wake the next unknown place",
+    text: "One use, then it's gone: the Tracker wakes the nearest place you have never found — a Town, camp, cave mouth, oasis or buried canister site — and marks it on your Map. The second wreck repeats nowhere; no Tracker will ever point at it.",
+  },
+];
+
+export const LESSON_BY_ID = new Map(LESSONS.map((l) => [l.id, l]));
+
+/** Clamp a loaded save's chronicle/codex id lists against what the game knows. */
+export function loadIdSet(ids: string[] | undefined, known: Set<string>): Set<string> {
+  const s = new Set<string>();
+  if (!ids) return s;
+  for (const id of ids) if (known.has(id)) s.add(id);
+  return s;
+}

@@ -148,7 +148,13 @@ export class World {
     if (lz === CS - 1) this.markDirty(cx, cz + 1);
   }
 
-  markDirty(cx: number, cz: number) { this.dirty.add(ckey(cx, cz)); }
+  markDirty(cx: number, cz: number) {
+    this.dirty.add(ckey(cx, cz));
+    const k = ckey(cx, cz);
+    this.revs.set(k, (this.revs.get(k) ?? 0) + 1); // map tiles rebuild on bump
+  }
+  /** per-chunk edit counter — a Map tile cache keys its staleness on this */
+  revs = new Map<string, number>();
 
   getRot(x: number, y: number, z: number): number { return this.rots.get(x + "," + y + "," + z) ?? 0; }
   setRot(x: number, y: number, z: number, r: number) {

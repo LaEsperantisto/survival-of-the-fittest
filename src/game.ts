@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { World } from "./world";
+import { World, ckey } from "./world";
 import { Player } from "./player";
 import { Survival, REGULATOR_ROOM_MAX, SAFE_HI } from "./survival";
 import { Renderer } from "./renderer";
@@ -8,10 +8,11 @@ import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, type ItemDef, type Slot } fr
 import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable } from "./blocks";
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
-import { heightAt, biomeAt, TOWN_L, CAMP_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
+import { heightAt, biomeAt, TOWN_L, CAMP_L, CAVE_MOUTH_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
 import { offersFor, Offer } from "./trades";
 import { RECIPES, SMELT, canCraft, doCraft } from "./crafting";
 import { QUESTS, currentQuest, loadQuestState, questEvent, type QuestDef, type QuestState } from "./quests";
+import { LESSON_BY_ID, LESSONS, loadIdSet } from "./chronicle";
 import { Tutorial, INTRO_CINE, type CineSeg } from "./tutorial";
 import { WorldMeta, RunSave, saveRun, exportRun, bestScore, submitBest, Settings } from "./save";
 import { itemTiles, itemArtUrl } from "./icons";
@@ -62,6 +63,17 @@ export class Game {
   private gridFocus: "inv" | "chest" = "inv";
   campCharges = new Map<string, number>();
   beaconMarks: { x: number; y: number; z: number }[] = [];
+  // ---- the Map kit and the lessons (save v2) ----
+  worldMode: "easy" | "hard" = "easy";
+  pins: { id: number; x: number; z: number; name: string }[] = [];
+  private pinSeq = 0;
+  revealed = new Set<string>();   // landmark keys marked by the Tracker, quest guidance or a dig
+  visited = new Set<string>();    // explored chunk keys "cx,cz" (world.chunks keys, seeded from the save)
+  chronicle = new Set<string>();  // lesson ids seen (chronicle.ts)
+  chronLast: string | null = null;
+  codex = new Set<string>();      // item ids learned by carrying; "b:<blockId>" by mining
+  mapMax = false;
+  private tileCache = new Map<string, { rev: number; remembered: boolean; cv: HTMLCanvasElement }>();
   // living desert: mobs are runtime-only (never saved); they respawn near the player
   private mobs: Mob[] = [];
   private traderAt = new Map<string, Mob>();      // camp lattice cell -> its resident Trader
@@ -152,6 +164,7 @@ export class Game {
     this.renderer = new Renderer(parent);
     this.renderer.fires = this.campCharges;
     this.player = new Player(this.world);
+    this.inv.learn = (id) => this.codex.add(id); // the Codex learns on first pickup, not at save
     this.timeSec = run?.time ?? DAY_SECONDS * 0.7; // new worlds start mid-afternoon, near the day's hottest
     this.playSec = run?.playSec ?? 0;
     // last input modality: touch synthesises mouse events, so a recent touch means "this tap is touch"
@@ -387,6 +400,14 @@ export class Game {
       if (id) this.equip[slot] = { itemId: id, x: 0, y: 0, charges: run.equip?.charges?.[slot as "regulator" | "light"] };
     }
     this.beaconMarks = run.beaconMarks ?? [];
+    this.worldMode = run.worldMode ?? "easy";
+    this.pins = run.pins ?? [];
+    this.pinSeq = this.pins.reduce((m, p) => Math.max(m, p.id), 0);
+    this.revealed = new Set(run.revealed ?? []);
+    this.visited = new Set(run.visited ?? []);
+    this.chronicle = loadIdSet(run.chronicle, new Set(LESSONS.map((l) => l.id)));
+    this.chronLast = this.chronicle.size ? [...this.chronicle].pop()! : null;
+    this.codex = loadIdSet(run.codex, new Set([...Object.keys(ITEMS), ...BLOCKS.map((_, i) => "b:" + i)]));
     this.trees = new Map(run.trees ?? []);
     this.collected = new Set(run.collected ?? []);
     const collected = this.collected;
@@ -453,8 +474,14 @@ export class Game {
   }
 
   snapshot(): RunSave {
+    // the Codex learns whatever you are carrying or wearing right now
+    for (const s of this.inv.slots) this.codex.add(s.itemId);
+    for (const slot of ["backpack", "head", "body", "regulator", "light"] as const) {
+      const e = this.equip[slot];
+      if (e) this.codex.add(e.itemId);
+    }
     return {
-      v: 1,
+      v: 2,
       seedStr: this.meta.seedStr,
       time: this.timeSec, playSec: this.playSec,
       days: this.dayNumber(),
@@ -483,6 +510,12 @@ export class Game {
       lastSleep: this.lastSleep > 0 ? this.lastSleep : undefined,
       deltas: this.world.serializeDeltas(),
       rots: this.world.serializeRots(),
+      worldMode: this.worldMode,
+      pins: this.pins,
+      visited: [...this.visited],
+      revealed: [...this.revealed],
+      chronicle: [...this.chronicle],
+      codex: [...this.codex],
     };
   }
 
@@ -690,6 +723,10 @@ export class Game {
     this.guideAcc = 0;
     const p = this.player.pos;
 
+    // explored chunks are the Map's memory — every streamed chunk counts
+    for (const k of this.world.chunks.keys()) this.visited.add(k);
+    this.chronTick();
+
     const t = this.tut ? this.tutGuide : this.waypointTarget();
     if (t) {
       hud.updateWaypoint(t.name, t.x, t.z, p.x, p.z, this.player.yaw);
@@ -698,6 +735,8 @@ export class Game {
         if (this.waypointEid) { this.renderer.removeEntityMesh(this.waypointEid); this.waypointEid = 0; }
         this.waypointKey = key;
         this.waypointEid = this.renderer.addBeam(t.x, t.y, t.z, 0x35e0ff, 12);
+        const lm = (t as { lmKey?: string }).lmKey;
+        if (lm) this.revealed.add(lm); // the quest guide marks its Landmark on the Map
       }
     } else {
       hud.updateWaypoint(null);
@@ -714,14 +753,19 @@ export class Game {
         const [x, y, z] = key.split(";")[0].split(",").map(Number);
         want.set(`x${key}`, [x + 0.5, y, z + 0.5, 0xe6c96a]);
       }
+      // a Surveyor's Pin named "Base" beams from anywhere, like a home port
+      for (const pin of this.pins)
+        if (pin.name.trim().toLowerCase() === "base")
+          want.set(`p${pin.id}`, [pin.x + 0.5, Math.round(heightAt(this.seed, pin.x, pin.z)) + 1, pin.z + 0.5, 0xd8b74f]);
     }
     for (const [k, eid] of this.visorBeams)
       if (!want.has(k)) { this.renderer.removeEntityMesh(eid); this.visorBeams.delete(k); }
     for (const [k, [x, y, z, col]] of want)
       if (!this.visorBeams.has(k)) this.visorBeams.set(k, this.renderer.addBeam(x, y, z, col, 10));
+    this.drawMap();
   }
 
-  private waypointTarget(): { name: string; x: number; y: number; z: number } | null {
+  private waypointTarget(): { name: string; x: number; y: number; z: number; lmKey?: string } | null {
     const q = currentQuest(this.quests);
     if (!q) return null;
     const p = this.player.pos;
@@ -733,8 +777,10 @@ export class Game {
     };
     switch (q.kind) {
       case "oasis": {
-        const o = nearest(this.world.gen.oases);
-        return o ? { name: "Oasis", x: o.x + 0.5, y: ground(o.x, o.z), z: o.z + 0.5 } : null;
+        let bi = -1, bd = Infinity;
+        this.world.gen.oases.forEach((o, i) => { const d = (o.x - p.x) ** 2 + (o.z - p.z) ** 2; if (d < bd) { bd = d; bi = i; } });
+        const o = bi >= 0 ? this.world.gen.oases[bi] : null;
+        return o ? { name: "Oasis", x: o.x + 0.5, y: ground(o.x, o.z), z: o.z + 0.5, lmKey: `oasis:${bi}` } : null;
       }
       case "water_home":
       case "finish": {
@@ -744,11 +790,11 @@ export class Game {
       }
       case "wreck": {
         const s = this.world.gen.secondShip;
-        return { name: "Second Wreck", x: s.x + 0.5, y: ground(s.x, s.z), z: s.z + 0.5 };
+        return { name: "Second Wreck", x: s.x + 0.5, y: ground(s.x, s.z), z: s.z + 0.5, lmKey: "wreck2" };
       }
       case "core": {
         const s = this.world.gen.secondShip;
-        return { name: "Engine Core", x: s.x + 0.5, y: ground(s.x, s.z), z: s.z + 0.5 };
+        return { name: "Engine Core", x: s.x + 0.5, y: ground(s.x, s.z), z: s.z + 0.5, lmKey: "wreck2" };
       }
       case "tool": {
         const cells: { x: number; y: number; z: number }[] = [];
@@ -767,7 +813,7 @@ export class Game {
       }
       case "supplies": {
         const t = this.world.gen.nearestTown(p.x, p.z);
-        return t ? { name: "Town", x: t.x + 0.5, y: ground(t.x, t.z), z: t.z + 0.5 } : null;
+        return t ? { name: "Town", x: t.x + 0.5, y: ground(t.x, t.z), z: t.z + 0.5, lmKey: `town:${Math.round(t.x / TOWN_L)},${Math.round(t.z / TOWN_L)}` } : null;
       }
       case "farm": {
         if (!this.crops.size) return null; // point at the nearest plot once something is planted
@@ -826,13 +872,246 @@ export class Game {
       return;
     }
     const p = this.quests.p[this.quests.i];
-    const key = q.id + ":" + p;
+    const key = q.id + ":" + p + ":" + (this.chronLast ?? "");
     if (key === this.questShown) return;
     this.questShown = key;
+    const cl = this.chronLast ? LESSON_BY_ID.get(this.chronLast) : null;
     el.innerHTML =
       `<div class="q-title">Quest · ${q.title}${q.goal > 1 ? ` (${p}/${q.goal})` : ""}</div>` +
       `<div class="q-desc">${q.desc}</div>` +
-      (q.goal > 1 ? `<div class="q-bar"><i style="width:${(p / q.goal) * 100}%"></i></div>` : "");
+      (q.goal > 1 ? `<div class="q-bar"><i style="width:${(p / q.goal) * 100}%"></i></div>` : "") +
+      (cl ? `<div class="q-chron">Chronicle · ${cl.title} — ${cl.hint}</div>` : "");
+  }
+
+  // ------------------------------------------------------------------
+  // Chronicle: first-time discoveries teach the world's systems
+  // ------------------------------------------------------------------
+
+  /** Unlock a lesson once; it becomes the HUD's Chronicle line. */
+  lesson(id: string) {
+    if (this.chronicle.has(id) || !LESSON_BY_ID.has(id)) return;
+    this.chronicle.add(id);
+    this.chronLast = id;
+    hud.toast(`Chronicle — ${LESSON_BY_ID.get(id)!.title}`);
+    this.audio.savePing();
+    this.renderQuest();
+  }
+
+  /** 0.4 s sampler: standing in/at a Landmark teaches it. */
+  private chronTick() {
+    const p = this.player.pos;
+    const g = this.world.gen;
+    if (g.nearOasis(Math.floor(p.x), Math.floor(p.z))) this.lesson("oasis");
+    if (g.townNear(p.x, p.z, 96)) this.lesson("town");
+    if (g.mouthNear(p.x, p.z, 14)) this.lesson("mouth");
+    {
+      const t0 = Math.floor((p.x - 24) / CAMP_L), t1 = Math.floor((p.x + 24) / CAMP_L);
+      const s0 = Math.floor((p.z - 24) / CAMP_L), s1 = Math.floor((p.z + 24) / CAMP_L);
+      for (let tx = t0; tx <= t1 && !this.chronicle.has("camp"); tx++)
+        for (let tz = s0; tz <= s1; tz++) {
+          if (!g.campAt(tx, tz)) continue;
+          const c = g.campCenter(tx, tz);
+          if (Math.hypot(c.x - p.x, c.z - p.z) <= 24) { this.lesson("camp"); break; }
+        }
+    }
+    const s = g.secondShip;
+    if ((s.x - p.x) ** 2 + (s.z - p.z) ** 2 <= 120 ** 2) this.lesson("wreck2");
+    if (p.y < heightAt(this.seed, Math.floor(p.x), Math.floor(p.z)) - 3) this.lesson("cave");
+  }
+
+  // ------------------------------------------------------------------
+  // The Map — visible only while the Surveyor's Visor is worn;
+  // corner HUD widget, maximised by M (or tapping the Map on mobile).
+  // Known terrain = chunks explored this session (world.chunks keys,
+  // seeded from the save) plus remembered chunks drawn dimmed.
+  // Known Landmarks = visited / quest-guided / Tracker-revealed / dug.
+  // ------------------------------------------------------------------
+
+  private landmarkKnown(key: string, x: number, z: number): boolean {
+    return this.revealed.has(key) || this.visited.has(Math.floor(x / CS) + "," + Math.floor(z / CS));
+  }
+
+  private landmarkList(px: number, pz: number, rad: number): { key: string; x: number; z: number; kind: string; label: string }[] {
+    const g = this.world.gen, out: { key: string; x: number; z: number; kind: string; label: string }[] = [];
+    out.push({ key: "ship", x: 0, z: 0, kind: "ship", label: "The Crash" }); // you started here — always known
+    const s = g.secondShip;
+    if (this.landmarkKnown("wreck2", s.x, s.z)) out.push({ key: "wreck2", x: s.x, z: s.z, kind: "wreck", label: "Second Wreck" });
+    for (let i = 0; i < g.oases.length; i++) {
+      const o = g.oases[i], k = `oasis:${i}`;
+      if (Math.abs(o.x - px) <= rad && Math.abs(o.z - pz) <= rad && this.landmarkKnown(k, o.x, o.z))
+        out.push({ key: k, x: o.x, z: o.z, kind: "oasis", label: "Oasis" });
+    }
+    g.canisters.forEach((c, i) => {
+      if (!this.collected.has(i)) return; // a buried site only appears once one of its canisters is dug
+      if (Math.abs(c.x - px) <= rad && Math.abs(c.z - pz) <= rad)
+        out.push({ key: `can:${i}`, x: c.x, z: c.z, kind: "canister", label: "Canister Site" });
+    });
+    const lat = (L: number, mk: (tx: number, tz: number) => { x: number; z: number }, kind: string, label: string) => {
+      const t0 = Math.floor((px - rad) / L), t1 = Math.floor((px + rad) / L);
+      const s0 = Math.floor((pz - rad) / L), s1 = Math.floor((pz + rad) / L);
+      for (let tx = t0; tx <= t1; tx++) for (let tz = s0; tz <= s1; tz++) {
+        if (kind === "town" ? !g.townAt(tx, tz) : kind === "camp" ? !g.campAt(tx, tz) : !g.mouthAt(tx, tz)) continue;
+        const k = `${kind}:${tx},${tz}`, c = mk(tx, tz);
+        if (this.landmarkKnown(k, c.x, c.z)) out.push({ key: k, x: c.x, z: c.z, kind, label });
+      }
+    };
+    lat(TOWN_L, (tx, tz) => g.townCenter(tx, tz), "town", "Town");
+    lat(CAMP_L, (tx, tz) => g.campCenter(tx, tz), "camp", "Trader Camp");
+    lat(CAVE_MOUTH_L, (tx, tz) => g.mouthCenter(tx, tz), "mouth", "Cave Mouth");
+    return out;
+  }
+
+  /** Plant the held Surveyor's Pin where the player stands. */
+  private plantPin() {
+    if (this.inv.removeItem("surveyor_pin", 1) !== 1) return;
+    const x = Math.floor(this.player.pos.x), z = Math.floor(this.player.pos.z);
+    this.pins.push({ id: ++this.pinSeq, x, z, name: `Pin ${this.pinSeq}` });
+    this.audio.place();
+    hud.toast("Surveyor's Pin planted — rename it from the maximised Map. A Pin named \"Base\" beams you home while the Visor is worn.");
+    this.lesson("pin");
+    this.renderPinPanel();
+    this.drawMap();
+  }
+
+  /** Q with a Tracker: reveal + mark the nearest never-found Landmark. */
+  private useTracker() {
+    const px = this.player.pos.x, pz = this.player.pos.z;
+    const g = this.world.gen;
+    const cands: { key: string; x: number; z: number; kind: string; label: string }[] = [];
+    g.oases.forEach((o, i) => { if (!this.landmarkKnown(`oasis:${i}`, o.x, o.z)) cands.push({ key: `oasis:${i}`, x: o.x, z: o.z, kind: "oasis", label: "an Oasis" }); });
+    g.canisters.forEach((c, i) => { if (!this.collected.has(i) && !this.revealed.has(`can:${i}`)) cands.push({ key: `can:${i}`, x: c.x, z: c.z, kind: "canister", label: "a Buried Canister site" }); });
+    const scan = (L: number, at: (tx: number, tz: number) => boolean, mk: (tx: number, tz: number) => { x: number; z: number }, kind: string, label: string, span: number) => {
+      const cx = Math.floor(px / L), cz = Math.floor(pz / L);
+      for (let tx = cx - span; tx <= cx + span; tx++) for (let tz = cz - span; tz <= cz + span; tz++) {
+        if (!at(tx, tz)) continue;
+        const k = `${kind}:${tx},${tz}`, c = mk(tx, tz);
+        if (!this.landmarkKnown(k, c.x, c.z)) cands.push({ key: k, x: c.x, z: c.z, kind, label });
+      }
+    };
+    scan(TOWN_L, (tx, tz) => g.townAt(tx, tz), (tx, tz) => g.townCenter(tx, tz), "town", "a Town", 5);
+    scan(CAMP_L, (tx, tz) => g.campAt(tx, tz), (tx, tz) => g.campCenter(tx, tz), "camp", "a Trader Camp", 4);
+    scan(CAVE_MOUTH_L, (tx, tz) => g.mouthAt(tx, tz), (tx, tz) => g.mouthCenter(tx, tz), "mouth", "a Cave Mouth", 6);
+    if (!cands.length) { hud.toast("The Tracker spins uselessly — every Landmark around you is already on your Map."); this.audio.error(); return; }
+    let best = cands[0], bd = Infinity;
+    for (const c of cands) { const d = (c.x - px) ** 2 + (c.z - pz) ** 2; if (d < bd) { bd = d; best = c; } }
+    if (this.inv.removeItem("tracker", 1) !== 1) return;
+    this.revealed.add(best.key);
+    this.audio.savePing();
+    hud.toast(`The Tracker wakes ${best.label} at ${best.x}, ${best.z} — marked on the Map.`);
+    this.lesson("tracker");
+    this.renderHeld();
+    this.drawMap();
+  }
+
+  renderPinPanel() {
+    const el = document.getElementById("map-pins");
+    if (!el) return;
+    if (!this.mapMax || this.pins.length === 0) { el.classList.add("hidden"); return; }
+    el.classList.remove("hidden");
+    el.innerHTML = `<h4>Pins</h4>` + this.pins.map((p) =>
+      `<div class="pin-row"><input class="pin-name" data-id="${p.id}" maxlength="16" value="${p.name.replace(/"/g, "&quot;")}"><button data-del="${p.id}" title="pull this Pin">✕</button></div>`).join("");
+  }
+
+  private mapTile(cx: number, cz: number): { remembered: boolean; cv: HTMLCanvasElement } | null {
+    const k = ckey(cx, cz);
+    const loaded = this.world.chunks.has(k);
+    if (!loaded && !this.visited.has(k)) return null; // never explored: the Map stays black
+    const rev = this.world.revs.get(k) ?? 0;
+    let t = this.tileCache.get(k);
+    if (t && t.remembered === !loaded && (t.remembered || t.rev === rev)) return t;
+    const cv = document.createElement("canvas");
+    cv.width = CS; cv.height = CS;
+    const g2 = cv.getContext("2d")!;
+    if (loaded) {
+      const c = this.world.chunks.get(k)!;
+      for (let lx = 0; lx < CS; lx++) for (let lz = 0; lz < CS; lz++) {
+        let id = AIR, top = -1;
+        for (let y = CH - 1; y >= 0; y--) { id = c[(lx * CS + lz) * CH + y]; if (id !== AIR) { top = y; break; } }
+        if (top < 0) { g2.fillStyle = "#0a0c10"; g2.fillRect(lx, lz, 1, 1); continue; }
+        const col = BLOCKS[id].color;
+        const sh = 0.5 + 0.5 * Math.min(1, top / 34);
+        g2.fillStyle = isWater(id) ? "#2f6fb8" : `rgb(${Math.round(col[0] * sh)},${Math.round(col[1] * sh)},${Math.round(col[2] * sh)})`;
+        g2.fillRect(lx, lz, 1, 1);
+      }
+    } else {
+      // remembered terrain: relief sketch from the height field alone
+      const BIOME_RGB = [[150, 128, 86], [104, 92, 74], [150, 158, 156], [120, 84, 58], [88, 66, 52]];
+      for (let lx = 0; lx < CS; lx++) for (let lz = 0; lz < CS; lz++) {
+        const wx = cx * CS + lx, wz = cz * CS + lz;
+        const h = heightAt(this.seed, wx, wz);
+        const base = BIOME_RGB[biomeAt(wx, wz, this.seed)] ?? BIOME_RGB[0];
+        const sh = 0.45 + 0.55 * Math.min(1, Math.max(0, h / 40));
+        g2.fillStyle = `rgb(${Math.round(base[0] * sh)},${Math.round(base[1] * sh)},${Math.round(base[2] * sh)})`;
+        g2.fillRect(lx, lz, 1, 1);
+      }
+    }
+    t = { remembered: !loaded, rev, cv };
+    this.tileCache.set(k, t);
+    return t;
+  }
+
+  private drawMap() {
+    const wrap = document.getElementById("map"), cv = document.getElementById("map-canvas");
+    if (!wrap || !(cv instanceof HTMLCanvasElement)) return;
+    const visor = this.equip.head?.itemId === "visor";
+    const hudOn = !document.getElementById("hud")!.classList.contains("hidden");
+    if (!visor || this.ui || this.paused || this.cine || this.liftoff || !hudOn) {
+      if (!wrap.classList.contains("hidden")) wrap.classList.add("hidden");
+      return;
+    }
+    wrap.classList.remove("hidden");
+    const r = this.mapMax ? 120 : 40;
+    const sc = this.mapMax ? Math.max(1, Math.min(4, Math.floor(Math.min(innerWidth, innerHeight) * 0.7 / (2 * r + 1)))) : 2;
+    const size = (2 * r + 1) * sc;
+    if (cv.width !== size) { cv.width = size; cv.height = size; }
+    const g2 = cv.getContext("2d")!;
+    g2.fillStyle = "#0a0c10";
+    g2.fillRect(0, 0, size, size);
+    const px = Math.floor(this.player.pos.x), pz = Math.floor(this.player.pos.z);
+    const x0 = px - r, z0 = pz - r;
+    for (let cx = Math.floor(x0 / CS); cx <= Math.floor((x0 + 2 * r) / CS); cx++)
+      for (let cz = Math.floor(z0 / CS); cz <= Math.floor((z0 + 2 * r) / CS); cz++) {
+        const t = this.mapTile(cx, cz);
+        if (!t) continue;
+        const rx = (cx * CS - x0) * sc, rz = (cz * CS - z0) * sc;
+        g2.drawImage(t.cv, rx, rz, CS * sc, CS * sc);
+        if (t.remembered) { g2.fillStyle = "rgba(8,10,14,0.55)"; g2.fillRect(rx, rz, CS * sc, CS * sc); }
+      }
+    // Landmarks
+    const lmColor: Record<string, string> = { ship: "#66e5f0", wreck: "#cc4433", town: "#d8b74f", camp: "#b48ad8", mouth: "#8a8f9a", oasis: "#41d878", canister: "#e08a4f" };
+    for (const l of this.landmarkList(px, pz, r + 8)) {
+      const mx = (l.x - x0) * sc, mz = (l.z - z0) * sc;
+      if (mx < -4 || mz < -4 || mx > size + 4 || mz > size + 4) continue;
+      g2.fillStyle = "#0a0c10";
+      g2.beginPath(); g2.arc(mx, mz, 4.5, 0, 7); g2.fill();
+      g2.fillStyle = lmColor[l.kind] ?? "#ffffff";
+      g2.beginPath(); g2.arc(mx, mz, 3, 0, 7); g2.fill();
+      if (this.mapMax) {
+        g2.fillStyle = "#e8e0d0"; g2.font = "10px system-ui";
+        g2.fillText(l.label, mx + 6, mz + 3);
+      }
+    }
+    // Pins — gold, labelled when maximised
+    g2.font = "10px system-ui";
+    for (const p of this.pins) {
+      const mx = (p.x - x0) * sc, mz = (p.z - z0) * sc;
+      if (mx < -4 || mz < -4 || mx > size + 4 || mz > size + 4) continue;
+      g2.fillStyle = "#0a0c10";
+      g2.fillRect(mx - 4, mz - 4, 8, 8);
+      g2.fillStyle = "#d8b74f";
+      g2.fillRect(mx - 2.5, mz - 2.5, 5, 5);
+      if (this.mapMax) { g2.fillStyle = "#f2e9c9"; g2.fillText(p.name, mx + 6, mz + 3); }
+    }
+    // you, at the centre: a heading arrow (map north = -Z)
+    const yaw = this.player.yaw;
+    const fx = Math.sin(yaw), fz = Math.cos(yaw);
+    const ang = Math.atan2(fz, fx); // screen: x east, z south
+    g2.save();
+    g2.translate(size / 2, size / 2);
+    g2.rotate(ang);
+    g2.fillStyle = "#35e0ff";
+    g2.beginPath(); g2.moveTo(6, 0); g2.lineTo(-4, -4); g2.lineTo(-4, 4); g2.closePath(); g2.fill();
+    g2.restore();
   }
 
   // ---------- input ----------
@@ -851,6 +1130,14 @@ export class Game {
       if (ke.code === "KeyQ") this.useItem();
       if (ke.code === "KeyX") this.surge();
       if (ke.code === "KeyT") this.toggleLantern();
+      if (ke.code === "KeyM" && this.equip.head?.itemId === "visor" &&
+          !this.ui && !this.paused && !this.cine && !this.liftoff &&
+          !(document.activeElement instanceof HTMLInputElement)) {
+        this.mapMax = !this.mapMax;
+        this.renderPinPanel();
+        this.drawMap();
+        this.audio.place();
+      }
       if (ke.code === "KeyI") this.toggleInv();
       if (ke.code === "KeyC" && this.ui === "inv") { this.invCraft = !this.invCraft; this.renderCraftTab(); }
       if (ke.code === "KeyR" && this.ui === "inv") {
@@ -1006,6 +1293,38 @@ export class Game {
       mb("m-inv", () => this.toggleInv());
       mb("m-pause", () => this.escape());
     }
+    // The Map widget: click/tap maximises it; the Pin panel renames and pulls Pins.
+    on("click", () => {
+      if (this.equip.head?.itemId !== "visor") return;
+      this.mapMax = !this.mapMax;
+      this.renderPinPanel();
+      this.drawMap();
+      this.audio.place();
+    }, document.getElementById("map")!);
+    {
+      const pinsEl = document.getElementById("map-pins")!;
+      on("pointerdown", (e) => e.stopPropagation(), pinsEl);
+      on("keydown", (e) => e.stopPropagation(), pinsEl); // typing in a Pin name never moves the player
+      on("click", (e) => {
+        e.stopPropagation();
+        const b = (e.target as HTMLElement).closest?.("button[data-del]") as HTMLButtonElement | null;
+        if (!b) return;
+        this.pins = this.pins.filter((p) => p.id !== Number(b.dataset.del));
+        this.renderPinPanel();
+        this.drawMap();
+        this.audio.place();
+      }, pinsEl);
+      on("change", (e) => {
+        const inp = e.target as HTMLInputElement;
+        if (!inp.classList?.contains("pin-name")) return;
+        const pin = this.pins.find((p) => p.id === Number(inp.dataset.id));
+        if (!pin) return;
+        pin.name = inp.value.trim() || `Pin ${pin.id}`;
+        inp.blur(); // a hidden name field must never keep swallowing game keys
+        if (pin.name.toLowerCase() === "base") hud.toast("A Pin named \"Base\": the Visor beams you back to it, from anywhere.");
+        this.drawMap();
+      }, pinsEl);
+    }
     on("beforeunload", () => this.saveNow());
     // Browsers swallow the Escape keydown while pointer-locked (it exits the lock),
     // so losing the lock without UI open *is* the first Escape press: pause.
@@ -1059,12 +1378,13 @@ export class Game {
   // Pause-menu submenus (Settings, Catalog): closing them returns to the pause
   // menu with the mouse still free — the pointer is only re-grabbed on the way
   // out of the pause menu itself.
-  pauseSubmenu: "settings" | "catalog" | "instructions" | null = null;
+  pauseSubmenu: "settings" | "catalog" | "instructions" | "chronicle" | null = null;
 
   closePauseSubmenu() {
     if (!this.pauseSubmenu) return;
     const id = this.pauseSubmenu === "settings" ? "screen-settings"
-      : this.pauseSubmenu === "catalog" ? "screen-catalog" : "screen-instructions";
+      : this.pauseSubmenu === "catalog" ? "screen-catalog"
+      : this.pauseSubmenu === "chronicle" ? "screen-chronicle" : "screen-instructions";
     document.getElementById(id)!.classList.add("hidden");
     this.pauseSubmenu = null;
     if (this.paused) document.getElementById("screen-pause")!.classList.remove("hidden");
@@ -1170,7 +1490,7 @@ export class Game {
       this.renderer.setStorm(this.survival.storm, this.survival.lastOpenSky);
       this.audio.setStorm(this.survival.storm);
       if (this.survival.storm > 0.5 && !this.stormToast) {
-        this.stormToast = true; hud.toast("A Sandstorm rolls in — get out of the open."); this.audio.error();
+        this.stormToast = true; this.lesson("storm"); hud.toast("A Sandstorm rolls in — get out of the open."); this.audio.error();
       } else if (this.survival.storm < 0.3 && this.stormToast) {
         this.stormToast = false; hud.toast("The Sandstorm passes.");
       }
@@ -1259,6 +1579,7 @@ export class Game {
       if (e.buried && e.buriedAt && this.world.get(e.buriedAt[0], e.buriedAt[1], e.buriedAt[2]) !== AIR) {
         if (mesh) this.renderer.removeEntityMesh(e.id);
       } else if (!mesh) {
+        if (e.buried && e.srcIndex !== undefined) { this.lesson("canister"); this.revealed.add(`can:${e.srcIndex}`); }
         this.renderer.addEntityMesh(e.id, [e.x, e.y, e.z], parseInt(ITEMS[e.itemId].color.slice(1), 16));
       }
     }
@@ -1452,6 +1773,7 @@ export class Game {
   private breakBlock(x: number, y: number, z: number) {
     this.tut?.notify("mine");
     const id = this.world.get(x, y, z);
+    this.codex.add("b:" + id); // the Codex teaches what you have broken once
     this.questBump("mine");
     if (isDoorHalf(id) || id === DOOR_OPEN || id === DOOR_INNER_OPEN) {
       const inner = id === DOOR_INNER || id === DOOR_INNER_UPPER || id === DOOR_INNER_OPEN;
@@ -2200,6 +2522,8 @@ export class Game {
     if (t?.hit && this.world.get(t.hit.x, t.hit.y, t.hit.z) === CHEST) { this.openChest(t.hit.x, t.hit.y, t.hit.z); return; }
     const cache = this.nearestCache();
     if (cache) { this.openCacheId = cache.id; this.ui = "cache"; this.unlockPointer(); this.renderCache(); document.getElementById("ui-cache")!.classList.remove("hidden"); return; }
+    // a Surveyor's Pin is planted at your feet — no raycast needed
+    if (this.inv.selectedSlot()?.itemId === "surveyor_pin") { this.plantPin(); return; }
     if (!t) return;
     if (t.hit) {
       const { x, y, z } = t.hit;
@@ -2492,6 +2816,7 @@ export class Game {
       this.renderInv();
       return;
     }
+    if (sel.itemId === "tracker") { this.useTracker(); return; }
     if (sel.itemId === "bucket") { this.bucketScoop(); return; }
     if (d.eat) { this.eat(sel, d); return; }
     if (d.tool?.type === "shovel") {

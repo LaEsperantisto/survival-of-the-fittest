@@ -133,6 +133,9 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "thruster_lit", name: "Thruster (lit)", desc: "A running engine lifted off its pylon. It keeps burning while you carry it, and burns where you set it down.", w: 2, h: 2, mass: 22.0, block: THRUSTER_LIT, color: "#c88a50" }),
   I({ id: "armory", name: "Armoury", desc: "A forge bench for gear that guards the body: armour, backpacks, visors and the Body Heat Regulator. Built at the Crafting Bench.", w: 2, h: 2, mass: 14.0, block: ARMORY, color: "#6a6258" }),
   I({ id: "hot_water_pouch", name: "Hot Water Pouch", desc: "A full canister heated at a lit Campfire. Use it (Q): a +10 °C heat pulse toward body-warm, and the empty canister comes back.", w: 1, h: 2, mass: 1.2, color: "#e08a4f" }),
+  // ---- the Map kit (needs the Surveyor's Visor worn to see any of it) ----
+  I({ id: "surveyor_pin", name: "Surveyor's Pin", desc: "Press E to plant one where you stand: a named mark on the Map, forever. Rename it from the maximised Map. A Pin named \"Base\" is the point your Surveyor's Visor beams you back to.", w: 1, h: 1, mass: 0.2, color: "#66e5f0" }),
+  I({ id: "tracker", name: "Hidden Landmark Tracker", desc: "Use it (Q): wakes the nearest Landmark you have never found — a Town, Trader camp, cave mouth, oasis or buried canister site — and marks it on the Map. One use, then it is gone; it can never find the one-of-a-kind second wreck.", w: 1, h: 1, mass: 0.4, color: "#c08a3c" }),
 ];
 
 export const ITEMS: Record<string, ItemDef> = Object.fromEntries(ITEM_LIST.map((d) => [d.id, d]));
@@ -167,6 +170,8 @@ export class Inventory {
   w = 5; h = 4;
   baseLimit = 30; // kg
   bonusLimit = 0;
+  // fired with the item id whenever an item actually lands in the pack (the Codex listens)
+  learn: (id: string) => void = () => {};
 
   constructor() {} // fresh worlds start with an empty pack - supplies live in the cockpit chest
 
@@ -236,7 +241,7 @@ export class Inventory {
           for (let dy = 0; dy < h && free; dy++)
             for (let dx = 0; dx < w && free; dx++)
               if (this.occupied(x + dx, y + dy)) free = false;
-          if (free) { s.x = x; s.y = y; s.rot = rot || undefined; this.slots.push(s); return true; }
+          if (free) { s.x = x; s.y = y; s.rot = rot || undefined; this.slots.push(s); this.learn(s.itemId); return true; }
         }
       }
     }
@@ -260,6 +265,7 @@ export class Inventory {
                 if (this.occupied(x + dx, y + dy)) free = false;
             if (free) {
               this.slots.push(rot ? { itemId, x, y, rot: true } : { itemId, x, y });
+              this.learn(itemId);
               placed = true;
             }
           }

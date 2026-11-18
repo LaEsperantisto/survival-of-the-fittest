@@ -50,7 +50,7 @@ export function deleteWorld(id: string) {
 }
 
 export interface RunSave {
-  v: 1;
+  v: 1 | 2;
   seedStr: string;
   time: number;
   playSec: number;
@@ -74,6 +74,13 @@ export interface RunSave {
   lastSleep?: number;         // timeSec of the last bed sleep
   deltas: Record<string, number[]>;
   rots?: Record<string, number>; // cell "x,y,z" -> quarter-turn for player-placed blocks
+  // ---- v2: the Map kit and the lessons ----
+  worldMode?: "easy" | "hard";            // fixed at world creation (Easy/Hard Start)
+  pins?: { id: number; x: number; z: number; name: string }[];   // Surveyor's Pins
+  visited?: string[];                     // explored chunk keys "cx,cz"
+  revealed?: string[];                    // landmark keys the Tracker/quests marked
+  chronicle?: string[];                   // lesson ids seen (chronicle.ts)
+  codex?: string[];                       // item ids (and "b:<blockId>") first carried/crafted/mined
 }
 
 export function saveRun(meta: WorldMeta, run: RunSave): boolean {
@@ -104,7 +111,7 @@ export function exportRun(meta: WorldMeta, run: RunSave) {
 
 export async function importRun(file: File): Promise<WorldMeta> {
   const obj = JSON.parse(await file.text());
-  if (!obj || obj.run?.v !== 1) throw new Error("Not a Survival of the Fittest world file.");
+  if (!obj || (obj.run?.v !== 1 && obj.run?.v !== 2)) throw new Error("Not a Survival of the Fittest world file.");
   const meta = createWorld(obj.meta?.name ?? "imported", obj.run.seedStr);
   saveRun(meta, obj.run);
   return meta;

@@ -191,8 +191,6 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 /* mobile */
 #mobile { position: fixed; inset: 0; z-index: 20; pointer-events: none;
   touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-#m-pause { position: absolute; top: 10px; left: 10px; width: 44px; height: 44px; padding: 0;
-  font-size: 14px; font-weight: 700; pointer-events: auto; touch-action: none; }
 #stick { position: absolute; left: 22px; bottom: 90px; width: 110px; height: 110px; border-radius: 50%;
   background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.25); pointer-events: auto; }
 #knob { position: absolute; left: 38px; top: 38px; width: 34px; height: 34px; border-radius: 50%;
@@ -260,3 +258,32 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 #btn-tut-skip { margin-top: 8px; font-size: 12px; color: #9aa3b2; background: transparent;
   border: 1px solid #4a5262; border-radius: 5px; padding: 3px 12px; cursor: pointer; }
 #btn-tut-skip:hover { color: #e8e6df; border-color: #6b7280; }
+
+/* Map HUD widget — drawn only while the Surveyor's Visor is worn */
+#map { position: absolute; left: 12px; top: 12px; width: 164px; pointer-events: none; }
+#map canvas { display: block; border: 1px solid #4a5262; border-radius: 8px; background: #0a0c10;
+  pointer-events: auto; cursor: pointer; }
+#map.max { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: auto; z-index: 30; }
+#map.max canvas { cursor: default; }
+#map-pins { position: absolute; top: 0; left: 100%; margin-left: 8px; width: 170px; pointer-events: auto;
+  background: rgba(0,0,0,0.55); border: 1px solid #4a5262; border-radius: 8px; padding: 8px; }
+#map.max #map-pins { position: static; margin-left: 0; margin-top: 6px; width: auto; }
+#map-pins h4 { color: #d8b74f; font-size: 12px; letter-spacing: 1px; margin-bottom: 6px; }
+.pin-row { display: flex; gap: 4px; margin-bottom: 4px; }
+.pin-row input { flex: 1; min-width: 0; background: #22262e; color: #e8e0d0; border: 1px solid #6b7280;
+  border-radius: 4px; padding: 3px 5px; font-size: 12px; }
+.pin-row button { width: 28px; height: 24px; padding: 0; font-size: 11px; }
+.q-chron { font-size: 11px; color: #8fd8a8; margin-top: 5px; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 4px; }
+
+/* Chronicle log (pause menu) */
+#chronicle-body { text-align: left; max-width: 640px; margin: 0 auto; }
+.chron-entry { background: rgba(255,255,255,0.05); border: 1px solid #3a4250; border-radius: 8px;
+  padding: 10px 14px; margin-bottom: 8px; }
+.chron-entry h3 { color: #d8b74f; font-size: 14px; margin-bottom: 4px; }
+.chron-entry p { font-size: 13px; color: #cfcfcf; line-height: 1.45; }
+.chron-entry.locked { opacity: 0.4; }
+.chron-entry.locked h3 { color: #9aa0aa; }
+
+/* Codex lock: entries you have never carried/crafted/mined read greyed */
+.cat-card.locked { opacity: 0.35; filter: grayscale(0.9); }
+.cat-card .cat-locked { font-size: 11px; color: #8a8f9a; font-style: italic; }

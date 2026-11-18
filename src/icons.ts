@@ -575,6 +575,44 @@ function drawArt(id: string, w: number, h: number, color: string, tier = ""): HT
       g.fillStyle = "#c8d2da"; g.fillRect(4, 4, 1, 1); g.fillRect(11, 4, 1, 1); g.fillRect(4, 12, 1, 1); g.fillRect(11, 12, 1, 1);
       return cv;
     }
+    case "surveyor_pin": {                              // map pin: golden teardrop, cyan eye, dark outline
+      g.fillStyle = "#0e1a1f";
+      g.beginPath(); g.arc(8, 6, 5, 0, Math.PI * 2); g.fill();
+      poly(g, [[8, 15], [4, 8], [12, 8]], "#0e1a1f");   // needle silhouette under the brass
+      g.fillStyle = "#d8a845";
+      g.beginPath(); g.arc(8, 6, 4, 0, Math.PI * 2); g.fill();
+      poly(g, [[8, 14], [5, 8], [11, 8]], "#d8a845");
+      poly(g, [[8, 14], [5, 8], [8, 8]], "#f2cf7c");    // lit left face
+      poly(g, [[11, 8], [8, 14], [8, 8]], "#96682a");   // shaded right face
+      g.fillStyle = "#66e5f0";
+      g.beginPath(); g.arc(8, 6, 2, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#2f97a6"; g.fillRect(9, 7, 1, 1);  // eye shadow
+      g.fillStyle = "#d2f8ff"; g.fillRect(6, 4, 1, 1); g.fillRect(7, 3, 2, 1); // glass highlight
+      g.fillStyle = "#8a5f1e"; g.fillRect(7, 13, 2, 2); // point biting into the map
+      return cv;
+    }
+    case "tracker": {                                   // brass compass puck: dark dial, cyan needle, tiny screen
+      line(g, 12, 1, 11, 4, "#5c6670", 1);              // antenna stub behind the case
+      g.fillStyle = "#66e5f0"; g.fillRect(12, 1, 1, 1);
+      g.fillStyle = "#2a2018";
+      g.beginPath(); g.arc(8, 8, 6.5, 0, Math.PI * 2); g.fill(); // dark rim so it reads on the cell
+      g.fillStyle = "#c08a3c";
+      g.beginPath(); g.arc(8, 8, 5.5, 0, Math.PI * 2); g.fill(); // brass case
+      g.fillStyle = "#8a5f22";
+      g.beginPath(); g.arc(8, 8, 5.5, -0.3, 2.0); g.fill();      // shaded lower rim
+      g.fillStyle = "#12181d";
+      g.beginPath(); g.arc(8, 8, 4, 0, Math.PI * 2); g.fill();   // dial face
+      g.strokeStyle = "#5c6670"; g.lineWidth = 1;
+      g.beginPath(); g.arc(8, 8, 4, 0, Math.PI * 2); g.stroke(); // glass ring
+      g.fillStyle = "#5c6670";                                   // cardinal ticks
+      g.fillRect(8, 5, 1, 1); g.fillRect(5, 8, 1, 1); g.fillRect(8, 11, 1, 1); g.fillRect(11, 8, 1, 1);
+      rect(g, 6, 11, 3, 2, "#16222a");                           // status screen
+      g.fillStyle = "#66e5f0"; g.fillRect(7, 12, 1, 1);          // screen dot
+      poly(g, [[11, 5], [7, 7], [9, 9]], "#66e5f0");             // cyan needle half
+      poly(g, [[5, 11], [9, 9], [7, 7]], "#8a949e");             // steel tail half
+      g.fillStyle = "#d2f8ff"; g.fillRect(7, 7, 2, 2);           // pivot
+      return cv;
+    }
     case "seed_melon":
       g.fillStyle = "#c8b060"; g.beginPath(); g.ellipse(8, 10, 4, 4.8, 0, 0, Math.PI * 2); g.fill();
       g.strokeStyle = "#8f7a40"; g.lineWidth = 1; g.beginPath(); g.ellipse(8, 10, 4, 4.8, 0, 0, Math.PI * 2); g.stroke();

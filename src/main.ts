@@ -3,6 +3,7 @@ import { DAY_SECONDS, BLOCKS } from "./blocks";
 import { Audio } from "./audio";
 import { ITEMS } from "./items";
 import { QUESTS } from "./quests";
+import { LESSONS } from "./chronicle";
 import { RECIPES, SMELT } from "./crafting";
 import { itemArtUrl, blockTileUrl } from "./icons";
 import {
@@ -14,7 +15,7 @@ import * as hud from "./hud";
 const $ = (id: string) => document.getElementById(id)!;
 const $v = (id: string) => ($(id) as HTMLInputElement).value;
 const show = (id: string, on = true) => $(id).classList.toggle("hidden", !on);
-const SCREENS = ["screen-title", "screen-settings", "screen-instructions", "screen-pause", "screen-death", "screen-win", "screen-catalog", "ui-inventory", "ui-craft", "ui-cache"];
+const SCREENS = ["screen-title", "screen-settings", "screen-instructions", "screen-chronicle", "screen-pause", "screen-death", "screen-win", "screen-catalog", "ui-inventory", "ui-craft", "ui-cache"];
 const hideAll = () => SCREENS.forEach((s) => show(s, false));
 
 const audio = new Audio();
@@ -94,6 +95,7 @@ function closeOverlays() {
   if (game) game.pauseSubmenu = null;
   show("screen-settings", false);
   show("screen-instructions", false);
+  show("screen-chronicle", false);
   show("screen-catalog", false);
   if (game) {
     // closing any menu always closes the pause menu too
@@ -178,6 +180,13 @@ let catalogTab: "items" | "recipes" = "items";
 
 function renderCatalog() {
   if (game) game.pauseSubmenu = game.paused ? "catalog" : null;
+  // the Codex learns what you have carried, worn, crafted or mined
+  if (game) {
+    for (const s of game.inv.slots) game.codex.add(s.itemId);
+    for (const e of [game.equip.backpack, game.equip.head, game.equip.body, game.equip.regulator, game.equip.light])
+      if (e) game.codex.add(e.itemId);
+  }
+  const learned = game?.codex ?? null; // no world open: everything reads taught
   openOverlay("screen-catalog");
   for (const t of Array.from($("catalog-tabs").querySelectorAll<HTMLButtonElement>(".tab")))
     t.classList.toggle("active", t.dataset.tab === catalogTab);
@@ -186,23 +195,26 @@ function renderCatalog() {
   if (catalogTab === "items") {
     const grid = document.createElement("div");
     grid.className = "cat-grid";
-    const push = (art: string, name: string, meta: string, desc: string) => {
+    const push = (art: string, name: string, meta: string, desc: string, known: boolean) => {
       const card = document.createElement("div");
-      card.className = "cat-card";
+      card.className = "cat-card" + (known ? "" : " locked");
       const img = document.createElement("img");
       img.src = art; img.alt = "";
       const txt = document.createElement("div");
-      txt.innerHTML = `<b>${name}</b><div class="cat-meta">${meta}</div><div class="cat-desc">${desc}</div>`;
+      txt.innerHTML = `<b>${name}</b><div class="cat-meta">${meta}</div>` +
+        (known ? `<div class="cat-desc">${desc}</div>`
+          : `<div class="cat-locked">Locked — carry it, craft it, or mine it once: the Codex remembers.</div>`);
       card.append(img, txt);
       grid.append(card);
     };
     for (const it of Object.values(ITEMS).sort((a, b) => a.name.localeCompare(b.name)))
-      push(itemArtUrl(it.id), it.name, `${it.w}×${it.h} cell · ${it.mass} kg${it.block !== undefined ? " · placeable" : ""}`, it.desc);
+      push(itemArtUrl(it.id), it.name, `${it.w}×${it.h} cell · ${it.mass} kg${it.block !== undefined ? " · placeable" : ""}`, it.desc, !learned || learned.has(it.id));
     for (const b of BLOCKS) {
       if (b.id === 0 || b.name === "Air") continue;
       const item = Object.values(ITEMS).find((i) => i.block === b.id);
       const meta = `${b.placeable ? "placeable" : "world only"} · ${b.R > 0 ? `R ${b.R}` : "no insulation"}${b.emissive ? " · light source" : ""}`;
-      push(item ? itemArtUrl(item.id) : blockTileUrl(b.id), b.name, meta, item?.desc ?? "Found in the world; mine it to collect it." + (b.minTier > 0 ? ` Needs a tier-${b.minTier} ${b.tool ?? "tool"}.` : ""));
+      push(item ? itemArtUrl(item.id) : blockTileUrl(b.id), b.name, meta, item?.desc ?? "Found in the world; mine it to collect it." + (b.minTier > 0 ? ` Needs a tier-${b.minTier} ${b.tool ?? "tool"}.` : ""),
+        !learned || learned.has("b:" + b.id) || (!!item && learned.has(item.id)));
     }
     body.append(grid);
   } else {
@@ -227,6 +239,27 @@ function renderCatalog() {
 for (const t of Array.from($("catalog-tabs").querySelectorAll<HTMLButtonElement>(".tab")))
   t.onclick = () => { catalogTab = t.dataset.tab as "items" | "recipes"; renderCatalog(); };
 
+// ---------- chronicle ----------
+
+function renderChronicle() {
+  if (game) game.pauseSubmenu = game.paused ? "chronicle" : null;
+  openOverlay("screen-chronicle");
+  const body = $("chronicle-body");
+  body.innerHTML = "";
+  const seen = game?.chronicle ?? new Set<string>();
+  for (const l of LESSONS) {
+    const d = document.createElement("div");
+    if (seen.has(l.id)) {
+      d.className = "chron-entry";
+      d.innerHTML = `<h3>${l.title}</h3><p>${l.text}</p>`;
+    } else {
+      d.className = "chron-entry locked";
+      d.innerHTML = `<h3>— not yet learned —</h3><p>The Chronicle writes itself when the desert teaches you something new.</p>`;
+    }
+    body.append(d);
+  }
+}
+
 // ---------- instructions ----------
 
 const DESKTOP_KEYS: [string, string][] = [
@@ -240,11 +273,16 @@ const DESKTOP_KEYS: [string, string][] = [
   ["T", "toggle the Head Lantern — it burns one fuel charge per 4 game-minutes; refuel it at a Campfire"],
   ["Q", "use the held item: drink a full canister (+25 water, cools you a little), or eat food"], ["X", "sweat surge: spend 10 water to force your body cool (needs 20+ water, 5 s cooldown)"], ["I", "inventory — Equip gear"],
   ["1-9 / mouse wheel / click hotbar", "select item — press the number or click the already-held item to empty your hands"],
+  ["M", "maximise the Map — the corner Map shows only while the Surveyor's Visor is worn"],
+  ["Surveyor's Pin", "hold it and press E to plant a named mark at your feet; rename it in the maximised Map — a Pin named \"Base\" beams you home through walls while the Visor is worn"],
+  ["Hidden Landmark Tracker", "press Q holding it: reveals the nearest Landmark you have never found (one use, then it is gone)"],
+  ["Chronicle", "pause menu — the log of what the desert has taught you; the latest lesson rides under the Quest panel"],
   ["Esc", "close open menu, or pause"], ["P", "pause / resume"],
 ];
 const MOBILE_KEYS: [string, string][] = [
   ["Left stick", "move"], ["Drag the right half of the screen", "look"],
-  ["JUMP / BREAK / PLACE / ACT / DRINK / SURGE / LAMP / ITEM / DROP / BAG", "buttons on the right"],
+  ["JUMP / BREAK / PLACE / ACT / DRINK / SURGE / LAMP / ITEM / DROP / BAG / PAUSE", "buttons on the right"],
+  ["Tap the Map (top-left, needs the Visor worn)", "maximise it — rename or pull Pins there"],
   ["BREAK, aimed at a mob", "fight it — hold the Metal Sword for far harder hits and longer reach"],
   ["Tap an item, then another cell", "move it there (occupants swap); tap an Armour Slot to wear the selected gear; tap empty space to deselect"],
   ["Bottom hotbar", "tap a slot to select that item; the ITEM button cycles through it"],
@@ -301,6 +339,7 @@ $("btn-instructions").onclick = renderInstructions;
 $("btn-pause-instructions").onclick = renderInstructions;
 $("btn-catalog").onclick = renderCatalog;
 $("btn-catalog-title").onclick = renderCatalog;
+$("btn-chronicle").onclick = renderChronicle;
 
 for (const btn of document.querySelectorAll<HTMLButtonElement>(".close-btn"))
   btn.onclick = () => {

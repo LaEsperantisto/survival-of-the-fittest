@@ -59,6 +59,9 @@ export const RECIPES: Recipe[] = [
   { out: "storm_breaker", count: 1, needs: { metal: 2, glass: 1 }, station: "bench" },
   { out: "bucket", count: 1, needs: { metal: 2 }, station: "bench" },
   { out: "bed", count: 1, needs: { deadwood: 3, snake_skin: 2 }, station: "bench" },
+  // ---- the Map kit ----
+  { out: "surveyor_pin", count: 4, needs: { metal: 1, glass: 1 }, station: "bench" },
+  { out: "tracker", count: 1, needs: { metal: 2, copperrod: 1, glass: 1 }, station: "bench" },
 ];
 
 /** Campfire smelting: consumes one fuel charge per item. */
