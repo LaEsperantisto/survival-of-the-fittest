@@ -7,6 +7,7 @@ import {
   DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING,
   CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT, STORM_BREAKER, ARMORY, STORM_BREAKER_R,
   REGULATOR_HUSK, STORM_BREAKER_HUSK,
+  POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
   isSolid, isWater, waterStrength,
 } from "./blocks";
 import { World, ckey, faceVisible } from "./world";
@@ -180,7 +181,8 @@ export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, G
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING,
   IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT, STORM_BREAKER, ARMORY,
-  REGULATOR_HUSK, STORM_BREAKER_HUSK];
+  REGULATOR_HUSK, STORM_BREAKER_HUSK,
+  POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP];
 
 // extra face tiles, appended after the base tiles; each recipe is shaded with
 // the named block's base colour
@@ -916,6 +918,88 @@ export function getAtlasCanvas(): HTMLCanvasElement {
     for (let x = 3; x <= 12; x++) px(x, 10, col(0.08)); px(3, 15, col(0.06)); px(12, 15, col(0.06));      // hearth lip
     for (const [sx, sy] of [[6, 3], [9, 4], [7, 2]] as const) px(sx, sy, col(0.45, 1, 0.5, 0.12, -0.35)); // rising sparks
   });
+  R(String(POWER_PANEL), () => {
+    fbmFill((x, y, nn) => nn * 0.03 - 0.12 + (y % 5 === 0 ? -0.04 : 0));                                 // steel cabinet
+    for (const y of [0, 15]) for (let x = 0; x < 16; x++) px(x, y, col(-0.26));                          // frame rails
+    for (let y = 3; y <= 9; y++) for (let x = 4; x <= 11; x++) {                                        // breaker window
+      const edge = y === 3 || y === 9 || x === 4 || x === 11;
+      px(x, y, edge ? col(0.16) : col(-0.3 + (x - 4) * 0.02, 1, 0.5, 0.42, -0.1));                       // amber gauge glass
+    }
+    for (let y = 4; y <= 8; y++) px(7 + ((y % 2) ? 1 : 0), y, col(0.42, 1, 0.55, 0.2, -0.45));           // tripped red needle
+    for (let x = 4; x <= 11; x++) px(x, 12, col(0.2));                                                  // big reset lever
+    px(6, 11, col(-0.2)); px(7, 11, col(0.28)); px(8, 13, col(-0.2));                                   // lever knuckle
+    for (const [bx, by] of [[2, 2], [13, 2], [2, 13], [13, 13]] as const) px(bx, by, col(0.24));         // corner bolts
+  });
+  R(String(POWER_POLE), () => {
+    fbmFill((x, y, nn) => nn * 0.04 - 0.05 + (Math.abs(x - 7.5) < 1.6 ? 0.1 : -0.2));                   // timber mast, sky darker
+    for (let y = 0; y < 16; y++) { px(7, y, col(0.06)); px(8, y, col(-0.02)); }                          // grain down the mast
+    for (let x = 3; x <= 12; x++) { px(x, 3, col(0.14)); px(x, 4, col(-0.14)); }                         // crossarm
+    for (const x of [4, 8, 11]) px(x, 2, col(0.3, 1, -0.1, 0.2, 0.45));                                 // ceramic insulators
+    for (let x = 0; x < 16; x++) px(x, 1, (x * x) % 3 === 0 ? col(0.1, 1, -0.15, 0.25, 0.5) : col(0));  // copper wire sag
+  });
+  R(String(GEN_WOOD), () => {
+    fbmFill((x, y, nn) => nn * 0.04 - 0.1 + (x % 6 === 0 ? -0.05 : 0));                                 // riveted boiler casing
+    for (const y of [1, 14]) for (let x = 2; x <= 13; x++) px(x, y, col(0.12));                          // bands
+    for (let y = 6; y <= 12; y++) for (let x = 4; x <= 11; x++) {                                       // firebox door
+      const d = Math.abs(x - 7.5) + Math.abs(y - 9.5);
+      px(x, y, d > 4 ? col(-0.24) : col(0.3 - d * 0.05, 1, 0.55 - d * 0.04, 0.22 - d * 0.04, -0.55));    // embers behind
+    }
+    for (let y = 2; y <= 5; y++) { px(3, y, col(-0.2)); px(12, y, col(-0.2)); }                          // stack flues
+    for (let i = 0; i < 10; i++) px(rng.int(2, 13), rng.int(2, 13), col(-0.06));                         // rivet dents
+  });
+  R(String(WATER_WHEEL), () => {
+    fbmFill((x, y, nn) => nn * 0.03 - 0.02);                                                            // pale timber
+    for (let i = 0; i < 24; i++) {                                                                      // wheel rim
+      const a = (i / 24) * Math.PI * 2;
+      px(8 + Math.round(Math.cos(a) * 6), 8 + Math.round(Math.sin(a) * 6), col(0.12));
+      px(8 + Math.round(Math.cos(a) * 5), 8 + Math.round(Math.sin(a) * 5), col(-0.18));
+    }
+    for (let s = 0; s < 6; s++) {                                                                       // spokes and paddles
+      const a = (s / 6) * Math.PI * 2, cx = Math.cos(a), cy = Math.sin(a);
+      for (let r = 1; r <= 5; r++) px(8 + Math.round(cx * r), 8 + Math.round(cy * r), col(0.05));
+      px(8 + Math.round(cx * 5) + 1, 8 + Math.round(cy * 5), col(0.2));
+    }
+    px(7, 7, col(0.25)); px(8, 7, col(0.25)); px(7, 8, col(0.15)); px(8, 8, col(0.15));                 // hub
+    for (let x = 0; x < 16; x += 2) px(x, 14 + (x % 4 === 0 ? 0 : 1), col(0.1, 1, -0.2, 0.12, 0.5));    // current at the foot
+  });
+  R(String(WIND_TURBINE), () => {
+    fbmFill((x, y, nn) => nn * 0.03 - 0.04);                                                            // pale sky plate
+    for (let s = 0; s < 3; s++) {                                                                       // three white blades
+      const a = (s / 3) * Math.PI * 2 + 0.4;
+      for (let r = 1; r <= 7; r++) {
+        px(8 + Math.round(Math.cos(a) * r), 8 + Math.round(Math.sin(a) * r), col(0.26 - r * 0.012));
+        px(8 + Math.round(Math.cos(a) * r) + (Math.abs(Math.sin(a)) < 0.5 ? 1 : 0), 8 + Math.round(Math.sin(a) * r), col(0.1));
+      }
+    }
+    px(7, 7, col(-0.15)); px(8, 7, col(-0.1)); px(7, 8, col(-0.12)); px(8, 8, col(-0.06));              // nacelle
+    for (let y = 9; y < 16; y++) { px(7, y, col(-0.05)); px(8, y, col(-0.16)); }                        // tower
+  });
+  R(String(SOLAR_PANEL), () => {
+    fbmFill((x, y, nn) => nn * 0.02 - 0.36);                                                            // deep glass
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      if (x % 4 === 0 || y % 5 === 0) px(x, y, col(0.22));                                              // bus bars
+    }
+    for (const [rx, ry] of [[10, 2], [11, 3], [12, 4], [13, 5]] as const) px(rx, ry, col(0.3, 0.8));    // sun glint
+    for (const y of [0, 15]) for (let x = 0; x < 16; x++) px(x, y, col(0.05));                          // aluminium frame
+    for (const x of [0, 15]) for (let y = 1; y < 15; y++) px(x, y, col(0.05));
+  });
+  R(String(BATTERY), () => {
+    fbmFill((x, y, nn) => nn * 0.03 - 0.16 + (y % 6 === 0 ? -0.05 : 0));                               // green cell case
+    for (const y of [2, 13]) for (let x = 3; x <= 12; x++) px(x, y, col(0.14));                         // end straps
+    for (const x of [4, 7, 10]) for (let y = 4; y <= 11; y++) px(x, y, col(0.32, 1, -0.25, 0.4, 0.15)); // charge plates
+    for (let x = 4; x <= 11; x++) px(x, 0, col(0.1, 1, 0.35, 0.1, -0.3));                               // hot terminal
+    px(5, 1, col(-0.3)); px(10, 1, col(-0.3));                                                         // vent plugs
+  });
+  R(String(ELEC_LAMP), () => {
+    fill(col(-0.32));                                                                                 // dark fixture back
+    for (let y = 4; y <= 11; y++) for (let x = 4; x <= 11; x++) {                                      // cold white glass
+      const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5));
+      px(x, y, d > 3 ? col(0.1) : col(0.4 - d * 0.06, 1, -0.05, 0.08, 0.25));
+    }
+    for (const y of [4, 11]) for (let x = 3; x <= 12; x++) px(x, y, col(0.2));                         // steel cage rings
+    for (const x of [3, 12]) for (let y = 4; y <= 11; y++) px(x, y, col(0.16));                        // cage bars
+    for (const [rx, ry] of [[6, 2], [9, 2]] as const) px(rx, ry, col(0.22));                           // stem mount
+  });
 
   // paint every registered tile into its slot
   const paint = (key: string, t: number, rgb: readonly number[]) => {
@@ -1200,12 +1284,12 @@ export class Renderer {
     this.chunkMeshes.clear();
   }
 
-  addPointLight(x: number, y: number, z: number, kind: "lamp" | "fire" | "cool") {
+  addPointLight(x: number, y: number, z: number, kind: "lamp" | "fire" | "cool" | "elec") {
     if (this.dynLights.length >= 12 || this.dynLights.some((d) => d.x === x && d.y === y && d.z === z)) return;
     const light = new THREE.PointLight(
-      kind === "lamp" ? 0xfff0b0 : kind === "fire" ? 0xff8340 : 0x8fd8ff,
-      kind === "lamp" ? 0.9 : kind === "fire" ? 1.1 : 0.8,
-      kind === "lamp" ? 12 : kind === "fire" ? 9 : 10, 1.3);
+      kind === "lamp" ? 0xfff0b0 : kind === "fire" ? 0xff8340 : kind === "cool" ? 0x8fd8ff : 0xcfe4ff,
+      kind === "lamp" ? 0.9 : kind === "fire" ? 1.1 : kind === "cool" ? 0.8 : 1.35,
+      kind === "lamp" ? 12 : kind === "fire" ? 9 : kind === "cool" ? 10 : 16, 1.3);
     light.position.set(x + 0.5, y + 0.6, z + 0.5);
     this.scene.add(light);
     this.dynLights.push({ x, y, z, light, flame: kind === "fire" });

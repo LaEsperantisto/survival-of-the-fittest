@@ -69,6 +69,9 @@ export interface RunSave {
   caches: { x: number; y: number; z: number; kind?: "death" | "chest" | "reward"; items: { itemId: string; count: number; charges?: number }[] }[];
   chests?: { cells: string; slots: { itemId: string; count?: number; x: number; y: number; rot?: boolean; blockRot?: number; charges?: number }[] }[];
   campfires: Record<string, number>;
+  battery?: [string, number][];      // Battery cell -> stored Grid units
+  genFuel?: [string, number][];      // Wood Generator cell -> burn seconds left
+  trippedPanels?: string[];          // Power Panel cells latched off (ADR-0007)
   crops?: [string, number][]; // planted crop key -> accumulated good seconds
   trees?: [string, number][]; // planted Living Tree key -> growth seconds
   lastSleep?: number;         // timeSec of the last bed sleep

@@ -10,7 +10,9 @@ export const AIR = 0, SAND = 1, SANDSTONE = 2, ROCK = 3, GRAVEL = 4, DIRT = 5, S
   DOOR_INNER_OPEN = 43, BED = 44, BED_EXT = 45, GRASS = 46, WOOD = 47, LEAVES = 48, SAPLING = 49,
   CURVED_HULL = 50, HULL_SLOPE = 51, IRON_ORE = 52, COPPER_ORE = 53, ALABASTER = 54,
   COBALT_ORE = 55, THRUSTER = 56, THRUSTER_LIT = 57, STORM_BREAKER = 58, ARMORY = 59,
-  REGULATOR_HUSK = 60, STORM_BREAKER_HUSK = 61;
+  REGULATOR_HUSK = 60, STORM_BREAKER_HUSK = 61,
+  POWER_PANEL = 62, POWER_POLE = 63, GEN_WOOD = 64, WATER_WHEEL = 65, WIND_TURBINE = 66,
+  SOLAR_PANEL = 67, BATTERY = 68, ELEC_LAMP = 69;
 
 export type ToolType = "pickaxe" | "shovel" | "axe" | "disassembler";
 
@@ -171,7 +173,22 @@ export const BLOCKS: BlockDef[] = [
   // but breakable into the broken frame, which a Bench repair brings back to life.
   def({ id: REGULATOR_HUSK, name: "Heat Regulator Husk", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: "disassembler", minTier: 1, placeable: false, color: [0.4, 0.44, 0.46] }),
   def({ id: STORM_BREAKER_HUSK, name: "Sandstorm Breaker Husk", solid: true, opaque: true, transparent: false, emissive: false, R: 0.3, breakTime: 5, tool: "disassembler", minTier: 2, placeable: false, color: [0.44, 0.32, 0.28] }),
+  // Grid power (ADR-0007): Poles carry the Grid; exactly one Panel per Grid;
+  // generators, Batteries and Electric Lamp draw. Machines come down for a
+  // Disassembler like every other piece of refined kit.
+  def({ id: POWER_PANEL, name: "Power Panel", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 3, tool: "disassembler", minTier: 1, placeable: true, color: [0.34, 0.38, 0.42] }),
+  def({ id: POWER_POLE, name: "Power Pole", solid: true, opaque: false, transparent: false, emissive: false, R: 0, breakTime: 1.5, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.5, 0.42, 0.3] }),
+  def({ id: GEN_WOOD, name: "Wood Generator", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 3, tool: "disassembler", minTier: 1, placeable: true, color: [0.46, 0.34, 0.26] }),
+  def({ id: WATER_WHEEL, name: "Water Wheel", solid: true, opaque: true, transparent: false, emissive: false, R: 0.3, breakTime: 2.5, tool: "disassembler", minTier: 1, placeable: true, color: [0.44, 0.4, 0.3] }),
+  def({ id: WIND_TURBINE, name: "Wind Turbine", solid: true, opaque: true, transparent: false, emissive: false, R: 0.2, breakTime: 3, tool: "disassembler", minTier: 1, placeable: true, color: [0.7, 0.7, 0.74] }),
+  def({ id: SOLAR_PANEL, name: "Solar Panel", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 2.5, tool: "disassembler", minTier: 1, placeable: true, color: [0.2, 0.26, 0.4] }),
+  def({ id: BATTERY, name: "Battery", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 3, tool: "disassembler", minTier: 1, placeable: true, color: [0.3, 0.44, 0.36] }),
+  def({ id: ELEC_LAMP, name: "Electric Lamp", solid: true, opaque: false, transparent: false, emissive: false, R: 0.2, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.85, 0.9, 0.95] }),
 ];
+
+/** A Pole links to other Poles within this many blocks; every non-Pole power
+ *  block joins the Grid of a Pole within this reach. */
+export const POLE_LINK = 16, DEVICE_REACH = 10;
 
 /** Radius (blocks) of a Sandstorm Breaker's calm. */
 export const STORM_BREAKER_R = 8;

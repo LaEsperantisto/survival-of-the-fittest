@@ -5,7 +5,10 @@ import { Survival, REGULATOR_ROOM_MAX, SAFE_HI } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, type ItemDef, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable } from "./blocks";
+import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, POLE_LINK, DEVICE_REACH, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable } from "./blocks";
+
+/** One Battery stores this many Grid-units. */
+const POWER_BATT_CAP = 120;
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
 import { heightAt, biomeAt, TOWN_L, CAMP_L, CAVE_MOUTH_L, OASIS_L, CANISTER_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
@@ -128,6 +131,17 @@ export class Game {
   private breakerTick = -1;
   stormShieldOn = false;
   private regActive = false; // cached from regulatorGlow's twice-a-second room scan
+  // ---- Grid power (ADR-0007) ----
+  // powerCells: every Power Pole / Panel / generator / Battery / Electric Lamp.
+  // Grids are rebuilt on placement and salvage; the 4-Hz tick runs supply-vs-draw,
+  // Batteries buffer, and a deficit the Batteries can't cover trips the Panel.
+  private powerCells = new Map<string, number>();
+  private genFuel = new Map<string, number>();      // Wood Generator cell -> burn seconds left
+  private batteryCharge = new Map<string, number>(); // Battery cell -> stored units
+  private trippedPanels = new Set<string>();        // Power Panel cells latched off
+  private grids: { panel: string | null; panels: number; cells: Map<string, number>;
+                   tripped: boolean; powered: boolean }[] = [];
+  private powerAcc = 0;
   private mobileJump = false;
   private entitySeq = 1;
   private audioTickAcc = 0;
@@ -437,6 +451,9 @@ export class Game {
     }
     this.campCharges.clear();
     for (const [k, v] of Object.entries(run.campfires ?? {})) this.campCharges.set(k, v);
+    this.batteryCharge = new Map(run.battery ?? []);
+    this.genFuel = new Map(run.genFuel ?? []);
+    this.trippedPanels = new Set(run.trippedPanels ?? []);
     this.renderer.fires = this.campCharges;
     this.world.loadRots(run.rots ?? {});
     this.crops = new Map(run.crops ?? []);
@@ -453,13 +470,16 @@ export class Game {
     for (const [k, m] of this.world.deltas) {
       const [cx, cz] = k.split(",").map(Number);
       for (const [i, id] of m) {
-        if (id !== LAMP && id !== CAMPFIRE) continue;
+        const isPower = id >= POWER_PANEL && id <= ELEC_LAMP;
+        if (id !== LAMP && id !== CAMPFIRE && !isPower) continue;
         const lx = Math.floor(i / (CS * CH)), rem = i % (CS * CH);
         const wx = cx * CS + lx, wy = rem % CH, wz = cz * CS + Math.floor(rem / CH);
+        if (isPower) { this.powerCells.set(`${wx},${wy},${wz}`, id); continue; }
         if (id === CAMPFIRE && (this.campCharges.get(`${wx},${wy},${wz}`) ?? 0) <= 0) continue;
         this.renderer.addPointLight(wx, wy, wz, id === LAMP ? "lamp" : "fire");
       }
     }
+    this.rebuildPower();
   }
 
   snapshot(): RunSave {
@@ -494,6 +514,9 @@ export class Game {
       caches: this.caches.map((c) => ({ x: c.x, y: c.y, z: c.z, kind: c.kind, items: c.items.map((i) => ({ ...i })) })),
       chests: [...this.chests].map(([cells, slots]) => ({ cells, slots: slots.map((s) => ({ ...s })) })),
       campfires: Object.fromEntries(this.campCharges),
+      battery: [...this.batteryCharge],
+      genFuel: [...this.genFuel],
+      trippedPanels: [...this.trippedPanels],
       crops: [...this.crops],
       trees: [...this.trees],
       lastSleep: this.lastSleep > 0 ? this.lastSleep : undefined,
@@ -1633,6 +1656,7 @@ export class Game {
     }
     this.regulatorGlow();
     this.updateCrops(dt);
+    this.updatePower(dt);
     this.updateTrees(dt);
     if (!this.ui && !this.paused && !this.cine) this.cactusPrick();
     const surgeCool = this.survival.surgeCooldown > 0;
@@ -1719,6 +1743,8 @@ export class Game {
       if (id === CAMPFIRE) return this.canHeatWater(t.hit.x, t.hit.y, t.hit.z) ? "E: Heat the water"
         : this.canFeed(t.hit.x, t.hit.y, t.hit.z) ? "E: Feed the fire" : "E: Smelt";
       if (id === REGULATOR) return "E: Draw neutral air (37 °C)";
+      if (id === POWER_PANEL) return this.trippedPanels.has(`${t.hit.x},${t.hit.y},${t.hit.z}`)
+        ? "E: Reset the tripped Power Panel" : "E: Power Panel — check the meters";
       if (id === THRUSTER) return this.inv.has("thruster_nozzle", 1) ? "E: Install Thruster Nozzle" : null;
     }
     if (t.water) return "E: Refill canister";
@@ -1923,6 +1949,13 @@ export class Game {
     }
     if (id === LAMP || id === CAMPFIRE || id === THRUSTER_LIT) this.renderer.removePointLight(x, y, z);
     if (id === STORM_BREAKER) this.breakers.delete(`${x},${y},${z}`);
+    if (id >= POWER_PANEL && id <= ELEC_LAMP) {
+      const pk = `${x},${y},${z}`;
+      this.powerCells.delete(pk); this.genFuel.delete(pk); this.batteryCharge.delete(pk);
+      if (id === ELEC_LAMP) this.renderer.removePointLight(x, y, z);
+      if (id === POWER_PANEL) this.trippedPanels.delete(pk);
+      this.rebuildPower();
+    }
     this.world.set(x, y, z, AIR);
     const item = this.blockItemId(id);
     if (item) this.giveOrDrop(item, 1);
@@ -2537,6 +2570,13 @@ export class Game {
     // a fresh campfire is cold kindling — feed it before it glows
     else if (def.block === THRUSTER_LIT) this.renderer.addPointLight(bx, by, bz, "fire"); // a carried engine keeps burning
     if (def.block === STORM_BREAKER) this.breakers.add(`${bx},${by},${bz}`);
+    if (def.block >= POWER_PANEL && def.block <= ELEC_LAMP) {
+      const pk = `${bx},${by},${bz}`;
+      this.powerCells.set(pk, def.block);
+      if (def.block === GEN_WOOD) this.genFuel.set(pk, 0);
+      if (def.block === BATTERY) this.batteryCharge.set(pk, 0);
+      this.rebuildPower();
+    }
     if (def.block === CHEST) this.linkChests(bx, by, bz, chestOld);
     this.inv.slots.splice(this.inv.selected, 1);
     this.inv.selected = Math.min(this.inv.selected, Math.max(0, this.inv.slots.length - 1));
@@ -2565,6 +2605,7 @@ export class Game {
       const { x, y, z } = t.hit;
       const id = this.world.get(x, y, z);
       if (id === MELON_2 || id === WHEAT_2 || id === CACTUS_FRUIT) { this.harvest(x, y, z, id); return; }
+      if (id === POWER_PANEL) { this.panelAct(x, y, z); return; }
       if (id === BED || id === BED_EXT) { this.sleep(); return; }
       if (isDoorHalf(id) || id === DOOR_OPEN || id === DOOR_INNER_OPEN) {
         const inner = id === DOOR_INNER || id === DOOR_INNER_UPPER || id === DOOR_INNER_OPEN;
@@ -2749,6 +2790,159 @@ export class Game {
         this.crops.set(key, np);
         if (np >= (melon ? 60 : 90)) this.world.set(x, y, z, melon ? MELON_2 : WHEAT_2);
       }
+    }
+  }
+
+  // ---------------- Grid power (ADR-0007) ----------------
+  /** A connected component of Poles (linked within POLE_LINK) with devices
+   *  attached at DEVICE_REACH; one Panel per component or the Grid has no power. */
+  private rebuildPower() {
+    this.grids = [];
+    const keys = [...this.powerCells.keys()];
+    const parent = new Map<string, string>();
+    const find = (k: string): string => { const p = parent.get(k)!; if (p === k) return k; const r = find(p); parent.set(k, r); return r; };
+    const union = (a: string, b: string) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
+    for (const k of keys) parent.set(k, k);
+    const xyz = (k: string): [number, number, number] => { const [x, y, z] = k.split(",").map(Number); return [x, y, z]; };
+    for (let i = 0; i < keys.length; i++) for (let j = i + 1; j < keys.length; j++) {
+      const idA = this.powerCells.get(keys[i])!, idB = this.powerCells.get(keys[j])!;
+      // Pole-to-Pole wires at POLE_LINK; a device joins a Pole's Grid at DEVICE_REACH
+      const reach = idA === POWER_POLE && idB === POWER_POLE ? POLE_LINK
+        : idA === POWER_POLE || idB === POWER_POLE ? DEVICE_REACH : -1;
+      if (reach < 0) continue;
+      const [ax, ay, az] = xyz(keys[i]), [bx, by, bz] = xyz(keys[j]);
+      if ((ax - bx) ** 2 + (ay - by) ** 2 + (az - bz) ** 2 <= reach * reach) union(keys[i], keys[j]);
+    }
+    const byRoot = new Map<string, Map<string, number>>();
+    for (const k of keys) { const r = find(k); if (!byRoot.has(r)) byRoot.set(r, new Map()); byRoot.get(r)!.set(k, this.powerCells.get(k)!); }
+    for (const cells of byRoot.values()) {
+      let panel: string | null = null, panels = 0;
+      for (const [k, id] of cells) if (id === POWER_PANEL) { panels++; panel = k; }
+      this.grids.push({ panel, panels, cells, tripped: panels === 1 && this.trippedPanels.has(panel!), powered: false });
+    }
+    this.syncElecLamps();
+  }
+
+  private syncElecLamps() {
+    for (const g of this.grids)
+      for (const [k, id] of g.cells) {
+        if (id !== ELEC_LAMP) continue;
+        const [x, y, z] = k.split(",").map(Number);
+        if (g.powered) this.renderer.addPointLight(x, y, z, "elec");
+        else this.renderer.removePointLight(x, y, z);
+      }
+  }
+
+  /** Live supply of one generator (0 if the Grid it sits on is dark). */
+  private genOutput(k: string, id: number, gridOn: boolean): number {
+    if (!gridOn) return 0;
+    const [x, y, z] = k.split(",").map(Number);
+    if (id === GEN_WOOD) return (this.genFuel.get(k) ?? 0) > 0 ? 4 : 0;
+    if (id === WATER_WHEEL) {
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const)
+        if (isWater(this.world.get(x + dx, y, z + dz))) return 3;
+      return 0;
+    }
+    if (id === WIND_TURBINE) {
+      for (let dy = 1; dy <= 8; dy++) if (BLOCKS[this.world.get(x, y + dy, z)].opaque) return 0; // roof kills it
+      return 8 * (0.15 + 0.85 * this.survival.storm); // the storm is the fuel
+    }
+    if (id === SOLAR_PANEL) {
+      const frac = (this.timeSec % DAY_SECONDS) / DAY_SECONDS;
+      const a = (frac - 0.25) * Math.PI * 2, elev = Math.sin(a); // same sun arc the renderer draws
+      if (elev <= 0.02) return 0;
+      const inv = 1 / Math.hypot(Math.cos(a), elev, 0.4);
+      if (!this.world.sunVisible(x, y, z, Math.cos(a) * inv, elev * inv, 0.4 * inv)) return 0;
+      return 4 * elev * (1 - 0.7 * this.survival.storm);
+    }
+    return 0;
+  }
+
+  /** A hungry Wood Generator eats one Log (30 s) or Dead Wood stick (6 s)
+   *  out of a Supply Chest standing right beside it — adjacency, no vacuum. */
+  private refuelGen(k: string) {
+    const [x, y, z] = k.split(",").map(Number);
+    for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const) {
+      if (this.world.get(x + dx, y + dy, z + dz) !== CHEST) continue;
+      const slots = this.chests.get(Game.chestKey(this.chestCluster(x + dx, y + dy, z + dz)));
+      if (!slots?.length) continue;
+      let i = slots.findIndex((s) => s.itemId === "wood_log");
+      let burn = 30;
+      if (i < 0) { i = slots.findIndex((s) => s.itemId === "deadwood"); burn = 6; }
+      if (i < 0) continue;
+      slots.splice(i, 1);
+      this.genFuel.set(k, (this.genFuel.get(k) ?? 0) + burn);
+      return;
+    }
+  }
+
+  private updatePower(dt: number) {
+    this.powerAcc += dt;
+    if (this.powerAcc < 0.25) return;
+    const step = this.powerAcc;
+    this.powerAcc = 0;
+    for (const g of this.grids) {
+      const on = g.panels === 1 && !g.tripped;
+      let supply = 0, draw = 0;
+      const batts: string[] = [];
+      // a starving generator eats from a beside-chest even while tripped, so the
+      // player can walk back and re-arm the Panel instead of softlocking the Grid
+      for (const [k, id] of g.cells) if (id === GEN_WOOD && (this.genFuel.get(k) ?? 0) <= 0) this.refuelGen(k);
+      for (const [k, id] of g.cells) {
+        supply += this.genOutput(k, id, on);
+        if (on && id === GEN_WOOD) { const f = this.genFuel.get(k) ?? 0; if (f > 0) this.genFuel.set(k, Math.max(0, f - step)); }
+        if (id === ELEC_LAMP) draw += 1;
+        if (id === BATTERY) batts.push(k);
+      }
+      if (on) {
+        const net = supply - draw;
+        if (net >= 0) {
+          const each = Math.min(6, net / Math.max(1, batts.length));
+          for (const k of batts) this.batteryCharge.set(k, Math.min(POWER_BATT_CAP, (this.batteryCharge.get(k) ?? 0) + each * step));
+        } else {
+          const deficit = -net;
+          let covered = 0;
+          for (const k of batts) {
+            const c = this.batteryCharge.get(k) ?? 0;
+            const out = Math.min(c, Math.min(6, deficit / Math.max(1, batts.length)) * step);
+            this.batteryCharge.set(k, c - out);
+            covered += out / step;
+          }
+          if (covered < deficit - 1e-6) {
+            g.tripped = true;
+            if (g.panel) this.trippedPanels.add(g.panel);
+            hud.toast("The Power Panel trips — the whole Grid goes dark. Walk over and reset it.");
+            this.audio.error();
+          }
+        }
+      }
+      g.powered = on;
+    }
+    this.syncElecLamps();
+  }
+
+  private gridAtPanel(panelKey: string) { return this.grids.find((g) => g.panel === panelKey) ?? null; }
+
+  /** E at a Power Panel: check the meters, or reset it when it has headroom again. */
+  private panelAct(x: number, y: number, z: number) {
+    const k = `${x},${y},${z}`;
+    const g = this.gridAtPanel(k);
+    if (!g || g.panels !== 1) { hud.toast("This Panel is not wired as the heart of a Grid."); this.audio.error(); return; }
+    let supply = 0, draw = 0, batt = 0, battCap = 0;
+    for (const [ck, id] of g.cells) {
+      supply += this.genOutput(ck, id, true);
+      if (id === ELEC_LAMP) draw += 1;
+      if (id === BATTERY) { batt += this.batteryCharge.get(ck) ?? 0; battCap += POWER_BATT_CAP; }
+    }
+    if (g.tripped) {
+      if (supply >= draw) {
+        g.tripped = false;
+        this.trippedPanels.delete(k);
+        hud.toast("The Grid hums back to life.");
+        this.audio.savePing();
+      } else hud.toast("Not yet — the generators must at least match the draw before the Panel re-arms.");
+    } else {
+      hud.toast(`Grid: ${supply.toFixed(1)} supply, ${draw.toFixed(1)} draw${battCap ? `, battery ${Math.round((batt / battCap) * 100)}%` : ""}.`);
     }
   }
 

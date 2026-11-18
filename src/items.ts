@@ -5,6 +5,7 @@ import {
   DOOR_INNER, DOOR_INNER_UPPER, BED, BED_EXT, GRASS, LEAVES, WOOD, SAPLING,
   CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, STORM_BREAKER, THRUSTER, THRUSTER_LIT, ARMORY,
   REGULATOR_HUSK, STORM_BREAKER_HUSK,
+  POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
 } from "./blocks";
 
 export interface ItemDef {
@@ -132,6 +133,15 @@ const ITEM_LIST: ItemDef[] = [
   // ---- the Ship's wings ----
   I({ id: "curved_hull", name: "Curved Hull Plating", desc: "Hull Plating shaped as an elbow - insulates exactly like flat plating, and rounds any corner you build.", w: 1, h: 1, mass: 2.0, block: CURVED_HULL, color: "#7d8390" }),
   I({ id: "hull_slope", name: "Hull Slope", desc: "A beveled hull block for spines, roofs and shoulders. Same insulation, rounder silhouette.", w: 1, h: 1, mass: 2.0, block: HULL_SLOPE, color: "#767d88" }),
+  // ---- Grid power: Poles carry it, the Panel guards it (ADR-0007) ----
+  I({ id: "power_pole", name: "Power Pole", desc: "Carries the Grid: links to other Poles within 16 blocks and feeds anything powered within 10.", w: 1, h: 1, mass: 2.0, block: POWER_POLE, color: "#8a7455" }),
+  I({ id: "power_panel", name: "Power Panel", desc: "The heart of a Grid — exactly one per Pole network. When draw outruns supply it trips and the whole Grid goes dark until you press E to reset it.", w: 1, h: 1, mass: 4.0, block: POWER_PANEL, color: "#586270" }),
+  I({ id: "gen_wood", name: "Wood Generator", desc: "Burns Wood Logs and Dead Wood fed from a Supply Chest right beside it. Steady 4 units, day and night, until the wood runs out.", w: 1, h: 1, mass: 6.0, block: GEN_WOOD, color: "#755540" }),
+  I({ id: "water_wheel", name: "Water Wheel", desc: "3 units while water runs past any side of it. Oasis-current or your own channel — it never sleeps.", w: 1, h: 1, mass: 5.0, block: WATER_WHEEL, color: "#70664d" }),
+  I({ id: "wind_turbine", name: "Wind Turbine", desc: "Up to 8 units, scaling with the Sandstorm — the storm that punishes you powers the base. Needs open sky above.", w: 1, h: 1, mass: 5.0, block: WIND_TURBINE, color: "#b3b3bc" }),
+  I({ id: "solar_panel", name: "Solar Panel", desc: "Up to 4 units in direct sun; roofs and Sandstorms cut it hard. Dead silent at night.", w: 1, h: 1, mass: 4.0, block: SOLAR_PANEL, color: "#33405f" }),
+  I({ id: "battery", name: "Battery", desc: "Stores 120 units of the Grid. Sips surplus by day, hands it back when generation falls short — until it is dry and the Panel trips.", w: 1, h: 1, mass: 8.0, block: BATTERY, color: "#4d7059" }),
+  I({ id: "elec_lamp", name: "Electric Lamp", desc: "Cold steady light on the Grid — brighter than an oil Lamp, zero flame. Unpowered it is just glass.", w: 1, h: 1, mass: 1.0, block: ELEC_LAMP, color: "#d8e4f2" }),
   I({ id: "thruster_nozzle", name: "Thruster Nozzle", desc: "Cobalt-and-Copper replacement engine part. Press E at a Broken Thruster to wake it. All four wake the Ship.", w: 1, h: 2, mass: 3.0, color: "#c88a50" }),
   // ---- salvaged engine modules: a Disassembler pulls thrusters off their pylons ----
   I({ id: "thruster_broken", name: "Broken Thruster", desc: "A dead wingtip engine torn off its pylon. Heavy, inert — set it down anywhere and it waits for a Thruster Nozzle.", w: 2, h: 2, mass: 22.0, block: THRUSTER, color: "#6b707c" }),
