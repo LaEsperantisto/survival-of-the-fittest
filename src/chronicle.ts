@@ -71,6 +71,31 @@ export const LESSONS: Lesson[] = [
     hint: "8 blocks of storm-proof calm",
     text: "A built Sandstorm Breaker hums out the storm: within 8 blocks the Sandstorm loses all teeth — no scorching, no wind-thirst, no blast. Plant one before every long trip; the recipe (Iron Rods + Glass) carries no catalyst, so a whole Base can be storm-proofed.",
   },
+  {
+    id: "grid", title: "The Grid",
+    hint: "a Power Panel meters every Watt you draw",
+    text: "Power lives on one Grid: a Power Panel is its meter and switch. Generators (Wood, Water Wheel, Wind, Solar) feed it; Poles carry it — a device joins within 10 blocks of a Pole, Poles link 16 apart. If demand outruns supply the Panel trips and everything goes dark until the shortfall clears. A Battery sips the day's surplus and pays it back when the wind dies.",
+  },
+  {
+    id: "inserter", title: "The Inserter",
+    hint: "front pulls, behind pushes — aim with R",
+    text: "The universal atom of factory automation: a powered Inserter takes one item per second out of the block in front of it and pushes it into the block behind — Chest to Chest, or fuel straight into a Campfire's Fuel Slot. No filters, no reach: the whole data flow is visible in world space. Aim it with R before you place.",
+  },
+  {
+    id: "planter", title: "The Planter",
+    hint: "seeds below, Farm Land above, crop two up",
+    text: "A powered Planter plants your farm for you: Chest of seeds beneath, Farm Land directly above it, and it fills the empty cell two up with a Melon or Wheat seed. Keep water within 4 of the soil and the air in the crop's temperature band, and the column never needs your hands.",
+  },
+  {
+    id: "home", title: "Home Is a Sealed Room",
+    hint: "a sealed space with a hearth or Grid hums cosy",
+    text: "The walls close the desert out: inside a sealed space with a lit Campfire, a Bed, a working Storm Breaker or a Power Panel, the wind drops to a muffled moan, the fire crackles close, and the score turns warm. This is a Base — cosy on purpose. The edge feels like the edge because somewhere, the light is low and steady and yours.",
+  },
+  {
+    id: "harvester", title: "The Harvester",
+    hint: "reaps below, chest above",
+    text: "A powered Harvester closes the farm loop: ripe crop directly beneath, Chest directly above — it reaps Melons (the vine keeps growing), cuts Wheat back to tilled Farmland (seeds returned), and picks Cactus fruit. Planter below, Farmland, crop, Harvester on top: a self-seeding column that pays in food.",
+  },
 ];
 
 export const LESSON_BY_ID = new Map(LESSONS.map((l) => [l.id, l]));

@@ -8,6 +8,7 @@ import {
   CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT, STORM_BREAKER, ARMORY, STORM_BREAKER_R,
   REGULATOR_HUSK, STORM_BREAKER_HUSK,
   POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
+  INSERTER, PLANTER, HARVESTER,
   isSolid, isWater, waterStrength,
 } from "./blocks";
 import { World, ckey, faceVisible } from "./world";
@@ -182,7 +183,8 @@ export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, G
   DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING,
   IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT, STORM_BREAKER, ARMORY,
   REGULATOR_HUSK, STORM_BREAKER_HUSK,
-  POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP];
+  POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
+  INSERTER, PLANTER, HARVESTER];
 
 // extra face tiles, appended after the base tiles; each recipe is shaded with
 // the named block's base colour
@@ -1000,6 +1002,39 @@ export function getAtlasCanvas(): HTMLCanvasElement {
     for (const x of [3, 12]) for (let y = 4; y <= 11; y++) px(x, y, col(0.16));                        // cage bars
     for (const [rx, ry] of [[6, 2], [9, 2]] as const) px(rx, ry, col(0.22));                           // stem mount
   });
+  R(String(INSERTER), () => {
+    fill(col(-0.34));                                                                                 // dark base plate
+    for (const x of [0, 15]) for (let y = 0; y < 16; y++) px(x, y, col(-0.1, 1, -0.2, 0.05, 0.1));     // teal edge rails
+    for (let y = 6; y <= 9; y++) for (let x = 1; x <= 6; x++) px(x, y, col(0.12));                     // housing (the behind side)
+    px(3, 7, col(0.3, 1, -0.2, 0.35, 0.1)); px(3, 8, col(0.3, 1, -0.2, 0.2, 0.1));                     // status eye
+    for (let i = 0; i < 4; i++) {                                                                     // segmented arm reaching forward
+      const ax = 7 + i * 2, ay = 8 - i;
+      for (let t = 0; t < 2; t++) px(ax + t, ay, col(0.24 - i * 0.03));
+      px(ax + 1, ay + 1, col(0.02));
+    }
+    for (const y of [3, 4, 5]) px(14, y, col(0.3, 1, -0.1, 0.3, 0.15));                                // gripper open at the front
+    for (let x = 1; x <= 6; x++) px(x, 12, col(0.06)); px(2, 13, col(0.2, 1, -0.2, 0.1, 0.2)); px(5, 13, col(0.2, 1, -0.2, 0.1, 0.2)); // current feed
+  });
+  R(String(PLANTER), () => {
+    fbmFill((x, y, nn) => nn * 0.03 - 0.22 + (y < 3 ? -0.1 : 0));                                      // soil-dark tray body
+    for (let x = 0; x < 16; x++) { px(x, 2, col(0.16)); px(x, 13, col(0.08)); }                        // tray rims
+    for (const x of [0, 15]) for (let y = 2; y <= 13; y++) px(x, y, col(0.1));
+    for (const x of [3, 7, 11]) for (let y = 4; y <= 8; y++) px(x, y, col(0.34, 1, 0.25, 0.2, -0.25)); // three sprout columns
+    for (const x of [4, 8, 12]) { px(x, 3, col(0.4, 1, 0.3, 0.1, -0.3)); px(x - 1, 4, col(0.3, 1, 0.2, 0.1, -0.2)); } // leaves
+    for (let x = 5; x <= 10; x++) px(x, 10, col(-0.05));                                               // seed port below
+    px(7, 11, col(0.3, 1, -0.2, 0.2, 0.1)); px(8, 11, col(0.3, 1, -0.2, 0.2, 0.1));                   // current pilot
+  });
+  R(String(HARVESTER), () => {
+    fill(col(-0.3));                                                                                  // bronze housing
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (x === 0 || x === 15 || y === 0 || y === 15) px(x, y, col(0.08));
+    for (let i = 0; i < 4; i++) {                                                                     // rotating reel teeth
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      for (let r = 1; r <= 6; r += 2) px(8 + Math.round(Math.cos(a) * r), 7 + Math.round(Math.sin(a) * r), col(0.34 - r * 0.02, 1, 0.1, 0.15, -0.1));
+    }
+    for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) px(8 + dx, 7 + dy, col(0.12)); // reel hub
+    for (let x = 5; x <= 10; x++) px(x, 12, col(0.16)); px(5, 13, col(0.3, 1, -0.1, 0.15, 0.1));       // output chute down
+    px(7, 3, col(0.3, 1, -0.2, 0.25, 0.1)); px(8, 3, col(0.3, 1, -0.2, 0.15, 0.1));                    // harvest eye
+  });
 
   // paint every registered tile into its slot
   const paint = (key: string, t: number, rgb: readonly number[]) => {
@@ -1153,6 +1188,7 @@ export class Renderer {
   private sunDisc: THREE.Mesh;
   private dust: THREE.Points;
   private stormI = 0;       // sandstorm intensity 0..1 (setStorm)
+  private cozyI = 0;        // inside-a-Base crossfade 0..1 (setCozy)
   private stormOpen = true; // is the player under open sky (dust rides only there)
   private moonDisc: THREE.Mesh;
   private highlight: THREE.LineSegments;
@@ -1398,6 +1434,7 @@ export class Renderer {
     this.scene.background = kf.sky;
     (this.scene.fog as THREE.Fog).color.copy(kf.sky);
     (this.scene.fog as THREE.Fog).far = this.renderDistance * CS * 0.98;
+    (this.scene.fog as THREE.Fog).near = 40; // base reach; storm/cozy pull it in below
     // sandstorm: the world goes rust, the view closes in, the light drowns
     if (this.stormI > 0.01) {
       const f = this.scene.fog as THREE.Fog;
@@ -1405,6 +1442,12 @@ export class Renderer {
       f.near = THREE.MathUtils.lerp(40, 4, this.stormI);
       f.far = Math.min(f.far, THREE.MathUtils.lerp(this.renderDistance * CS, 24, this.stormI));
       this.scene.background = f.color;
+    }
+    // inside a Base the view closes in: rooms feel small and close, never vast
+    if (this.cozyI > 0.01) {
+      const f = this.scene.fog as THREE.Fog;
+      f.near = Math.min(f.near, THREE.MathUtils.lerp(f.near, 3, this.cozyI));
+      f.far = Math.min(f.far, THREE.MathUtils.lerp(f.far, 60, this.cozyI));
     }
     const a = (frac - 0.25) * Math.PI * 2;
     // light direction: the sun's arc by day, the mirrored moon arc at night
@@ -1490,6 +1533,8 @@ export class Renderer {
   /** Sandstorm: fog, sky and light follow the Survival intensity (0..1);
    *  the grit cloud only rides when the player is under open sky. */
   setStorm(i: number, openSky: boolean): void { this.stormI = i; this.stormOpen = openSky; }
+  /** Inside a Base: the fog pulls close — the room reads as a room (0..1 crossfade). */
+  setCozy(v: number): void { this.cozyI = v; }
   private stormDome: THREE.Mesh | null = null;
   /** the Sandstorm Breaker's calm made visible: one faint red dome over the pylon
    *  the player is standing under (null turns it off). */

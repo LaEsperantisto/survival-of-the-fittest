@@ -1,4 +1,4 @@
-import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, LEAVES, REGULATOR, INSGLASS, BENCH, BENCH_EXT, CURVED_HULL, HULL_SLOPE, CS, CH, isOpaque, isWater, waterStrength, flowId } from "./blocks";
+import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, LEAVES, REGULATOR, CAMPFIRE, BED, BED_EXT, STORM_BREAKER, POWER_PANEL, INSGLASS, BENCH, BENCH_EXT, CURVED_HULL, HULL_SLOPE, CS, CH, isOpaque, isWater, waterStrength, flowId } from "./blocks";
 import { genChunk, Structures } from "./gen";
 
 export const ckey = (cx: number, cz: number) => cx + "," + cz;
@@ -102,11 +102,13 @@ export class World {
    * Regulator capacity stacks: each Heat Regulator bordering the region covers
    * REGULATOR_ROOM_MAX open cells.
    */
-  roomInfo(x: number, y: number, z: number, cap = 400): { size: number; sealed: boolean; regulators: number; regCells: string[] } {
-    if (!ROOM_OPEN.has(this.get(x, y, z))) return { size: 0, sealed: false, regulators: 0, regCells: [] };
+  roomInfo(x: number, y: number, z: number, cap = 400): { size: number; sealed: boolean; regulators: number; regCells: string[]; anchors: string[] } {
+    if (!ROOM_OPEN.has(this.get(x, y, z))) return { size: 0, sealed: false, regulators: 0, regCells: [], anchors: [] };
     const seen = new Set<string>([`${x},${y},${z}`]);
     const stack: [number, number, number][] = [[x, y, z]];
     const regs = new Set<string>();
+    // border blocks that make a sealed Space a Base (GLOSSARY: anchor)
+    const anchors = new Set<string>();
     let size = 0, sealed = true;
     while (stack.length) {
       const [cx, cy, cz] = stack.pop()!;
@@ -119,9 +121,11 @@ export class World {
           const k = nx + "," + ny + "," + nz;
           if (!seen.has(k)) { seen.add(k); stack.push([nx, ny, nz]); }
         } else if (id === REGULATOR) regs.add(nx + "," + ny + "," + nz);
+        else if (id === CAMPFIRE || id === BED || id === BED_EXT || id === STORM_BREAKER || id === POWER_PANEL)
+          anchors.add(nx + "," + ny + "," + nz);
       }
     }
-    return { size, sealed, regulators: regs.size, regCells: [...regs] };
+    return { size, sealed, regulators: regs.size, regCells: [...regs], anchors: [...anchors] };
   }
 
   set(x: number, y: number, z: number, id: number) {

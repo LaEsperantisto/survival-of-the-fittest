@@ -12,7 +12,8 @@ export const AIR = 0, SAND = 1, SANDSTONE = 2, ROCK = 3, GRAVEL = 4, DIRT = 5, S
   COBALT_ORE = 55, THRUSTER = 56, THRUSTER_LIT = 57, STORM_BREAKER = 58, ARMORY = 59,
   REGULATOR_HUSK = 60, STORM_BREAKER_HUSK = 61,
   POWER_PANEL = 62, POWER_POLE = 63, GEN_WOOD = 64, WATER_WHEEL = 65, WIND_TURBINE = 66,
-  SOLAR_PANEL = 67, BATTERY = 68, ELEC_LAMP = 69;
+  SOLAR_PANEL = 67, BATTERY = 68, ELEC_LAMP = 69,
+  INSERTER = 70, PLANTER = 71, HARVESTER = 72;
 
 export type ToolType = "pickaxe" | "shovel" | "axe" | "disassembler";
 
@@ -184,7 +185,13 @@ export const BLOCKS: BlockDef[] = [
   def({ id: SOLAR_PANEL, name: "Solar Panel", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 2.5, tool: "disassembler", minTier: 1, placeable: true, color: [0.2, 0.26, 0.4] }),
   def({ id: BATTERY, name: "Battery", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 3, tool: "disassembler", minTier: 1, placeable: true, color: [0.3, 0.44, 0.36] }),
   def({ id: ELEC_LAMP, name: "Electric Lamp", solid: true, opaque: false, transparent: false, emissive: false, R: 0.2, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.85, 0.9, 0.95] }),
+  def({ id: INSERTER, name: "Inserter", solid: true, opaque: false, transparent: false, emissive: false, R: 0.2, breakTime: 1, tool: "disassembler", minTier: 1, placeable: true, color: [0.3, 0.5, 0.55] }),
+  def({ id: PLANTER, name: "Planter", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 1, tool: "disassembler", minTier: 1, placeable: true, color: [0.3, 0.5, 0.28] }),
+  def({ id: HARVESTER, name: "Harvester", solid: true, opaque: false, transparent: false, emissive: false, R: 0.3, breakTime: 1, tool: "disassembler", minTier: 1, placeable: true, color: [0.55, 0.42, 0.2] }),
 ];
+
+/** Everything that lives on the Grid: Panel..Harvester (ADR-0007). */
+export function isPowerBlock(id: number): boolean { return id >= POWER_PANEL && id <= HARVESTER; }
 
 /** A Pole links to other Poles within this many blocks; every non-Pole power
  *  block joins the Grid of a Pole within this reach. */

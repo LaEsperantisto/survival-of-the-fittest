@@ -5,7 +5,7 @@ import { Survival, REGULATOR_ROOM_MAX, SAFE_HI } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, type ItemDef, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, POLE_LINK, DEVICE_REACH, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable } from "./blocks";
+import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, INSERTER, PLANTER, HARVESTER, POLE_LINK, DEVICE_REACH, isPowerBlock, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable } from "./blocks";
 
 /** One Battery stores this many Grid-units. */
 const POWER_BATT_CAP = 120;
@@ -130,6 +130,12 @@ export class Game {
   private breakers = new Set<string>();
   private breakerTick = -1;
   stormShieldOn = false;
+  // ---- Atmosphere (Base): inside a sealed Space with an anchor, the world turns cosy ----
+  private cozyTickId = -1;
+  private cozy = 0;          // inside-a-Base crossfade 0..1
+  private cozyBase = false;
+  private homeSeen = false;
+  private cozyEl = document.getElementById("cozy-warm") as HTMLElement | null;
   private regActive = false; // cached from regulatorGlow's twice-a-second room scan
   // ---- Grid power (ADR-0007) ----
   // powerCells: every Power Pole / Panel / generator / Battery / Electric Lamp.
@@ -142,6 +148,7 @@ export class Game {
   private grids: { panel: string | null; panels: number; cells: Map<string, number>;
                    tripped: boolean; powered: boolean }[] = [];
   private powerAcc = 0;
+  private machineAcc = 0;                 // Inserters/Planters/Harvesters run at 1 item per second
   private mobileJump = false;
   private entitySeq = 1;
   private audioTickAcc = 0;
@@ -470,7 +477,7 @@ export class Game {
     for (const [k, m] of this.world.deltas) {
       const [cx, cz] = k.split(",").map(Number);
       for (const [i, id] of m) {
-        const isPower = id >= POWER_PANEL && id <= ELEC_LAMP;
+        const isPower = isPowerBlock(id);
         if (id !== LAMP && id !== CAMPFIRE && !isPower) continue;
         const lx = Math.floor(i / (CS * CH)), rem = i % (CS * CH);
         const wx = cx * CS + lx, wy = rem % CH, wz = cz * CS + Math.floor(rem / CH);
@@ -1533,6 +1540,7 @@ export class Game {
         ? (() => { const inv = 1 / Math.hypot(Math.cos(sa), kf.sunElev, 0.4); return { x: Math.cos(sa) * inv, y: kf.sunElev * inv, z: 0.4 * inv }; })()
         : null;
       this.stormShieldTick();
+      this.cozyTick(dt);
       this.survival.update(dt, this.world, this.player.pos, {
         sprinting: this.player.sprinting && (mx !== 0 || mz !== 0),
         overencumbered, biome, tSec: this.timeSec, sunElev: kf.sunElev, sunDir, inWater: this.player.inWater,
@@ -1949,7 +1957,7 @@ export class Game {
     }
     if (id === LAMP || id === CAMPFIRE || id === THRUSTER_LIT) this.renderer.removePointLight(x, y, z);
     if (id === STORM_BREAKER) this.breakers.delete(`${x},${y},${z}`);
-    if (id >= POWER_PANEL && id <= ELEC_LAMP) {
+    if (isPowerBlock(id)) {
       const pk = `${x},${y},${z}`;
       this.powerCells.delete(pk); this.genFuel.delete(pk); this.batteryCharge.delete(pk);
       if (id === ELEC_LAMP) this.renderer.removePointLight(x, y, z);
@@ -2570,12 +2578,16 @@ export class Game {
     // a fresh campfire is cold kindling — feed it before it glows
     else if (def.block === THRUSTER_LIT) this.renderer.addPointLight(bx, by, bz, "fire"); // a carried engine keeps burning
     if (def.block === STORM_BREAKER) this.breakers.add(`${bx},${by},${bz}`);
-    if (def.block >= POWER_PANEL && def.block <= ELEC_LAMP) {
+    if (isPowerBlock(def.block)) {
       const pk = `${bx},${by},${bz}`;
       this.powerCells.set(pk, def.block);
       if (def.block === GEN_WOOD) this.genFuel.set(pk, 0);
       if (def.block === BATTERY) this.batteryCharge.set(pk, 0);
       this.rebuildPower();
+      this.lesson("grid");
+      if (def.block === INSERTER) this.lesson("inserter");
+      else if (def.block === PLANTER) this.lesson("planter");
+      else if (def.block === HARVESTER) this.lesson("harvester");
     }
     if (def.block === CHEST) this.linkChests(bx, by, bz, chestOld);
     this.inv.slots.splice(this.inv.selected, 1);
@@ -2891,7 +2903,7 @@ export class Game {
       for (const [k, id] of g.cells) {
         supply += this.genOutput(k, id, on);
         if (on && id === GEN_WOOD) { const f = this.genFuel.get(k) ?? 0; if (f > 0) this.genFuel.set(k, Math.max(0, f - step)); }
-        if (id === ELEC_LAMP) draw += 1;
+        draw += this.ratedDraw(id);
         if (id === BATTERY) batts.push(k);
       }
       if (on) {
@@ -2918,6 +2930,8 @@ export class Game {
       }
       g.powered = on;
     }
+    this.machineAcc += step;
+    if (this.machineAcc >= 1) { this.machineAcc = 0; this.runMachines(); }
     this.syncElecLamps();
   }
 
@@ -2931,7 +2945,7 @@ export class Game {
     let supply = 0, draw = 0, batt = 0, battCap = 0;
     for (const [ck, id] of g.cells) {
       supply += this.genOutput(ck, id, true);
-      if (id === ELEC_LAMP) draw += 1;
+      draw += this.ratedDraw(id);
       if (id === BATTERY) { batt += this.batteryCharge.get(ck) ?? 0; battCap += POWER_BATT_CAP; }
     }
     if (g.tripped) {
@@ -2944,6 +2958,118 @@ export class Game {
     } else {
       hud.toast(`Grid: ${supply.toFixed(1)} supply, ${draw.toFixed(1)} draw${battCap ? `, battery ${Math.round((batt / battCap) * 100)}%` : ""}.`);
     }
+  }
+
+  /** Rated Grid draw per block: Lamps burn a full Watt, machines a half each. */
+  private ratedDraw(id: number): number {
+    if (id === ELEC_LAMP) return 1;
+    if (id === INSERTER || id === PLANTER || id === HARVESTER) return 0.5;
+    return 0;
+  }
+
+  // ------------------------------------------------------------------
+  // Factory machines (ADR-0006): block-adjacency item I/O, one item/second,
+  // only while their Grid is powered. Inserters face their rotation nibble;
+  // Planter and Harvester work fixed vertical columns.
+  // ------------------------------------------------------------------
+
+  private runMachines() {
+    let moved = false;
+    for (const g of this.grids) {
+      if (!g.powered) continue;
+      for (const [k, id] of g.cells) {
+        const [x, y, z] = k.split(",").map(Number);
+        if (id === INSERTER) moved = this.inserterAct(x, y, z) || moved;
+        else if (id === PLANTER) moved = this.planterAct(x, y, z) || moved;
+        else if (id === HARVESTER) moved = this.harvesterAct(x, y, z) || moved;
+      }
+    }
+    if (moved) { this.audio.place(); if (this.ui === "inv") this.renderInv(); }
+  }
+
+  /** The live slot array of the Chest cluster at this cell (null: no Chest). */
+  private chestSlotsAt(x: number, y: number, z: number): Slot[] | null {
+    if (this.world.get(x, y, z) !== CHEST) return null;
+    const key = Game.chestKey(this.chestCluster(x, y, z));
+    return this.chests.get(key) ?? [];
+  }
+
+  /** Put one item into the Chest at this cell (chest stores never stack). */
+  private putInChest(cx: number, cy: number, cz: number, itemId: string): boolean {
+    if (this.world.get(cx, cy, cz) !== CHEST) return false;
+    const cells = this.chestCluster(cx, cy, cz);
+    const key = Game.chestKey(cells);
+    const slots = this.chests.get(key) ?? [];
+    const ci = this.emptyChestGrid(cells.length);
+    ci.slots = slots;
+    if (!Game.placeSlotFree(ci, { itemId, x: 0, y: 0 })) return false;
+    this.chests.set(key, slots);
+    return true;
+  }
+
+  private inserterAct(x: number, y: number, z: number): boolean {
+    const [dx, dz] = ROT_DIRS[this.world.getRot(x, y, z) & 3];
+    const src = this.chestSlotsAt(x + dx, y, z + dz);
+    if (!src || !src.length) return false;
+    const bx = x - dx, bz = z - dz, bid = this.world.get(bx, y, bz);
+    if (bid === CAMPFIRE) {
+      // a Campfire's Fuel Slot: any fuel push charges the fire directly
+      const i = src.findIndex((s) => s.itemId === "wood_log" || s.itemId === "kindling");
+      if (i < 0) return false;
+      const was = src[i].itemId;
+      src.splice(i, 1);
+      const key = `${bx},${y},${bz}`;
+      this.campCharges.set(key, (this.campCharges.get(key) ?? 0) + (was === "wood_log" ? 2 : 0.5));
+      this.syncFire(bx, y, bz);
+      return true;
+    }
+    if (bid !== CHEST) return false;
+    if (!this.putInChest(bx, y, bz, src[0].itemId)) return false; // destination full: nothing moves
+    src.splice(0, 1);
+    return true;
+  }
+
+  private planterAct(x: number, y: number, z: number): boolean {
+    // seeds in the Chest below, Farm Land directly above, plant the empty cell two up
+    if (this.world.get(x, y + 1, z) !== FARMLAND || this.world.get(x, y + 2, z) !== AIR) return false;
+    const seeds = this.chestSlotsAt(x, y - 1, z);
+    if (!seeds) return false;
+    const i = seeds.findIndex((s) => s.itemId === "seed_melon" || s.itemId === "seed_wheat");
+    if (i < 0) return false;
+    const melon = seeds[i].itemId === "seed_melon";
+    seeds.splice(i, 1);
+    this.world.set(x, y + 2, z, melon ? MELON_1 : WHEAT_1);
+    this.crops.set(`${x},${y + 2},${z}`, 0);
+    return true;
+  }
+
+  private harvesterAct(x: number, y: number, z: number): boolean {
+    // reap the ripe crop directly beneath, spill the yield into the Chest directly above
+    const cid = this.world.get(x, y - 1, z);
+    const ck = `${x},${y - 1},${z}`;
+    if (cid === MELON_2) {
+      if (!this.putInChest(x, y + 1, z, "dune_melon")) return false;
+      if (hash2(x, z, this.seed + 71) < 0.4) this.putInChest(x, y + 1, z, "dune_melon"); // bonus fits if the grid has room
+      this.world.set(x, y - 1, z, MELON_1);
+      this.crops.set(ck, 30); // the vine keeps growing from partway
+    } else if (cid === WHEAT_2) {
+      if (!this.putInChest(x, y + 1, z, "wheat")) return false;
+      if (!this.putInChest(x, y + 1, z, "seed_wheat")) {
+        // no room for both the cut and its returned seed — leave the wheat standing
+        const cells = this.chestCluster(x, y + 1, z);
+        const slots = this.chests.get(Game.chestKey(cells));
+        if (slots && slots[slots.length - 1]?.itemId === "wheat") slots.pop();
+        return false;
+      }
+      this.world.set(x, y - 1, z, FARMLAND);
+      this.crops.delete(ck);
+    } else if (cid === CACTUS_FRUIT) {
+      if (!this.putInChest(x, y + 1, z, "prickly_pear")) return false;
+      this.putInChest(x, y + 1, z, "prickly_pear");
+      this.world.set(x, y - 1, z, CACTUS);
+    } else return false;
+    this.world.dirty.add(Math.floor(x / CS) + "," + Math.floor(z / CS));
+    return true;
   }
 
   /** Bucket at the crosshair's water: only a Source is scoopable — flowing water isn't. */
@@ -3179,6 +3305,46 @@ export class Game {
     }
     this.stormShieldOn = best !== null;
     this.renderer.setStormDome(best ? [best[0] + 0.5, best[1] + 0.5, best[2] + 0.5] : null);
+  }
+
+  // Atmosphere (GLOSSARY: Base): inside a sealed Space that holds an anchor —
+  // lit Campfire, Bed, Storm Breaker or Power Panel — the world turns cosy:
+  // the wind muffles, the score warms, the fog closes in. Outside keeps the
+  // edge feel. Resampled twice a second like stormShieldTick; ~4 s crossfade.
+  private cozyTick(dt: number) {
+    const tick = Math.floor(this.timeSec * 2);
+    if (tick !== this.cozyTickId) {
+      this.cozyTickId = tick;
+      const p = this.player.pos;
+      const fx = Math.floor(p.x), fy = Math.floor(p.y), fz = Math.floor(p.z);
+      let room = this.world.roomInfo(fx, fy, fz);
+      if (room.size === 0) {
+        // standing in a doorway or wall cell — borrow the nearest room
+        roomSearch: for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+          const r2 = this.world.roomInfo(fx + dx, fy + dy, fz + dz);
+          if (r2.size > 0) { room = r2; break roomSearch; }
+        }
+      }
+      let base = false, fire = false;
+      if (room.sealed) for (const k of room.anchors) {
+        const [x, y, z] = k.split(",").map(Number);
+        if (this.world.get(x, y, z) === CAMPFIRE) {
+          if ((this.campCharges.get(k) ?? 0) > 0) { base = true; fire = true; }
+        } else base = true;
+      }
+      this.cozyBase = base;
+      this.audio.setIndoors(base);
+      this.audio.setHearth(base && fire);
+      if (base && !this.homeSeen) { this.homeSeen = true; this.lesson("home"); }
+    }
+    const target = this.cozyBase ? 1 : 0;
+    if (this.cozy !== target) {
+      this.cozy += (target - this.cozy) * (1 - Math.exp(-dt / 1.8));
+      if (Math.abs(target - this.cozy) < 0.01) this.cozy = target;
+      this.audio.setCozy(this.cozy);
+      this.renderer.setCozy(this.cozy);
+      if (this.cozyEl) this.cozyEl.style.opacity = (this.cozy * 0.4).toFixed(3);
+    }
   }
 
   // Heat Regulators light up while they are actively holding their sealed room at neutral.

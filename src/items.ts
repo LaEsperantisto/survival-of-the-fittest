@@ -6,6 +6,7 @@ import {
   CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, STORM_BREAKER, THRUSTER, THRUSTER_LIT, ARMORY,
   REGULATOR_HUSK, STORM_BREAKER_HUSK,
   POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
+  INSERTER, PLANTER, HARVESTER,
 } from "./blocks";
 
 export interface ItemDef {
@@ -142,6 +143,9 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "solar_panel", name: "Solar Panel", desc: "Up to 4 units in direct sun; roofs and Sandstorms cut it hard. Dead silent at night.", w: 1, h: 1, mass: 4.0, block: SOLAR_PANEL, color: "#33405f" }),
   I({ id: "battery", name: "Battery", desc: "Stores 120 units of the Grid. Sips surplus by day, hands it back when generation falls short — until it is dry and the Panel trips.", w: 1, h: 1, mass: 8.0, block: BATTERY, color: "#4d7059" }),
   I({ id: "elec_lamp", name: "Electric Lamp", desc: "Cold steady light on the Grid — brighter than an oil Lamp, zero flame. Unpowered it is just glass.", w: 1, h: 1, mass: 1.0, block: ELEC_LAMP, color: "#d8e4f2" }),
+  I({ id: "inserter", name: "Inserter", desc: "Powered: pulls one item per second out of the block in front of it and pushes it into the block behind — Chests, or a Campfire's Fuel Slot. No filters, no reach; aim it with R before placing.", w: 1, h: 1, mass: 1.5, block: INSERTER, color: "#4d808c" }),
+  I({ id: "planter", name: "Planter", desc: "Powered: sits under Farm Land, takes a seed from the Chest beneath it, and plants the empty cell two above. Melon and Wheat seeds.", w: 1, h: 1, mass: 2.0, block: PLANTER, color: "#4d8047" }),
+  I({ id: "harvester", name: "Harvester", desc: "Powered: reaps the ripe crop directly beneath it (Melon, Wheat, Cactus) and spills the yield into the Chest directly above.", w: 1, h: 1, mass: 1.5, block: HARVESTER, color: "#8c6b33" }),
   I({ id: "thruster_nozzle", name: "Thruster Nozzle", desc: "Cobalt-and-Copper replacement engine part. Press E at a Broken Thruster to wake it. All four wake the Ship.", w: 1, h: 2, mass: 3.0, color: "#c88a50" }),
   // ---- salvaged engine modules: a Disassembler pulls thrusters off their pylons ----
   I({ id: "thruster_broken", name: "Broken Thruster", desc: "A dead wingtip engine torn off its pylon. Heavy, inert — set it down anywhere and it waits for a Thruster Nozzle.", w: 2, h: 2, mass: 22.0, block: THRUSTER, color: "#6b707c" }),

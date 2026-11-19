@@ -5,13 +5,16 @@
 // Orthogonal to all that: an instrument layer. Each genre picks a synth voice
 // (pluck / saw / breath / bow) that colors every melody note; ~15% of bars
 // mid-piece re-roll the voice while the genre and melody keep playing.
-type Genre = "drone" | "wanderer" | "nightwind" | "caravan";
+type Genre = "drone" | "wanderer" | "nightwind" | "caravan" | "hearth" | "embers";
 const DAY_GENRES: Genre[] = ["drone", "wanderer", "wanderer", "caravan", "caravan", "nightwind"];
 const NIGHT_GENRES: Genre[] = ["drone", "nightwind", "nightwind", "caravan", "wanderer"];
-const BAR_LEN: Record<Genre, number> = { drone: 3.2, wanderer: 2.2, nightwind: 4.4, caravan: 2.0 };
+// Inside a Base the score turns warm: low unhurried material, no drums.
+const HEARTH_GENRES: Genre[] = ["hearth", "hearth", "embers", "drone"];
+const BAR_LEN: Record<Genre, number> = { drone: 3.2, wanderer: 2.2, nightwind: 4.4, caravan: 2.0, hearth: 3.4, embers: 5.0 };
 // Mode pools: intervals in semitones over the current root.
 const DAY_MODES = [[0, 4, 7, 9, 12, 16, 19], [0, 2, 4, 7, 9, 12, 14, 16], [0, 2, 5, 7, 9, 12, 14]];
 const NIGHT_MODES = [[0, 1, 4, 5, 7, 8, 10, 12], [0, 2, 3, 5, 7, 8, 10, 12], [0, 3, 5, 7, 10, 12, 15]];
+const HEARTH_MODES = [[0, 2, 4, 7, 9, 12, 14], [0, 4, 5, 7, 9, 12, 16], [0, 2, 4, 7, 11, 12, 14]];
 const ARP = [0, 2, 4, 2, 3, 5, 4, 1];
 const ARP_CARAVAN = [0, 0, 3, 2, 4, 3, 2, 0];
 
@@ -22,6 +25,8 @@ const GENRE_VOICE: Record<Genre, Voice> = {
   wanderer: "pluck", // short decaying plucks: strummed strings on the move
   nightwind: "breath", // airy noise bandpass: panpipes in the cold wind
   caravan: "bow",    // slow-attack saw: a long aching caravan fiddle
+  hearth: "pluck",   // soft low plucks: firelight strings, close and unhurried
+  embers: "bow",     // one long warm note: the fire talking to itself
 };
 const ALL_VOICES: Voice[] = ["pluck", "saw", "breath", "bow"];
 
@@ -69,8 +74,9 @@ export class Audio {
       lfoGain.gain.value = 100; // shallower sweep: a distant moan, not a howl
       lfo.connect(lfoGain).connect(filt.frequency);
       lfo.start();
+      this.windFilter = filt; this.windLfoGain = lfoGain;
       this.windGain = this.ctx.createGain();
-      this.windGain.gain.value = 0.06 * this.volume;
+      this.windGain.gain.value = this.windLevel();
       src.connect(filt).connect(this.windGain).connect(this.ctx.destination);
       src.start();
     }
@@ -80,7 +86,7 @@ export class Audio {
 
   setVolume(v: number) {
     this.volume = v;
-    if (this.windGain) this.windGain.gain.value = (0.06 + this.stormI * 0.28) * v;
+    if (this.windGain) this.windGain.gain.value = this.windLevel();
     if (this.ctx && this.musicGain)
       this.musicGain.gain.setTargetAtTime((this.musicOn ? 0.16 : 0) * v, this.ctx.currentTime, 0.4);
   }
@@ -89,9 +95,65 @@ export class Audio {
   setStorm(i: number) {
     if (i === this.stormI) return;
     this.stormI = i;
-    if (this.windGain) this.windGain.gain.value = (0.06 + i * 0.28) * this.volume;
+    if (this.windGain) this.windGain.gain.value = this.windLevel();
   }
   private stormI = 0;
+
+  // Inside a Base (cosy 0..1 crossfade from the game): the wind bed ducks and
+  // muffles behind the walls, the score turns to the hearth pool, and a lit
+  // fire crackles close. All three fade in over a few seconds, never snap.
+  private cozy = 0;
+  private indoors = false;
+  private hearthOn = false;
+  private hearthTimer = 0;
+  private windFilter: BiquadFilterNode | null = null;
+  private windLfoGain: GainNode | null = null;
+
+  private windLevel() { return (0.06 + this.stormI * 0.28) * (1 - 0.75 * this.cozy) * this.volume; }
+
+  setCozy(c: number) {
+    if (!this.ctx || Math.abs(c - this.cozy) < 0.005) return;
+    this.cozy = c;
+    if (this.windGain) this.windGain.gain.value = this.windLevel();
+    const t = this.ctx.currentTime;
+    if (this.windFilter) this.windFilter.frequency.setTargetAtTime(380 - 270 * c, t, 0.5); // muffled howl
+    if (this.windLfoGain) this.windLfoGain.gain.setTargetAtTime(100 * (1 - 0.6 * c), t, 0.5);
+  }
+
+  /** Base state switch: duck the song, re-roll it warm (in) or wild (out) at the next bar. */
+  setIndoors(b: boolean) {
+    if (b === this.indoors || !this.ctx || !this.musicGain) return;
+    this.indoors = b;
+    const t = this.ctx.currentTime, lvl = (this.musicOn ? 0.16 : 0) * this.volume;
+    this.musicGain.gain.setTargetAtTime(lvl * 0.25, t, 0.9);
+    this.musicGain.gain.setTargetAtTime(lvl, t + 2.2, 1.4); // ~3-5 s crossfade
+    this.genreEnd = Math.min(this.genreEnd, this.nextBar); // re-roll at the next bar
+  }
+
+  /** Crackle layer for a lit fire in the room; ticks are scheduled live while on. */
+  setHearth(on: boolean) {
+    if (on === this.hearthOn) return;
+    this.hearthOn = on;
+    if (this.hearthTimer) { clearInterval(this.hearthTimer); this.hearthTimer = 0; }
+    if (on && this.ctx) this.hearthTimer = window.setInterval(() => this.crackleBurst(), 260);
+  }
+
+  private crackleBurst() {
+    if (!this.ctx || !this.noiseBuf) return;
+    const t = this.ctx.currentTime;
+    for (let i = 0, k = 1 + Math.floor(Math.random() * 3); i < k; i++) {
+      const at = t + Math.random() * 0.24, big = Math.random() < 0.12;
+      const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
+      src.playbackRate.value = 0.6 + Math.random() * 1.2;
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = "bandpass"; bp.frequency.value = 900 + Math.random() * 2800; bp.Q.value = 1.2;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime((big ? 0.035 : 0.006 + Math.random() * 0.01) * this.volume, at);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + (big ? 0.14 : 0.035 + Math.random() * 0.05));
+      src.connect(bp).connect(g).connect(this.ctx.destination);
+      src.start(at); src.stop(at + 0.2);
+    }
+  }
 
   /** On/off ambient score (Settings > Music). */
   setMusic(on: boolean) {
@@ -138,13 +200,13 @@ export class Audio {
   // Roll a new genre, key and mode. genreEnd is stamped onto a bar start, so
   // the song never changes key mid-phrase.
   private rollGenre(at: number) {
-    const pool = this.isDay ? DAY_GENRES : NIGHT_GENRES;
+    const pool = this.indoors ? HEARTH_GENRES : this.isDay ? DAY_GENRES : NIGHT_GENRES;
     let g = pool[Math.floor(Math.random() * pool.length)];
     if (g === this.genre) g = pool[Math.floor(Math.random() * pool.length)];
     this.genre = g;
     this.voice = GENRE_VOICE[g]; // the instrument switches with the genre
     this.root = 55 * 2 ** ((4 + Math.floor(Math.random() * 12)) / 12); // D2..C#3, any of 12
-    const modes = this.isDay ? DAY_MODES : NIGHT_MODES;
+    const modes = this.indoors ? HEARTH_MODES : this.isDay ? DAY_MODES : NIGHT_MODES;
     this.deg = modes[Math.floor(Math.random() * modes.length)];
     this.genreEnd = at + 90 + Math.random() * 150;
     if (this.ctx) {
@@ -229,6 +291,27 @@ export class Audio {
           const m = 1 + Math.floor(Math.random() * 4);
           this.note(n(4, m), t + Math.floor(Math.random() * 4) * (bar / 4), 0.7, 0.07);
         }
+        break;
+      }
+      case "hearth": {
+        // firelight: a low warm chord, soft plucks a register up, rarely one bright note
+        this.note(n(1, 0), t, bar * 0.95, 0.15);
+        [0, 2, 4].forEach((i) => this.note(n(2, i), t + 0.08 + i * 0.06, bar * 0.8, 0.035));
+        for (let s = 0; s < 4; s++) {
+          if (Math.random() < 0.35) continue;
+          this.note(n(2, ARP[s * 2]), t + (s * bar) / 4 + Math.random() * 0.12, 0.7, 0.09);
+        }
+        if (Math.random() < 0.35) this.note(n(3, 1 + Math.floor(Math.random() * deg.length)), t + Math.random() * bar * 0.5, 1.6, 0.07);
+        break;
+      }
+      case "embers": {
+        // almost nothing: a deep hum and the occasional long low bowed line
+        this.note(n(1, 0), t, bar * 0.98, 0.13);
+        if (Math.random() < 0.6) {
+          const m = Math.floor(Math.random() * deg.length);
+          this.note(n(2, m), t + Math.random() * (bar - 2), 1.8 + Math.random() * 2, 0.09);
+        }
+        if (Math.random() < 0.3) this.note(n(3, 0), t + bar * 0.5, 0.9, 0.05);
         break;
       }
     }
