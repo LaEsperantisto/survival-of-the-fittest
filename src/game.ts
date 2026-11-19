@@ -14,7 +14,7 @@ import { hashStr, hash2 } from "./noise";
 import { heightAt, biomeAt, TOWN_L, CAMP_L, CAVE_MOUTH_L, OASIS_L, CANISTER_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
 import { offersFor, Offer } from "./trades";
 import { RECIPES, SMELT, canCraft, doCraft } from "./crafting";
-import { QUESTS, currentQuest, loadQuestState, questEvent, type QuestDef, type QuestState } from "./quests";
+import { QUESTS, currentQuest, loadQuestState, questEvent, recordDeed, reconcile, type QuestDef, type QuestState } from "./quests";
 import { LESSON_BY_ID, LESSONS, loadIdSet } from "./chronicle";
 import { Tutorial, INTRO_CINE, type CineSeg } from "./tutorial";
 import { WorldMeta, RunSave, saveRun, exportRun, bestScore, submitBest, Settings } from "./save";
@@ -195,6 +195,7 @@ export class Game {
 
     if (run) this.restore(run);
     else this.spawnStarterEntities();
+    if (run) this.reconcileQuests(); // deeds from before the save, paid on return
     // the wreck's ceiling lamps are worldgen (not deltas): light them explicitly
     if (this.world.get(-6, 35, 0) === LAMP) this.renderer.addPointLight(-6, 35, 0, "lamp");
     if (this.world.get(6, 35, 0) === LAMP) this.renderer.addPointLight(6, 35, 0, "lamp");
@@ -503,7 +504,7 @@ export class Game {
       days: this.dayNumber(),
       player: { x: this.player.pos.x, y: this.player.pos.y, z: this.player.pos.z, yaw: this.player.yaw, pitch: this.player.pitch },
       survival: { health: this.survival.health, water: this.survival.water, body: this.survival.body },
-      quest: { i: this.quests.i, p: this.quests.p.slice() },
+      quest: { i: this.quests.i, p: this.quests.p.slice(), e: { ...this.quests.e } },
       inventory: { slots: this.inv.slots.map((s) => ({ ...s })), selected: this.inv.selected, w: this.inv.w, h: this.inv.h, bonusLimit: this.inv.bonusLimit },
       equip: {
         backpack: this.equip.backpack?.itemId, head: this.equip.head?.itemId, body: this.equip.body?.itemId,
@@ -678,15 +679,27 @@ export class Game {
   // ---------- quests ----------
 
   private questBump(kind: QuestDef["kind"], n = 1) {
-    if (this.tut) return; // the tour owns the player's attention; the chain starts after it
+    if (this.tut) { recordDeed(this.quests, kind, n); return; } // deeds count even mid-tour
     const done = questEvent(this.quests, kind, n);
     if (!done) { if (kind === "mine") this.renderQuest(); return; }
+    this.completeQuest(done);
+    this.reconcileQuests();
+    this.saveNow(true);
+  }
+
+  private completeQuest(done: QuestDef) {
     hud.toast(`Quest complete: ${done.title}`);
     if (done.reward) this.crashPod(done.reward.item, done.reward.n);
     this.audio.savePing();
     if (done.kind === "finish") hud.toast("Power runs through the wreck. Four dead engines left — find them a way to burn.");
     this.renderQuest();
-    this.saveNow(true);
+  }
+
+  // Quests are earned, not timed: pay off anything the player already did.
+  private reconcileQuests() {
+    const done = reconcile(this.quests);
+    for (const q of done) this.completeQuest(q);
+    if (done.length) this.saveNow(true);
   }
 
   // All quest rewards arrive as a Reward Cache: a warning, a red beacon marker
@@ -887,6 +900,7 @@ export class Game {
     this.quests.i = i;
     this.questShown = "";
     this.renderQuest();
+    this.reconcileQuests(); // jumping back to an already-earned quest completes it
     hud.toast(i >= QUESTS.length ? "Quest chain skipped — every quest is done."
       : `Skipped to “${QUESTS[i].title}”.`);
   }

@@ -65,12 +65,15 @@ export const QUESTS: QuestDef[] = [
   },
 ];
 
-export interface QuestState { i: number; p: number[]; }
+// A deed counts whenever it happened, not only while its quest is current:
+// e keeps achieved counts per kind, and reconcile pays them off when the
+// quest comes up.
+export interface QuestState { i: number; p: number[]; e: Record<string, number>; }
 
-export function freshQuestState(): QuestState { return { i: 0, p: QUESTS.map(() => 0) }; }
+export function freshQuestState(): QuestState { return { i: 0, p: QUESTS.map(() => 0), e: {} }; }
 
 /** Clamp a loaded save's quest state against the current quest list. */
-export function loadQuestState(q: { i: number; p: number[] } | undefined): QuestState {
+export function loadQuestState(q: { i: number; p: number[]; e?: Record<string, number> } | undefined): QuestState {
   const s = freshQuestState();
   if (!q) return s;
   s.i = Math.max(0, Math.min(QUESTS.length, q.i | 0));
@@ -78,14 +81,23 @@ export function loadQuestState(q: { i: number; p: number[] } | undefined): Quest
     const goal = QUESTS[k].goal;
     s.p[k] = Math.max(0, Math.min(goal, (q.p && q.p[k]) | 0));
   }
+  if (q.e) for (const [k, v] of Object.entries(q.e))
+    if (QUESTS.some((qq) => qq.kind === k)) s.e[k] = Math.max(0, v | 0);
   return s;
 }
 
 /** Current active quest, or null when the chain is complete. */
 export function currentQuest(s: QuestState): QuestDef | null { return s.i < QUESTS.length ? QUESTS[s.i] : null; }
 
+/** Note a deed for the ledger; it pays off whenever its quest comes up. */
+export function recordDeed(s: QuestState, kind: QuestDef["kind"], n = 1): void {
+  s.e[kind] = (s.e[kind] || 0) + n;
+}
+
 /** Progress the active quest by an event of its kind. Returns true if it just completed. */
 export function questEvent(s: QuestState, kind: QuestDef["kind"], n = 1): QuestDef | null {
+  // the deed is achieved forever, whether or not this quest is the current one
+  recordDeed(s, kind, n);
   const q = currentQuest(s);
   if (!q || q.kind !== kind) return null;
   if (s.p[s.i] >= q.goal) return null;
@@ -94,4 +106,19 @@ export function questEvent(s: QuestState, kind: QuestDef["kind"], n = 1): QuestD
   const done = q;
   s.i++;
   return done;
+}
+
+/** Pay off any current quest the player already achieved earlier; may chain. */
+export function reconcile(s: QuestState): QuestDef[] {
+  const done: QuestDef[] = [];
+  for (;;) {
+    const q = currentQuest(s);
+    if (!q) return done;
+    const e = s.e[q.kind];
+    if (!e) return done;
+    if (s.p[s.i] < q.goal) s.p[s.i] = Math.min(q.goal, e);
+    if (s.p[s.i] < q.goal) return done;
+    s.i++;
+    done.push(q);
+  }
 }

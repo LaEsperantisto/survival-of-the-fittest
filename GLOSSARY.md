@@ -176,7 +176,7 @@ _Avoid_: weapon (as the item's name), blade, sword (bare — material always qua
 ### Systems
 
 **Main Quest**:
-The goal line: rescuing other survivors and other objectives; finishing it completes the game.
+The goal line: a fixed chain of guided goals; finishing it completes the game. Its deeds count whenever they happen, not only while their quest is current — something done early is paid off the moment its quest comes up, Reward Cache included.
 
 **Survivor**:
 A rescuable person. Needs exactly what the player needs — Water, safe Heat, Health — and no food of any kind. Vulnerable like the player: they need genuine shelter and water wherever they live, including a rebuilt Ship. Nothing about them is tied to the original wreck: any equivalent insulated structure has exactly the same properties.

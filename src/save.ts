@@ -57,7 +57,7 @@ export interface RunSave {
   days: number;
   player: { x: number; y: number; z: number; yaw: number; pitch: number };
   survival: { health: number; water: number; body: number };
-  quest?: { i: number; p: number[] };
+  quest?: { i: number; p: number[]; e?: Record<string, number> };
   inventory: { slots: { itemId: string; count?: number; x: number; y: number; rot?: boolean; blockRot?: number; charges?: number }[]; selected: number; w: number; h: number; bonusLimit: number }; // count: legacy only — items never stack now
   equip?: { backpack?: string; head?: string; body?: string; regulator?: string; light?: string;
             charges?: { regulator?: number; light?: number } };
