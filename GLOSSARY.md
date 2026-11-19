@@ -437,6 +437,9 @@ _Avoid_: breaker (reserved for the Sandstorm Breaker), fuse box, supervisor
 **Power Pole**:
 carries power to whatever stands within its reach, and links to Poles within twice that; higher tiers reach farther.
 
+**Grid Relic**:
+a derelict outstation of the Dwellers' power age, on the world's rarest lattice — an adobe shed with its Panel, Battery and Supply Chest intact, a Solar Panel still on the roof, and a line of Poles running to a mast whose Electric Lamp has been burning for years. One of the few Grids in the desert still working; the Towns' own Grids are dead husks — cold lamps on street Poles, a Panel still in the market shell's wall.
+
 **Inserter**:
 a powered block that takes one item from the block in front of it and puts it into the block behind. The universal atom of automation — no filters, no reach.
 _Avoid_: arm, conveyor (belts move things sideways; Inserters push between blocks)

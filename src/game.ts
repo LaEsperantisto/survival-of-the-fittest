@@ -11,7 +11,7 @@ import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOO
 const POWER_BATT_CAP = 120;
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
-import { heightAt, biomeAt, TOWN_L, CAMP_L, CAVE_MOUTH_L, OASIS_L, CANISTER_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
+import { heightAt, biomeAt, TOWN_L, CAMP_L, CAVE_MOUTH_L, OUTPOST_L, OASIS_L, CANISTER_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
 import { offersFor, Offer } from "./trades";
 import { RECIPES, SMELT, canCraft, doCraft } from "./crafting";
 import { QUESTS, currentQuest, loadQuestState, questEvent, recordDeed, reconcile, type QuestDef, type QuestState } from "./quests";
@@ -145,6 +145,7 @@ export class Game {
   private genFuel = new Map<string, number>();      // Wood Generator cell -> burn seconds left
   private batteryCharge = new Map<string, number>(); // Battery cell -> stored units
   private trippedPanels = new Set<string>();        // Power Panel cells latched off
+  private powerDirty = false;                       // a streamed chunk added gen-made power blocks
   private grids: { panel: string | null; panels: number; cells: Map<string, number>;
                    tripped: boolean; powered: boolean }[] = [];
   private powerAcc = 0;
@@ -182,6 +183,16 @@ export class Game {
     // Easy/Hard Start is fixed when the world is created; the run copy wins on load
     this.worldMode = run?.worldMode ?? meta.mode ?? "easy";
     this.world = new World(this.seed, this.worldMode);
+    // world-gen grids (Grid Relics, Town husks) join the live Grids the moment
+    // their chunk streams in — gen blocks carry no deltas to scan at load
+    this.world.onChunk = (cx, cz, c) => {
+      for (let i = 0; i < c.length; i++) {
+        if (!isPowerBlock(c[i])) continue;
+        const lx = Math.floor(i / (CS * CH)), rem = i % (CS * CH);
+        this.powerCells.set(`${cx * CS + lx},${rem % CH},${cz * CS + Math.floor(rem / CH)}`, c[i]);
+        this.powerDirty = true;
+      }
+    };
     this.survival = new Survival(this.seed ^ 7);
     this.quests = loadQuestState(run?.quest);
     this.renderer = new Renderer(parent);
@@ -312,6 +323,18 @@ export class Game {
     return false;
   }
 
+  /** Is (x,z) inside a Grid Relic's buried plot? */
+  private inOutpost(x: number, z: number): boolean {
+    const st = this.world.gen;
+    const tx = Math.floor(x / OUTPOST_L), tz = Math.floor(z / OUTPOST_L);
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+      if (!st.outpostAt(tx + a, tz + b)) continue;
+      const c = st.outpostCenter(tx + a, tz + b);
+      if (Math.abs(c.x - x) <= 16 && Math.abs(c.z - z) <= 8) return true;
+    }
+    return false;
+  }
+
   /** A town Supply Chest's stores, rolled deterministically from its position. */
   private townLoot(cx: number, cz: number): { itemId: string; count: number }[] {
     const r = (salt: number) => hash2(cx, cz, this.seed + salt);
@@ -345,6 +368,17 @@ export class Game {
         }
       }
       hud.toast("Someone's stores — untouched since the town emptied.");
+      this.questBump("supplies");
+    } else if (!known && cells.some(([cx, , cz]) => this.inOutpost(cx, cz))) {
+      // the relic crew's stores: copper for their wires, salt for their food,
+      // one precious iron rod for whatever else survived
+      for (const it of [{ itemId: "copperrod", count: 3 }, { itemId: "salt", count: 2 }, { itemId: "metal", count: 1 }]) {
+        for (let i = 0; i < it.count; i++) {
+          const s: Slot = { itemId: it.itemId, x: 0, y: 0 };
+          if (!Game.placeSlotFree(ci, s)) this.dropEntity(it.itemId, 1, 2);
+        }
+      }
+      hud.toast("A Grid Relic's stores — copper wire, salt, and one last iron rod.");
       this.questBump("supplies");
     }
     this.chestInv = ci;
@@ -2931,6 +2965,7 @@ export class Game {
     if (this.powerAcc < 0.25) return;
     const step = this.powerAcc;
     this.powerAcc = 0;
+    if (this.powerDirty) { this.powerDirty = false; this.rebuildPower(); }
     for (const g of this.grids) {
       const on = g.panels === 1 && !g.tripped;
       let supply = 0, draw = 0;
@@ -2966,6 +3001,9 @@ export class Game {
           }
         }
       }
+      // a lamp that just went live on a working Grid is the deed Lights On waits for
+      if (on && !g.powered) for (const id of g.cells.values())
+        if (id === ELEC_LAMP) { this.questBump("grid"); break; }
       g.powered = on;
     }
     this.machineAcc += step;
@@ -3022,7 +3060,11 @@ export class Game {
         else if (id === HARVESTER) moved = this.harvesterAct(x, y, z) || moved;
       }
     }
-    if (moved) { this.audio.place(); if (this.ui === "inv") this.renderInv(); }
+    if (moved) {
+      this.audio.place();
+      if (this.ui === "inv") this.renderInv();
+      this.questBump("factory"); // the deed: a machine moved an item on its own
+    }
   }
 
   /** The live slot array of the Chest cluster at this cell (null: no Chest). */

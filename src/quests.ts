@@ -3,7 +3,7 @@
 
 export interface QuestDef {
   id: string;
-  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "wreck" | "core" | "finish" | "thruster";
+  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "wreck" | "core" | "finish" | "grid" | "factory" | "thruster";
   title: string;
   desc: string;
   goal: number;
@@ -58,6 +58,16 @@ export const QUESTS: QuestDef[] = [
   {
     id: "finish", kind: "finish", title: "Escape Vector",
     desc: "Carry the Engine Core home and set it right next to a Save Beacon — that wakes the wreck's power.", goal: 1,
+  },
+  {
+    id: "grid", kind: "grid", title: "Lights On",
+    desc: "Wire the Grid the Dwellers left: a Power Panel, Poles and a generator — and hang an Electric Lamp on it. The Grid must light the lamp.", goal: 1,
+    reward: { item: "elec_lamp", n: 2 },
+  },
+  {
+    id: "factory", kind: "factory", title: "Machine Works",
+    desc: "Put a machine to work: an Inserter, Planter or Harvester moves something on its own.", goal: 1,
+    reward: { item: "harvester", n: 1 },
   },
   {
     id: "wings", kind: "thruster", title: "Wings of the Wreck",

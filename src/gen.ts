@@ -3,6 +3,7 @@ import {
   WATER, ADOBE, INSGLASS, ENGINECORE, CS, CH, REGULATOR, REGULATOR_HUSK, CACTUS, CACTUS_FRUIT,
   DOOR_INNER, DOOR_INNER_UPPER, CHEST, BED, BED_EXT, MELON_2, WHEAT_1, WHEAT_2, FARMLAND, GRASS, WOOD, LEAVES,
   STORM_BREAKER, STORM_BREAKER_HUSK,
+  POWER_PANEL, POWER_POLE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
   CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, THRUSTER,
 } from "./blocks";
 import { fbm2, ridge2, value2, hash2, Rng } from "./noise";
@@ -28,6 +29,12 @@ export const TOWN_L = 320;
 /** Trader camps sit on their own sparse lattice — a flattened site with a
  *  windmill, hut or farmstead and a market stall, never near the crash. */
 export const CAMP_L = 380;
+
+/** Grid Relics sit on the sparsest lattice of all: a derelict adobe outstation
+ *  of the Dwellers' power age — Panel, Battery, Solar Panel, a line of Poles
+ *  running to a mast lamp, and a Supply Chest of old-world parts. Centers
+ *  jitter up to ±24 from the cell. */
+export const OUTPOST_L = 520;
 
 /** Cave mouths sit on this lattice: an arched tunnel dug into a hillside that
  *  descends into the cave band and opens on a small rock chamber. */
@@ -223,6 +230,10 @@ export class Structures {
     }
     return best;
   }
+
+  /** The Grid Relic on lattice cell (tx,tz), and its jittered centre. */
+  outpostAt(tx: number, tz: number): boolean { return outpostAtSeed(this.seed, tx, tz); }
+  outpostCenter(tx: number, tz: number): { x: number; z: number } { return outpostCenterSeed(this.seed, tx, tz); }
 }
 
 /**
@@ -277,7 +288,7 @@ export function heightAt(seed: number, x: number, z: number): number {
     const t = (r - 14) / 16, s = t * t * (3 - 2 * t);
     return 30 + (h - 30) * s; // no camp can be this close to the crash: plateau wins
   }
-  const site = campSiteAt(seed, x, z);
+  const site = campSiteAt(seed, x, z) ?? outpostSiteAt(seed, x, z);
   if (site) {
     const base = Math.round(heightRaw(seed, site.cx, site.cz));
     const s = Math.min(1, (12 - site.d) / 3), sm = s * s * (3 - 2 * s);
@@ -791,6 +802,17 @@ function paintTown(set: (x: number, y: number, z: number, id: number) => void, t
   set(t.x - 7, fh + 1, t.z + 11, WHEAT_2);
   set(t.x - 5, fh + 1, t.z + 10, WHEAT_2);
   set(t.x - 4, fh + 1, t.z + 12, MELON_2);
+  // the town's dead Grid: Power Poles marching down the street with cold
+  // Electric Lamps on their heads, and the Panel that served them still in the
+  // market shell's wall — the line is broken, so the poles sit beyond the
+  // Panel's reach and nothing ever trips; the lamps just stay dark
+  for (const px of [t.x - 4, t.x + 2]) {
+    const ph = Math.round(heightAt(seed, px, t.z - 6));
+    for (let y = ph + 1; y <= ph + 3; y++) set(px, y, t.z - 6, POWER_POLE);
+    set(px, ph + 4, t.z - 6, ELEC_LAMP);
+  }
+  const mh = Math.round(heightAt(seed, t.x + 3, t.z + 2));
+  set(t.x + 7, mh + 1, t.z + 4, POWER_PANEL);
 }
 
 /* ── Cave mouths ─────────────────────────────────────────────────────────────
@@ -1018,6 +1040,71 @@ function paintCamp(set: (x: number, y: number, z: number, id: number) => void, c
   }
 }
 
+/* -- Grid Relics -------------------------------------------------------------
+ * The Dwellers' power age, out in the dunes: an adobe outstation whose Panel,
+ * Battery and roof Solar Panel still wire a working Grid — a line of Poles
+ * runs east to a small mast whose Electric Lamp has been burning for years.
+ * The site flattens like a camp; the chest holds the old world's parts. */
+export function outpostAtSeed(seed: number, tx: number, tz: number): boolean {
+  if (Math.abs(tx) <= 1 && Math.abs(tz) <= 1) return false; // keeps relics ~520 clear of the crash
+  if (hash2(tx, tz, seed + 431) >= 0.55) return false;
+  const c = outpostCenterSeed(seed, tx, tz);
+  const st = structuresOf(seed);
+  if (oasisNearSeed(seed, c.x, c.z, 24)) return false;
+  if (Math.hypot(st.secondShip.x - c.x, st.secondShip.z - c.z) < 40) return false;
+  if (st.townNear(c.x, c.z, 26) !== null) return false;
+  if (st.campNear(c.x, c.z, 26) !== null) return false;
+  if (st.mouthNear(c.x, c.z, 26) !== null) return false;
+  return true;
+}
+export function outpostCenterSeed(seed: number, tx: number, tz: number): { x: number; z: number } {
+  const jx = (hash2(tx, tz, seed + 433) - 0.5) * 48;
+  const jz = (hash2(tx, tz, seed + 435) - 0.5) * 48;
+  return { x: Math.round(tx * OUTPOST_L + jx), z: Math.round(tz * OUTPOST_L + jz) };
+}
+/** The relic site holding (x,z) — Chebyshev <=10 from a relic centre — with the
+ *  distance, or null. Same shape as campSiteAt: jitter 24 << OUTPOST_L, so the
+ *  3x3 lattice ring scan is exact. */
+function outpostSiteAt(seed: number, x: number, z: number): { cx: number; cz: number; d: number } | null {
+  const tx = Math.floor(x / OUTPOST_L), tz = Math.floor(z / OUTPOST_L);
+  let best: { cx: number; cz: number; d: number } | null = null;
+  for (let ax = tx - 1; ax <= tx + 1; ax++) for (let az = tz - 1; az <= tz + 1; az++) {
+    if (Math.abs(x - ax * OUTPOST_L) > OUTPOST_L / 2 + 24 || Math.abs(z - az * OUTPOST_L) > OUTPOST_L / 2 + 24) continue;
+    if (!outpostAtSeed(seed, ax, az)) continue;
+    const c = outpostCenterSeed(seed, ax, az);
+    const d = Math.max(Math.abs(c.x - x), Math.abs(c.z - z));
+    if (d <= 10 && (best === null || d < best.d)) best = { cx: c.x, cz: c.z, d };
+  }
+  return best;
+}
+function paintOutpost(set: (x: number, y: number, z: number, id: number) => void, c: { x: number; z: number }, seed: number) {
+  const f = Math.round(heightAt(seed, c.x, c.z));
+  // a 6x5 adobe shed, roof at f+4, door on its -z face
+  for (let x = c.x - 3; x <= c.x + 2; x++) for (let z = c.z - 2; z <= c.z + 2; z++) {
+    for (let y = f; y <= f + 4; y++) {
+      const floor = y === f;
+      const wall = (x === c.x - 3 || x === c.x + 2 || z === c.z - 2 || z === c.z + 2) && y >= f + 1 && y <= f + 3;
+      const roof = y === f + 4;
+      const door = x === c.x - 1 && z === c.z - 2 && y >= f + 1 && y <= f + 2;
+      if (!(floor || wall || roof) || door) { set(x, y, z, AIR); continue; }
+      set(x, y, z, ADOBE);
+    }
+  }
+  set(c.x - 1, f + 1, c.z - 2, DOOR_CLOSED); set(c.x - 1, f + 2, c.z - 2, DOOR_UPPER);
+  // inside: the Grid's heart on the north wall, a Battery, and a Supply Chest
+  set(c.x + 2, f + 1, c.z, POWER_PANEL);
+  set(c.x + 1, f + 1, c.z + 1, BATTERY);
+  set(c.x - 2, f + 1, c.z, CHEST);
+  set(c.x - 2, f + 1, c.z - 1, SALT); // salted provisions of the old crew
+  // the Grid itself, visible from far off: a Solar Panel on the roof, Poles
+  // marching east to a mast, and its lamp lit atop
+  set(c.x, f + 5, c.z, SOLAR_PANEL);
+  for (let x = c.x + 5; x <= c.x + 13; x += 4) {
+    for (let y = f + 1; y <= f + 4; y++) set(x, y, c.z, POWER_POLE);
+  }
+  for (let y = f + 1; y <= f + 7; y++) set(c.x + 16, y, c.z, POWER_POLE);
+  set(c.x + 16, f + 8, c.z, ELEC_LAMP);
+}
 export function genChunk(seed: number, st: Structures, cx: number, cz: number, worldMode: "easy" | "hard" = "easy"): Uint8Array {
   const c = new Uint8Array(CS * CS * CH);
   const setW = (wx: number, wy: number, wz: number, id: number) => {
@@ -1172,6 +1259,16 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number, w
     const cc = st.campCenter(tx, tz);
     if (cx * CS <= cc.x + 12 && cx * CS + CS - 1 >= cc.x - 12 && cz * CS <= cc.z + 6 && cz * CS + CS - 1 >= cc.z - 10)
       paintCamp(setW, { x: cc.x, z: cc.z, type: st.campType(tx, tz) }, seed);
+  }
+  // Grid Relics on their own rarest lattice: centres jitter ±24; the shed,
+  // pole line and mast reach from x-3 to x+17 and y+8, hence the slack.
+  const rx0 = Math.floor((cx * CS - 32 - OUTPOST_L) / OUTPOST_L), rx1 = Math.floor((cx * CS + CS - 1 + 24 + OUTPOST_L) / OUTPOST_L);
+  const rz0 = Math.floor((cz * CS - 32 - OUTPOST_L) / OUTPOST_L), rz1 = Math.floor((cz * CS + CS - 1 + 12 + OUTPOST_L) / OUTPOST_L);
+  for (let tx = rx0; tx <= rx1; tx++) for (let tz = rz0; tz <= rz1; tz++) {
+    if (!st.outpostAt(tx, tz)) continue;
+    const po = st.outpostCenter(tx, tz);
+    if (cx * CS <= po.x + 17 && cx * CS + CS - 1 >= po.x - 3 && cz * CS <= po.z + 2 && cz * CS + CS - 1 >= po.z - 2)
+      paintOutpost(setW, po, seed);
   }
   // Cave mouths: the tunnel + rim reach ~24 cells from the (jittered) centre
   const nx0 = Math.floor((cx * CS - 54 - CAVE_MOUTH_L) / CAVE_MOUTH_L), nx1 = Math.floor((cx * CS + CS - 1 + 54 + CAVE_MOUTH_L) / CAVE_MOUTH_L);

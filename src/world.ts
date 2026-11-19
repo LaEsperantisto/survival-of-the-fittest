@@ -38,9 +38,13 @@ export class World {
       const d = this.deltas.get(k);
       if (d) for (const [i, id] of d) c[i] = id;
       this.chunks.set(k, c);
+      this.onChunk?.(cx, cz, c);
     }
     return c;
   }
+  /** fired once per freshly generated chunk — game.ts indexes the generated
+   *  Power Poles, Panels and lamps of Grid Relics and Towns into its Grids. */
+  onChunk?: (cx: number, cz: number, c: Uint8Array) => void;
 
   get(x: number, y: number, z: number): number {
     if (y < 0 || y >= CH) return AIR;
