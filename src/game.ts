@@ -1143,7 +1143,8 @@ export class Game {
         if (top < 0) { g2.fillStyle = "#0a0c10"; g2.fillRect(lx, lz, 1, 1); continue; }
         const col = BLOCKS[id].color;
         const sh = 0.5 + 0.5 * Math.min(1, top / 34);
-        g2.fillStyle = isWater(id) ? "#2f6fb8" : `rgb(${Math.round(col[0] * sh)},${Math.round(col[1] * sh)},${Math.round(col[2] * sh)})`;
+        // BlockDef colors are 0..1 — the canvas needs 0..255, else every tile paints black
+        g2.fillStyle = isWater(id) ? "#2f6fb8" : `rgb(${Math.round(col[0] * 255 * sh)},${Math.round(col[1] * 255 * sh)},${Math.round(col[2] * 255 * sh)})`;
         g2.fillRect(lx, lz, 1, 1);
       }
     } else {
@@ -1216,8 +1217,9 @@ export class Game {
       if (this.mapMax) { g2.fillStyle = "#f2e9c9"; g2.fillText(p.name, mx + 6, mz + 3); }
     }
     // you, at the centre: a heading arrow (map north = -Z)
+    // player forward is (-sin yaw, 0, -cos yaw) — the old signs pointed 180° off
     const yaw = this.player.yaw;
-    const fx = Math.sin(yaw), fz = Math.cos(yaw);
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
     const ang = Math.atan2(fz, fx); // screen: x east, z south
     g2.save();
     g2.translate(size / 2, size / 2);
