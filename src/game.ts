@@ -4149,7 +4149,8 @@ export class Game {
     smeltUi.classList.toggle("hidden", mode !== "smelt");
     if (mode !== "smelt") {
       for (const r of RECIPES) {
-        if (mode === "armory" ? r.station !== "armory" : r.station === "armory") continue;
+        // each recipe has exactly one home: hand, Bench or Armoury — never two
+        if (mode === "armory" ? r.station !== "armory" : r.station !== "bench") continue;
         const row = document.createElement("div");
         row.className = "craft-row";
         const label = `${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""}`;

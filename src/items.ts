@@ -1,6 +1,6 @@
 import {
   SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, GLASS, INSGLASS, HULL,
-  DOOR_CLOSED, DOOR_UPPER, LAMP, METAL, BEACON, BENCH, CAMPFIRE, ADOBE, ENGINECORE, REGULATOR, CHEST, CACTUS,
+  DOOR_CLOSED, DOOR_UPPER, LAMP, BEACON, BENCH, CAMPFIRE, ADOBE, ENGINECORE, REGULATOR, CHEST, CACTUS,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, BED, BED_EXT, GRASS, LEAVES, WOOD, SAPLING,
   CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, STORM_BREAKER, THRUSTER, THRUSTER_LIT, ARMORY,
@@ -53,7 +53,7 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "hull", name: "Hull Plating", desc: "The ship's insulating wall block. Your best shelter material.", w: 1, h: 1, mass: 2.0, block: HULL, color: "#858a99" }),
   I({ id: "door", name: "Door", desc: "Insulates exactly like hull plating while closed. Open it and the shelter leaks.", w: 1, h: 2, mass: 3.0, block: DOOR_CLOSED, color: "#999fa8" }),
   I({ id: "lamp", name: "Lamp", desc: "Glows in the dark.", w: 1, h: 1, mass: 0.5, block: LAMP, color: "#fff0a0" }),
-  I({ id: "metal", name: "Iron Rod", desc: "Forged iron — salvaged from the wreck, or baked from Rock and Iron Ore at a Campfire. The backbone of every tool.", w: 1, h: 1, mass: 1.0, block: METAL, color: "#9aa0aa" }),
+  I({ id: "metal", name: "Iron Rod", desc: "Forged iron — salvaged from the wreck, or baked from Rock and Iron Ore at a Campfire. The backbone of every tool, never a block to place.", w: 1, h: 1, mass: 1.0, color: "#9aa0aa" }),
   I({ id: "beacon", name: "Save Beacon", desc: "Place to permanently save. Death respawns at the newest intact beacon; beacons can never be picked back up.", w: 1, h: 2, mass: 4.0, block: BEACON, color: "#66e5f0" }),
   I({ id: "bench", name: "Crafting Bench", desc: "Unlocks the full crafting list. Stands two blocks wide in the world.", w: 1, h: 2, mass: 6.0, block: BENCH, color: "#806647" }),
   I({ id: "campfire", name: "Campfire", desc: "Burns wood. Smelts sand into glass.", w: 1, h: 2, mass: 3.0, block: CAMPFIRE, color: "#e67333" }),

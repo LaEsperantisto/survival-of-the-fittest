@@ -75,7 +75,8 @@ export const BLOCKS: BlockDef[] = [
   // Open door: the leaf stands in the frame edge-on — see-through, walk-through.
   def({ id: DOOR_OPEN, name: "Door (open)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: "disassembler", minTier: 0, placeable: false, color: [0.35, 0.36, 0.4] }),
   def({ id: LAMP, name: "Lamp", solid: true, opaque: true, transparent: false, emissive: true, R: 1.0, breakTime: 0.5, tool: null, minTier: 0, placeable: true, color: [1.0, 0.9, 0.6] }),
-  def({ id: METAL, name: "Iron Rod", solid: true, opaque: true, transparent: false, emissive: false, R: 0.3, breakTime: 4, tool: "disassembler", minTier: 0, placeable: true, color: [0.6, 0.62, 0.68] }),
+  // legacy shipwreck plating — the Iron Rod item is a component, never placed
+  def({ id: METAL, name: "Iron Rod", solid: true, opaque: true, transparent: false, emissive: false, R: 0.3, breakTime: 4, tool: "disassembler", minTier: 0, placeable: false, color: [0.6, 0.62, 0.68] }),
   def({ id: BEACON, name: "Save Beacon", solid: true, opaque: true, transparent: false, emissive: true, R: 0.5, breakTime: -1, tool: null, minTier: 0, placeable: true, color: [0.4, 0.9, 0.95] }),
   def({ id: BENCH, name: "Crafting Bench", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.0, tool: null, minTier: 0, placeable: true, color: [0.5, 0.4, 0.3] }),
   def({ id: CAMPFIRE, name: "Campfire", solid: true, opaque: false, transparent: false, emissive: true, R: 0, breakTime: 0.5, tool: null, minTier: 0, placeable: true, color: [0.9, 0.45, 0.2] }),

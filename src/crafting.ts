@@ -48,8 +48,8 @@ export const RECIPES: Recipe[] = [
   { out: "battery", count: 1, needs: { metal: 3, copperrod: 2, salt: 3 }, station: "bench" },
   { out: "elec_lamp", count: 1, needs: { glass: 2, metal: 1, copperrod: 1 }, station: "bench" },
   { out: "inserter", count: 1, needs: { metal: 4, copperrod: 2, glass: 2 }, station: "bench" },
-  { out: "planter", count: 1, needs: { wood_log: 4, ironrod: 2, glass: 1 }, station: "bench" },
-  { out: "harvester", count: 1, needs: { metal: 3, ironrod: 2, glass: 2 }, station: "bench" },
+  { out: "planter", count: 1, needs: { wood_log: 4, metal: 2, glass: 1 }, station: "bench" },
+  { out: "harvester", count: 1, needs: { metal: 5, glass: 2 }, station: "bench" },
   { out: "sword", count: 1, needs: { metal: 2, deadwood: 1 }, station: "bench" },
   { out: "door", count: 1, needs: { metal: 2, deadwood: 2 }, station: "bench" },
   { out: "hull", count: 2, needs: { metal: 2, sand: 2 }, station: "bench" },
@@ -60,11 +60,11 @@ export const RECIPES: Recipe[] = [
   { out: "regulator", count: 1, needs: { metal: 4, glass: 1, salt: 2 }, station: "bench" },
   // Husk repairs: the broken frame plus about half the build recipe.
   { out: "regulator", count: 1, needs: { regulator_broken: 1, metal: 2, glass: 1, salt: 1 }, station: "bench" },
-  { out: "chest", count: 1, needs: { deadwood: 6, metal: 1 }, station: "bench" },
+  { out: "chest", count: 1, needs: { deadwood: 4 }, station: "bench" },
   { out: "visor", count: 1, needs: { metal: 2, glass: 1, salt: 2 }, station: "armory" },
   { out: "reptile_armor", count: 1, needs: { snake_skin: 3 }, station: "armory" },
   // ---- farming & building ----
-  { out: "farmland", count: 1, needs: { dirt: 1 }, station: null },
+  // Farm Land is never crafted — a shovel opens a furrow in real soil, that's it
   { out: "deadwood", count: 2, needs: { wood_log: 1 }, station: null },
   { out: "chest_connector", count: 1, needs: { deadwood: 2, metal: 1 }, station: null },
   { out: "metal_plating", count: 1, needs: { metal: 1 }, station: null },

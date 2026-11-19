@@ -37,7 +37,7 @@ export const QUESTS: QuestDef[] = [
   },
   {
     id: "farm", kind: "farm", title: "Green Thumbs",
-    desc: "Till sand with a shovel, plant a seed near water, and harvest one ripe crop.", goal: 1,
+    desc: "Till Dirt with a shovel, plant a seed near water, and harvest one ripe crop.", goal: 1,
     reward: { item: "seed_melon", n: 2 },
   },
   {
