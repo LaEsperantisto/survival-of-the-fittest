@@ -714,6 +714,7 @@ export class Game {
   }
 
   private crashPod(itemId: string, n: number) {
+    if (!ITEMS[itemId] || !(n > 0)) return; // a reward that doesn't exist never falls from the sky
     const p = this.player.pos;
     const x = Math.round(p.x) + 2, z = Math.round(p.z) + 1;
     const gy = this.columnTop(x, z);
@@ -1676,6 +1677,8 @@ export class Game {
         if (c.beamEid !== undefined) { this.renderer.removeEntityMesh(c.beamEid); c.beamEid = undefined; }
       }
     }
+    // a Cache that holds nothing is no Cache at all — out of the list entirely
+    this.caches = this.caches.filter((c) => c.items.length);
     this.regulatorGlow();
     this.updateCrops(dt);
     this.updatePower(dt);
@@ -3523,19 +3526,20 @@ export class Game {
     if (this.caches.some((c) => Math.abs(c.x - this.player.pos.x) < 0.5)) return;
     this.deathCause = this.survival.causeOfDeath ?? "exposure";
     this.audio.death();
-    this.caches.push({
-      id: this.entitySeq++,
-      x: Math.floor(this.player.pos.x), y: Math.floor(this.player.pos.y), z: Math.floor(this.player.pos.z),
-      kind: "death",
-      // everything you carried AND everything you wore waits in the cache
-      items: [
-        ...this.inv.slots.map((s) => ({ itemId: s.itemId, count: 1, charges: s.charges })),
-        ...(["backpack", "head", "body", "regulator", "light"] as const)
-          .map((sl) => this.equip[sl])
-          .filter((s): s is Slot => !!s)
-          .map((s) => ({ itemId: s.itemId, count: 1, charges: s.charges })),
-      ],
-    });
+    // everything you carried AND everything you wore waits in the cache
+    const lost = [
+      ...this.inv.slots.map((s) => ({ itemId: s.itemId, count: 1, charges: s.charges })),
+      ...(["backpack", "head", "body", "regulator", "light"] as const)
+        .map((sl) => this.equip[sl])
+        .filter((s): s is Slot => !!s)
+        .map((s) => ({ itemId: s.itemId, count: 1, charges: s.charges })),
+    ];
+    if (lost.length)
+      this.caches.push({
+        id: this.entitySeq++,
+        x: Math.floor(this.player.pos.x), y: Math.floor(this.player.pos.y), z: Math.floor(this.player.pos.z),
+        kind: "death", items: lost,
+      });
     this.inv.slots = []; this.inv.selected = 0;
     this.equip = { backpack: null, head: null, body: null, regulator: null, light: null };
     this.lanternOn = false;
