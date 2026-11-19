@@ -740,10 +740,11 @@ export class Game {
   // lights where it will land (landmark caches are already marked), and the crate
   // drops out of the sky (GLOSSARY: "All block-shaped quest rewards arrive as
   // Crash Pods" — the crate itself is a Cache).
-  // topmost loaded block in a column — pods must land on roofs and dune tops,
-  // not at raw terrain height under a structure
+  // the cell just above the topmost loaded block in a column — pods must land
+  // on roofs and dune tops, not at raw terrain height under a structure, and
+  // never inside the block itself (matches the heightAt surface convention)
   private columnTop(x: number, z: number): number {
-    for (let y = CH - 1; y >= 0; y--) if (this.world.get(x, y, z)) return y;
+    for (let y = CH - 1; y >= 0; y--) if (this.world.get(x, y, z)) return y + 1;
     return Math.round(heightAt(this.seed, x, z));
   }
 
