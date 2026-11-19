@@ -1628,7 +1628,22 @@ export class Game {
       if (!this.ui && !this.cine && gblk !== undefined && BLOCKS[gblk].placeable && hit && face) {
         const gx = hit.x + face.x, gy = hit.y + face.y, gz = hit.z + face.z;
         const at = this.world.get(gx, gy, gz);
-        if (at === AIR || (isWater(at) && at !== WATER)) { this.renderer.setGhost(gx, gy, gz, gblk); shown = true; }
+        if (at === AIR || (isWater(at) && at !== WATER)) {
+          const rot = gs!.blockRot ?? 0;
+          const cells: { x: number; y: number; z: number; id: number; rot: number }[] =
+            [{ x: gx, y: gy, z: gz, id: gblk, rot }];
+          // multi-cell blocks preview their whole footprint, turned the way
+          // the held rotation points
+          if (gblk === BENCH || gblk === BED) {
+            const [dx, dz] = ROT_DIRS[rot & 3];
+            if (this.world.get(gx + dx, gy, gz + dz) === AIR)
+              cells.push({ x: gx + dx, y: gy, z: gz + dz, id: gblk === BENCH ? BENCH_EXT : BED_EXT, rot });
+          }
+          if ((gblk === DOOR_CLOSED || gblk === DOOR_INNER) && this.world.get(gx, gy + 1, gz) === AIR)
+            cells.push({ x: gx, y: gy + 1, z: gz, id: gblk === DOOR_CLOSED ? DOOR_UPPER : DOOR_INNER_UPPER, rot });
+          this.renderer.setGhost(cells);
+          shown = true;
+        }
       }
       if (!shown) this.renderer.clearGhost();
     }

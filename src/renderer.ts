@@ -1046,6 +1046,19 @@ export function getAtlasCanvas(): HTMLCanvasElement {
   for (const [i, id] of TILE_LIST.entries()) paint(String(id), i, BLOCKS[id].color);
   for (const [name, base] of VARIANTS) paint(name, VI[name], BLOCKS[base].color);
 
+  // water is see-through: its tiles bake at ~60 % alpha, so the transparent
+  // pass blends pools against what lies beneath and beyond them
+  {
+    const waterTiles = TILE_LIST.map((id, i) => (isWater(id) ? i : -1)).concat([VI.water_side]);
+    for (const t of waterTiles) {
+      if (t < 0) continue;
+      const rx = (t % ATLAS_COLS) * TILE_PX, ry = ((t / ATLAS_COLS) | 0) * TILE_PX;
+      const d = g.getImageData(rx, ry, TILE_PX, TILE_PX);
+      for (let i = 3; i < d.data.length; i += 4) d.data[i] = Math.round(d.data[i] * 0.6);
+      g.putImageData(d, rx, ry);
+    }
+  }
+
   atlasCv = cv;
   return cv;
 }
@@ -1233,7 +1246,7 @@ export class Renderer {
   /** live campfire fuel charges ("x,y,z" -> heat units); the mesher dims
    *  unlit fires, the game owns the map and mutates it in place. */
   fires = new Map<string, number>();
-  private ghost: THREE.Mesh | null = null;
+  private ghost: THREE.Group | null = null;
   private ghostGeos = new Map<string, THREE.BufferGeometry>();
   private matGhost = new THREE.MeshBasicMaterial({
     map: this.atlas, vertexColors: true, transparent: true, opacity: 0.55,
@@ -1342,24 +1355,37 @@ export class Renderer {
     this.dynLights.splice(i, 1);
   }
 
-  /** Translucent preview of the block the held item would place at x,y,z —
-   *  the block's real shape and texture, drawn full-bright at 55 %. */
-  setGhost(x: number, y: number, z: number, id: number, rot = 0) {
+  /** Translucent previews of every cell the held item's placement would
+   *  occupy — the blocks' real shapes and textures, full-bright at 55 %.
+   *  Multi-cell blocks pass their peers (bench/bed far half, door upper half)
+   *  so the footprint is honest before you commit. */
+  setGhost(cells: { x: number; y: number; z: number; id: number; rot?: number }[]) {
     if (!this.ghost) {
-      this.ghost = new THREE.Mesh(new THREE.BufferGeometry(), this.matGhost);
+      this.ghost = new THREE.Group();
+      this.scene.add(this.ghost);
+    }
+    const kids = this.ghost.children;
+    while (kids.length < cells.length) {
+      const mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.matGhost);
       const edges = new THREE.LineSegments(
         new THREE.EdgesGeometry(new THREE.BoxGeometry(1.02, 1.02, 1.02)),
         new THREE.LineBasicMaterial({ color: 0xd8b74f, transparent: true, opacity: 0.7 }));
       edges.position.set(0.5, 0.5, 0.5);
-      this.ghost.add(edges);
-      this.ghost.renderOrder = 5;
-      this.scene.add(this.ghost);
+      mesh.add(edges);
+      mesh.renderOrder = 5;
+      this.ghost.add(mesh);
     }
-    const key = `${id}:${rot}`;
-    let geo = this.ghostGeos.get(key);
-    if (!geo) { geo = this.buildGhostGeo(id, rot); this.ghostGeos.set(key, geo); }
-    this.ghost.geometry = geo;
-    this.ghost.position.set(x, y, z);
+    for (let i = 0; i < kids.length; i++) {
+      const mesh = kids[i] as THREE.Mesh;
+      if (i >= cells.length) { mesh.visible = false; continue; }
+      const c = cells[i], rot = c.rot ?? 0;
+      const key = `${c.id}:${rot}`;
+      let geo = this.ghostGeos.get(key);
+      if (!geo) { geo = this.buildGhostGeo(c.id, rot); this.ghostGeos.set(key, geo); }
+      mesh.geometry = geo;
+      mesh.position.set(c.x, c.y, c.z);
+      mesh.visible = true;
+    }
     this.ghost.visible = true;
   }
 
@@ -1369,8 +1395,10 @@ export class Renderer {
     let faces: ShapeFace[];
     if (DOOR_BLOCKS.has(id)) faces = always(slabFaces(0.04, 0, 0.02, 0.96, 1, 0.16));
     else if (CROSS_BLOCKS.has(id)) faces = always([
-      shapeFace([1, 0, 1], 2, 0.92, [[0, 0, 0], [1, 0, 1], [1, 1, 1], [0, 1, 0]], (p) => [p[0], p[1]]),
-      shapeFace([1, 0, -1], 2, 0.92, [[0, 0, 1], [1, 0, 0], [1, 1, 0], [0, 1, 1]], (p) => [p[0], p[1]]),
+      // v runs top-down in the atlas, so the plant sits on the cell floor —
+      // same anchoring as the planted mesh
+      shapeFace([1, 0, 1], 2, 0.92, [[0, 0, 0], [1, 0, 1], [1, 1, 1], [0, 1, 0]], (p) => [p[0], 1 - p[1]]),
+      shapeFace([1, 0, -1], 2, 0.92, [[0, 0, 1], [1, 0, 0], [1, 1, 0], [0, 1, 1]], (p) => [p[0], 1 - p[1]]),
     ]);
     else if (id === CURVED_HULL || id === HULL_SLOPE) faces = HULL_SHAPES[id].filter((f) => !f.fill);
     else if (id === BENCH) faces = BENCH_MODEL;
