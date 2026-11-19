@@ -129,7 +129,9 @@ export class Survival {
       const wt = THREE.MathUtils.clamp(amb, 12, 24) - 3;
       ambEff = (ambEff + wt) / 2;
     }
-    if (opts.warmth) ambEff += opts.warmth; // a campfire at your back
+    // a campfire at your back — but a room its Regulators hold at neutral
+    // stays neutral: the fire never pushes regulated air off 37 °C
+    if (opts.warmth && !this.regulatedAir) ambEff += opts.warmth;
     // body always regulates toward 36.6; exposure pulls it toward the effective air temp.
     // A worn Body Heat Regulator short-circuits that: while its Coolant Cell lasts,
     // the body just holds at 36.6 no matter the air. It regulates you, never the room.
