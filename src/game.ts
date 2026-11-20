@@ -5,7 +5,7 @@ import { Survival, REGULATOR_ROOM_MAX, SAFE_HI } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, type ItemDef, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, INSERTER, PLANTER, HARVESTER, POLE_LINK, DEVICE_REACH, isPowerBlock, CS, CH, DAY_SECONDS, isSolid, isWater, waterStrength, flowId, blockDisplayName, rotatable } from "./blocks";
+import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, DOOR_GROUP, ALAB_GATE, ALAB_GATE_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, INSERTER, PLANTER, HARVESTER, POLE_LINK, DEVICE_REACH, isPowerBlock, CS, CH, DAY_SECONDS, isSolid, isWater, waterStrength, flowId, blockDisplayName, rotatable } from "./blocks";
 
 /** One Battery stores this many Grid-units. */
 const POWER_BATT_CAP = 120;
@@ -21,7 +21,7 @@ import { WorldMeta, RunSave, saveRun, exportRun, bestScore, submitBest, Settings
 import { itemTiles, itemArtUrl } from "./icons";
 import * as hud from "./hud";
 
-const isDoorHalf = (i: number) => i === DOOR_CLOSED || i === DOOR_UPPER || i === DOOR_INNER || i === DOOR_INNER_UPPER;
+const isDoorHalf = (i: number) => { const g = DOOR_GROUP.get(i); return g !== undefined && i !== g.open; };
 
 // quarter-turn index -> partner-cell offset, matching the renderer's bench
 // orientation indexing (0=+X, 1=+Z, 2=-X, 3=-Z)
@@ -1717,8 +1717,9 @@ export class Game {
             if (this.world.get(gx + dx, gy, gz + dz) === AIR)
               cells.push({ x: gx + dx, y: gy, z: gz + dz, id: gblk === BENCH ? BENCH_EXT : BED_EXT, rot });
           }
-          if ((gblk === DOOR_CLOSED || gblk === DOOR_INNER) && this.world.get(gx, gy + 1, gz) === AIR)
-            cells.push({ x: gx, y: gy + 1, z: gz, id: gblk === DOOR_CLOSED ? DOOR_UPPER : DOOR_INNER_UPPER, rot });
+          const gd = DOOR_GROUP.get(gblk);
+          if (gd && gblk === gd.base && this.world.get(gx, gy + 1, gz) === AIR)
+            cells.push({ x: gx, y: gy + 1, z: gz, id: gd.upper, rot });
           this.renderer.setGhost(cells);
           shown = true;
         }
@@ -1852,8 +1853,10 @@ export class Game {
     if (near) return near.kind === "reward" ? "E: Claim Reward Cache" : "E: Open death cache";
     if (t.hit) {
       const id = this.world.get(t.hit.x, t.hit.y, t.hit.z);
-      if (id === DOOR_CLOSED || id === DOOR_UPPER || id === DOOR_INNER || id === DOOR_INNER_UPPER) return "E: Open door";
-      if (id === DOOR_OPEN || id === DOOR_INNER_OPEN) return "E: Close door";
+      if (isDoorHalf(id)) return "E: Open door";
+      if (DOOR_GROUP.has(id)) return "E: Close door";
+      if (id === ALAB_GATE) return "E: Open fence gate";
+      if (id === ALAB_GATE_OPEN) return "E: Close fence gate";
       if (id === BEACON) return "E: Save game (respawn point)";
       if (id === BENCH || id === BENCH_EXT) return "E: Craft";
       if (id === ARMORY) return "E: Forge armour and gear";
@@ -1954,14 +1957,14 @@ export class Game {
     const id = this.world.get(x, y, z);
     this.codex.add("b:" + id); // the Codex teaches what you have broken once
     this.questBump("mine");
-    if (isDoorHalf(id) || id === DOOR_OPEN || id === DOOR_INNER_OPEN) {
-      const inner = id === DOOR_INNER || id === DOOR_INNER_UPPER || id === DOOR_INNER_OPEN;
+    const doorG = DOOR_GROUP.get(id);
+    if (doorG) {
       this.world.set(x, y, z, AIR);
       for (const dy of [-1, 1]) {
         const n = this.world.get(x, y + dy, z);
-        if (isDoorHalf(n) || n === DOOR_OPEN || n === DOOR_INNER_OPEN) this.world.set(x, y + dy, z, AIR);
+        if (DOOR_GROUP.get(n) === doorG) this.world.set(x, y + dy, z, AIR);
       }
-      this.giveOrDrop(inner ? "door_inner" : "door", 1);
+      this.giveOrDrop(BLOCK_TO_ITEM[doorG.base], 1);
       this.audio.blockBreak();
       return;
     }
@@ -2651,7 +2654,8 @@ export class Game {
       if (inPlayer(nx, by, nz)) { hud.toast("Step off the Bed's footprint first."); this.audio.error(); return; }
       bedPeer = [nx, by, nz];
     }
-    if (def.block === DOOR_CLOSED || def.block === DOOR_INNER) {
+    const doorPlace = DOOR_GROUP.get(def.block);
+    if (doorPlace && def.block === doorPlace.base) {
       if (!floorAt(bx, by, bz)) { hud.toast("A Door needs solid ground under it."); this.audio.error(); return; }
     }
     if (def.block === MELON_1 || def.block === WHEAT_1 || def.block === CACTUS || def.block === SAPLING) {
@@ -2672,8 +2676,8 @@ export class Game {
       this.world.set(benchPeer[0], benchPeer[1], benchPeer[2], BENCH_EXT);
       if (slot.blockRot) this.world.setRot(benchPeer[0], benchPeer[1], benchPeer[2], slot.blockRot);
     }
-    if (def.block === DOOR_CLOSED && this.world.get(bx, by + 1, bz) === AIR) this.world.set(bx, by + 1, bz, DOOR_UPPER);
-    if (def.block === DOOR_INNER && this.world.get(bx, by + 1, bz) === AIR) this.world.set(bx, by + 1, bz, DOOR_INNER_UPPER);
+    if (doorPlace && def.block === doorPlace.base && this.world.get(bx, by + 1, bz) === AIR)
+      this.world.set(bx, by + 1, bz, doorPlace.upper);
     if (bedPeer) { // a bed spans 2 blocks, pillow where you turned it
       this.world.set(bedPeer[0], bedPeer[1], bedPeer[2], BED_EXT);
       if (slot.blockRot) this.world.setRot(bedPeer[0], bedPeer[1], bedPeer[2], slot.blockRot);
@@ -2732,11 +2736,19 @@ export class Game {
       if (id === MELON_2 || id === WHEAT_2 || id === CACTUS_FRUIT) { this.harvest(x, y, z, id); return; }
       if (id === POWER_PANEL) { this.panelAct(x, y, z); return; }
       if (id === BED || id === BED_EXT) { this.sleep(); return; }
-      if (isDoorHalf(id) || id === DOOR_OPEN || id === DOOR_INNER_OPEN) {
-        const inner = id === DOOR_INNER || id === DOOR_INNER_UPPER || id === DOOR_INNER_OPEN;
-        const openId = inner ? DOOR_INNER_OPEN : DOOR_OPEN;
-        const half = (n: number) => (inner ? n === DOOR_INNER || n === DOOR_INNER_UPPER : n === DOOR_CLOSED || n === DOOR_UPPER);
-        const base = inner ? DOOR_INNER : DOOR_CLOSED, upper = inner ? DOOR_INNER_UPPER : DOOR_UPPER;
+      if (id === ALAB_GATE || id === ALAB_GATE_OPEN) {
+        // the gate leaf swings on its stile; world.set clears the rotation
+        // nibble, so carry it across the id swap
+        const r = this.world.getRot(x, y, z);
+        this.world.set(x, y, z, id === ALAB_GATE ? ALAB_GATE_OPEN : ALAB_GATE);
+        if (r) this.world.setRot(x, y, z, r);
+        this.audio.door();
+        return;
+      }
+      const dg = DOOR_GROUP.get(id);
+      if (dg) {
+        const { base, upper, open: openId } = dg;
+        const half = (n: number) => n === base || n === upper;
         if (id === openId) {
           // a door must never close on the player standing in the doorway
           const p = this.player.pos;

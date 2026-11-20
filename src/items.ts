@@ -7,6 +7,8 @@ import {
   REGULATOR_HUSK, STORM_BREAKER_HUSK,
   POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
   INSERTER, PLANTER, HARVESTER,
+  ALAB_BRICK, ALAB_POLISHED, ALAB_CHISELLED, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_DOOR,
+  ALAB_DOOR_UPPER, ALAB_GATE_OPEN,
 } from "./blocks";
 
 export interface ItemDef {
@@ -111,7 +113,15 @@ const ITEM_LIST: ItemDef[] = [
   // ---- underground: minerals ----
   I({ id: "iron_ore", name: "Iron Ore", desc: "Dense ore from Cave walls. Smelt it at a Campfire: one ore bakes two Iron Rods.", w: 1, h: 1, mass: 1.6, block: IRON_ORE, color: "#9e8468" }),
   I({ id: "copper_ore", name: "Copper Ore", desc: "Reddened Cave stone. Smelts into Copper Rods - the heart of tier-4 Alloy gear.", w: 1, h: 1, mass: 1.6, block: COPPER_ORE, color: "#b86b42" }),
-  I({ id: "alabaster", name: "Alabaster", desc: "Pale Cave stone. Cuts soft, decorates well, and takes a Lamp's light like nothing else.", w: 1, h: 1, mass: 1.2, block: ALABASTER, color: "#dcd5bd" }),
+  I({ id: "alabaster", name: "Alabaster", desc: "Pale Cave stone. Cuts soft, decorates well, and takes a Lamp's light like nothing else. Placeable as-is — the Bench cuts it into prettier shapes.", w: 1, h: 1, mass: 1.2, block: ALABASTER, color: "#dcd5bd" }),
+  // ---- Alabaster masonry: bench-cut building kit, no catalyst ----
+  I({ id: "alab_bricks", name: "Alabaster Bricks", desc: "Cut and laid stone — the warm white wall of a Cave-base home.", w: 1, h: 1, mass: 1.0, block: ALAB_BRICK, color: "#e0dac4" }),
+  I({ id: "alab_polished", name: "Polished Alabaster", desc: "Ground smooth until it drinks lamplight. Interior walls, floors, a mesa top for a trophy.", w: 1, h: 1, mass: 1.0, block: ALAB_POLISHED, color: "#eae4d0" }),
+  I({ id: "alab_chiselled", name: "Chiselled Alabaster", desc: "Two bricks worked down to one pane of recessed panels — decorative masonry with shadows in it.", w: 1, h: 1, mass: 1.0, block: ALAB_CHISELLED, color: "#ddd6c0" }),
+  I({ id: "alab_pillar", name: "Alabaster Pillar", desc: "A slim fluted column: a doorway's worth of stone, a porch's worth of style. You can stand right up against its edges.", w: 1, h: 1, mass: 1.6, block: ALAB_PILLAR, color: "#e7e1cd" }),
+  I({ id: "alab_fence", name: "Alabaster Fence", desc: "Post and rails, 1.5 blocks tall, auto-linking to every Fence and Gate beside it. A clean barrier — you can lean into it but never hop it. Keep the critters out.", w: 1, h: 1, mass: 0.8, block: ALAB_FENCE, color: "#e0d9c3" }),
+  I({ id: "alab_gate", name: "Alabaster Fence Gate", desc: "A fence section that swings: E opens it, E closes it, and it stays as you left it. Turn its axis with R before placing.", w: 1, h: 1, mass: 1.0, block: ALAB_GATE, color: "#ddd6bf" }),
+  I({ id: "alab_door", name: "Alabaster Door", desc: "A stone door leaf hung in a two-block frame: E opens and closes it like any other door.", w: 1, h: 1, mass: 2.4, block: ALAB_DOOR, color: "#e3dcc7" }),
   I({ id: "cobalt_ore", name: "Cobalt Ore", desc: "Bluish ore of the deepest stone (Metal Pickaxe or better). The Ship's repair hangs on it.", w: 1, h: 1, mass: 2.2, block: COBALT_ORE, color: "#5c74a8" }),
   I({ id: "copperrod", name: "Copper Rod", desc: "Smelted from Copper Ore. Never a tool by itself - always a component of better things.", w: 1, h: 1, mass: 1.0, color: "#c07848" }),
   I({ id: "cobaltrod", name: "Cobalt Rod", desc: "Smelted from Cobalt Ore, found only in the deep underground. One Thruster Nozzle needs one.", w: 1, h: 1, mass: 1.4, color: "#6a84bc" }),
@@ -163,6 +173,8 @@ export const BLOCK_TO_ITEM: Record<number, string> = {};
 for (const it of Object.values(ITEMS)) if (it.block !== undefined) BLOCK_TO_ITEM[it.block] = it.id;
 BLOCK_TO_ITEM[DOOR_UPPER] = "door"; // both door halves drop the same item
 BLOCK_TO_ITEM[DOOR_INNER_UPPER] = "door_inner";
+BLOCK_TO_ITEM[ALAB_DOOR_UPPER] = "alab_door"; // the stone door drops its leaf
+BLOCK_TO_ITEM[ALAB_GATE_OPEN] = "alab_gate";  // an open gate drops the gate
 BLOCK_TO_ITEM[BED_EXT] = "bed"; // both bed halves drop the bed
 BLOCK_TO_ITEM[GRASS] = "dirt";   // grass breaks to the dirt under it
 BLOCK_TO_ITEM[LEAVES] = "kindling"; // leaves crumble to Kindling

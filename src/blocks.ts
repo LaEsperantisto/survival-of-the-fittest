@@ -13,7 +13,10 @@ export const AIR = 0, SAND = 1, SANDSTONE = 2, ROCK = 3, GRAVEL = 4, DIRT = 5, S
   REGULATOR_HUSK = 60, STORM_BREAKER_HUSK = 61,
   POWER_PANEL = 62, POWER_POLE = 63, GEN_WOOD = 64, WATER_WHEEL = 65, WIND_TURBINE = 66,
   SOLAR_PANEL = 67, BATTERY = 68, ELEC_LAMP = 69,
-  INSERTER = 70, PLANTER = 71, HARVESTER = 72;
+  INSERTER = 70, PLANTER = 71, HARVESTER = 72,
+  ALAB_BRICK = 73, ALAB_POLISHED = 74, ALAB_CHISELLED = 75, ALAB_PILLAR = 76,
+  ALAB_FENCE = 77, ALAB_GATE = 78, ALAB_GATE_OPEN = 79,
+  ALAB_DOOR = 80, ALAB_DOOR_UPPER = 81, ALAB_DOOR_OPEN = 82;
 
 export type ToolType = "pickaxe" | "shovel" | "axe" | "disassembler";
 
@@ -46,8 +49,23 @@ export const BLOCK_DISPLAY: Record<number, string> = {
   [DOOR_INNER_OPEN]: "Inside Door",
   [BED_EXT]: "Bed",
   [HULL_SLOPE]: "Curved Hull Plating",
+  [ALAB_DOOR_UPPER]: "Alabaster Door",
+  [ALAB_DOOR_OPEN]: "Alabaster Door",
+  [ALAB_GATE_OPEN]: "Alabaster Fence Gate",
 };
 export function blockDisplayName(id: number): string { return BLOCK_DISPLAY[id] ?? BLOCKS[id].name; }
+
+/** The three swingable door families — plain Hull Doors, Inside Doors and
+ *  Alabaster Doors. Every half id maps to its group, so opening, breaking,
+ *  placing and rendering treat all families identically. */
+export interface DoorGroup { base: number; upper: number; open: number }
+export const DOORS: DoorGroup[] = [
+  { base: DOOR_CLOSED, upper: DOOR_UPPER, open: DOOR_OPEN },
+  { base: DOOR_INNER, upper: DOOR_INNER_UPPER, open: DOOR_INNER_OPEN },
+  { base: ALAB_DOOR, upper: ALAB_DOOR_UPPER, open: ALAB_DOOR_OPEN },
+];
+export const DOOR_GROUP = new Map<number, DoorGroup>();
+for (const g of DOORS) { DOOR_GROUP.set(g.base, g); DOOR_GROUP.set(g.upper, g); DOOR_GROUP.set(g.open, g); }
 
 // Natural terrain and self-orienting blocks (doors find their own wall, water
 // flows) never carry a rotation nibble; everything the player builds with can.
@@ -55,7 +73,8 @@ const NATURAL = new Set<number>([SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, GRAS
   WOOD, LEAVES, SAPLING, CACTUS, CACTUS_FRUIT, MELON_1, MELON_2, WHEAT_1, WHEAT_2, FARMLAND,
   IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER]);
 const NO_ROT = new Set<number>([DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER,
-  DOOR_INNER_OPEN, WATER, WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1]);
+  DOOR_INNER_OPEN, ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN, ALAB_GATE_OPEN,
+  WATER, WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1]);
 export function rotatable(id: number): boolean { return BLOCKS[id].placeable && !NATURAL.has(id) && !NO_ROT.has(id); }
 
 export const BLOCKS: BlockDef[] = [
@@ -159,7 +178,7 @@ export const BLOCKS: BlockDef[] = [
   // what comes out of the ground never goes back in as a block.
   def({ id: IRON_ORE, name: "Iron Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 2.6, tool: "pickaxe", minTier: 1, placeable: false, color: [0.62, 0.52, 0.42] }),
   def({ id: COPPER_ORE, name: "Copper Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 2.6, tool: "pickaxe", minTier: 1, placeable: false, color: [0.72, 0.42, 0.26] }),
-  def({ id: ALABASTER, name: "Alabaster", solid: true, opaque: true, transparent: false, emissive: false, R: 1.4, breakTime: 1.8, tool: "pickaxe", minTier: 0, placeable: false, color: [0.86, 0.83, 0.74] }),
+  def({ id: ALABASTER, name: "Alabaster", solid: true, opaque: true, transparent: false, emissive: false, R: 1.4, breakTime: 1.8, tool: "pickaxe", minTier: 0, placeable: true, color: [0.86, 0.83, 0.74] }),
   def({ id: COBALT_ORE, name: "Cobalt Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.6, breakTime: 4.2, tool: "pickaxe", minTier: 3, placeable: false, color: [0.36, 0.46, 0.68] }),
   // Broken Thruster: one of the wreck's four dead wingtip engines.
   // Thrusters come down with a Disassembler and go back up as items:
@@ -189,6 +208,19 @@ export const BLOCKS: BlockDef[] = [
   def({ id: INSERTER, name: "Inserter", solid: true, opaque: false, transparent: false, emissive: false, R: 0.2, breakTime: 1, tool: "disassembler", minTier: 1, placeable: true, color: [0.3, 0.5, 0.55] }),
   def({ id: PLANTER, name: "Planter", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 1, tool: "disassembler", minTier: 1, placeable: true, color: [0.3, 0.5, 0.28] }),
   def({ id: HARVESTER, name: "Harvester", solid: true, opaque: false, transparent: false, emissive: false, R: 0.3, breakTime: 1, tool: "disassembler", minTier: 1, placeable: true, color: [0.55, 0.42, 0.2] }),
+  // Alabaster masonry: the Cave's pale stone cut into building kit. Bricks and
+  // panels stand full blocks; Pillars and Fences are real geometry — a rail
+  // fence you can lean into but never hop, a gate you open with E.
+  def({ id: ALAB_BRICK, name: "Alabaster Bricks", solid: true, opaque: true, transparent: false, emissive: false, R: 1.2, breakTime: 1.6, tool: "pickaxe", minTier: 0, placeable: true, color: [0.88, 0.85, 0.76] }),
+  def({ id: ALAB_POLISHED, name: "Polished Alabaster", solid: true, opaque: true, transparent: false, emissive: false, R: 1.2, breakTime: 1.6, tool: "pickaxe", minTier: 0, placeable: true, color: [0.9, 0.87, 0.79] }),
+  def({ id: ALAB_CHISELLED, name: "Chiselled Alabaster", solid: true, opaque: true, transparent: false, emissive: false, R: 1.2, breakTime: 1.6, tool: "pickaxe", minTier: 0, placeable: true, color: [0.87, 0.84, 0.75] }),
+  def({ id: ALAB_PILLAR, name: "Alabaster Pillar", solid: true, opaque: false, transparent: false, emissive: false, R: 0.7, breakTime: 1.6, tool: "pickaxe", minTier: 0, placeable: true, color: [0.89, 0.86, 0.78] }),
+  def({ id: ALAB_FENCE, name: "Alabaster Fence", solid: true, opaque: false, transparent: false, emissive: false, R: 0, breakTime: 1.2, tool: "pickaxe", minTier: 0, placeable: true, color: [0.87, 0.84, 0.76] }),
+  def({ id: ALAB_GATE, name: "Alabaster Fence Gate (closed)", solid: true, opaque: false, transparent: false, emissive: false, R: 0, breakTime: 1.2, tool: "pickaxe", minTier: 0, placeable: true, color: [0.85, 0.82, 0.74] }),
+  def({ id: ALAB_GATE_OPEN, name: "Alabaster Fence Gate (open)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: "pickaxe", minTier: 0, placeable: false, color: [0.85, 0.82, 0.74] }),
+  def({ id: ALAB_DOOR, name: "Alabaster Door (closed)", solid: true, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 1.5, tool: "disassembler", minTier: 0, placeable: true, color: [0.86, 0.83, 0.75] }),
+  def({ id: ALAB_DOOR_UPPER, name: "Alabaster Door (closed top)", solid: true, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 1.5, tool: "disassembler", minTier: 0, placeable: true, color: [0.86, 0.83, 0.75] }),
+  def({ id: ALAB_DOOR_OPEN, name: "Alabaster Door (open)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: "disassembler", minTier: 0, placeable: false, color: [0.86, 0.83, 0.75] }),
 ];
 
 /** Everything that lives on the Grid: Panel..Harvester (ADR-0007). */

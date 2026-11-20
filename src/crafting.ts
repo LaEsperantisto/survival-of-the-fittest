@@ -56,7 +56,7 @@ export const RECIPES: Recipe[] = [
   { out: "lamp", count: 1, needs: { metal: 1, glass: 1, salt: 2 }, station: "bench" },
   { out: "beacon", count: 1, needs: { metal: 4, sandstone: 6, lamp: 1 }, station: "bench" },
   { out: "backpack1", count: 1, needs: { deadwood: 6, metal: 2 }, station: "armory" },
-  { out: "insglass", count: 2, needs: { sand: 2, catalyst: 1, metal: 1 }, station: "bench" },
+  { out: "insglass", count: 2, needs: { glass: 2, metal: 1 }, station: "bench" },
   { out: "regulator", count: 1, needs: { metal: 4, glass: 1, salt: 2 }, station: "bench" },
   // Husk repairs: the broken frame plus about half the build recipe.
   { out: "regulator", count: 1, needs: { regulator_broken: 1, metal: 2, glass: 1, salt: 1 }, station: "bench" },
@@ -69,6 +69,14 @@ export const RECIPES: Recipe[] = [
   { out: "chest_connector", count: 1, needs: { deadwood: 2, metal: 1 }, station: null },
   { out: "metal_plating", count: 1, needs: { metal: 1 }, station: null },
   { out: "door_inner", count: 1, needs: { metal: 1 }, station: "bench" },
+  // Alabaster masonry: everything cut from the Cave's raw stone — no catalyst.
+  { out: "alab_bricks", count: 8, needs: { alabaster: 4 }, station: "bench" },
+  { out: "alab_polished", count: 1, needs: { alabaster: 1 }, station: "bench" },
+  { out: "alab_chiselled", count: 1, needs: { alab_bricks: 2 }, station: "bench" },
+  { out: "alab_pillar", count: 1, needs: { alabaster: 2 }, station: "bench" },
+  { out: "alab_fence", count: 3, needs: { alabaster: 1 }, station: "bench" },
+  { out: "alab_gate", count: 1, needs: { alab_fence: 3 }, station: "bench" },
+  { out: "alab_door", count: 1, needs: { alabaster: 6 }, station: "bench" },
   // Sandstorm Breaker: catalyst-free on purpose — storm-proofing must be expandable.
   { out: "storm_breaker", count: 1, needs: { metal: 2, glass: 1 }, station: "bench" },
   { out: "storm_breaker", count: 1, needs: { storm_breaker_broken: 1, metal: 1, glass: 1 }, station: "bench" },

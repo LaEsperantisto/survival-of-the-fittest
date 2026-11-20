@@ -9,6 +9,8 @@ import {
   REGULATOR_HUSK, STORM_BREAKER_HUSK,
   POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
   INSERTER, PLANTER, HARVESTER,
+  ALAB_BRICK, ALAB_POLISHED, ALAB_CHISELLED, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_GATE_OPEN,
+  ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN,
   isSolid, isWater, waterStrength,
 } from "./blocks";
 import { World, ckey, faceVisible } from "./world";
@@ -17,7 +19,8 @@ import { noise1, Rng } from "./noise";
 import { SkyLighting, MAX_LIGHT, lidx } from "./light";
 
 /** every block id that renders as a swingable door leaf */
-const DOOR_BLOCKS = new Set([DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN]);
+const DOOR_BLOCKS = new Set([DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER,
+  DOOR_INNER_OPEN, ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN]);
 /** blocks that render as crossed blade quads instead of cubes */
 const CROSS_BLOCKS = new Set([WHEAT_1, WHEAT_2, SAPLING]);
 /** ground material that looks soaked while a water cell stands on it */
@@ -168,6 +171,41 @@ const BENCHX_MODEL = (() => {
   return always([...top, ...shelf, ...legs]);
 })();
 
+// Alabaster masonry shapes. The Fence is a post with three rail courses at
+// 1.5 blocks tall; rails only reach toward a neighbouring Fence or Gate, so a
+// lone post still reads as a post and a fence line runs seamlessly (the
+// mesher queries world neighbours; boundary changes dirty both chunks). The
+// Gate matches the silhouette — stiles at the cell edges, rails across the
+// middle — and turns with the rotation nibble so its rails line up with the
+// fence line; open, the leaf stands proud against its west stile. The Pillar
+// is a slim fluted column with base and capital: a doorway's width of stone,
+// not a whole cell. All faces are always:true — nothing to cull against.
+const railBox = (n: 0 | 1 | 2 | 3, y0: number): ShapeFace[] => {
+  const y1 = y0 + 0.22;
+  if (n === 0) return slabFaces(0.6, y0, 0.42, 1, y1, 0.58);
+  if (n === 1) return slabFaces(0, y0, 0.42, 0.4, y1, 0.58);
+  if (n === 2) return slabFaces(0.42, y0, 0.6, 0.58, y1, 1);
+  return slabFaces(0.42, y0, 0, 0.58, y1, 0.4);
+};
+const fenceRails = (n: 0 | 1 | 2 | 3): ShapeFace[] => always([0.16, 0.72, 1.28].flatMap((y) => railBox(n, y)));
+const FENCE_POST = always(slabFaces(0.32, 0, 0.32, 0.68, 1.5, 0.68));
+const FENCE_FULL = always([...FENCE_POST, ...fenceRails(0), ...fenceRails(1), ...fenceRails(2), ...fenceRails(3)]);
+const GATE_MODEL = (() => {
+  const stiles = [...slabFaces(0, 0, 0.4, 0.14, 1.5, 0.6), ...slabFaces(0.86, 0, 0.4, 1, 1.5, 0.6)];
+  const bars = [0.16, 0.72, 1.28].flatMap((y) => slabFaces(0.1, y, 0.44, 0.9, y + 0.22, 0.56));
+  return always([...stiles, ...bars]);
+})();
+const GATE_OPEN_MODEL = (() => {
+  const stile = slabFaces(0, 0, 0.02, 0.14, 1.5, 0.22);
+  const leaf = slabFaces(0.02, 0, 0.2, 0.16, 1.5, 0.96);
+  return always([...stile, ...leaf]);
+})();
+const PILLAR_MODEL = always([
+  ...slabFaces(0.12, 0, 0.12, 0.88, 0.12, 0.88),
+  ...slabFaces(0.25, 0.12, 0.25, 0.75, 0.88, 0.75),
+  ...slabFaces(0.12, 0.88, 0.12, 0.88, 1, 0.88),
+]);
+
 // ---------------- procedural texture atlas ----------------
 // One 16x16 tile per face kind, drawn on a 256x256 canvas at load: a base tile
 // per block id (also sampled by the item icons) plus variant tiles for faces
@@ -186,7 +224,9 @@ export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, G
   IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT, STORM_BREAKER, ARMORY,
   REGULATOR_HUSK, STORM_BREAKER_HUSK,
   POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
-  INSERTER, PLANTER, HARVESTER];
+  INSERTER, PLANTER, HARVESTER,
+  ALAB_BRICK, ALAB_POLISHED, ALAB_CHISELLED, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_GATE_OPEN,
+  ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN];
 
 // extra face tiles, appended after the base tiles; each recipe is shaded with
 // the named block's base colour
@@ -340,9 +380,11 @@ export function getAtlasCanvas(): HTMLCanvasElement {
     glint([11], 0.32, 0.22);
   });
   R(String(INSGLASS), () => {
-    fbmFill((x, y, n) => n * 0.05);                                            // frosty foam core
-    crack(7, 0.02, -0.1);
-    glint([9], 0.18, 0.12);                                                    // only a hint shows through
+    fill("rgba(146,208,168,0.30)");                                            // translucent insulating pane
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++)                  // faint sealed-gas mottling
+      if (((x * 7 + y * 13) % 11) < 2) px(x, y, "rgba(190,235,205,0.10)");
+    for (const y of [4, 11]) for (let x = 0; x < 16; x++) px(x, y, "rgba(215,245,225,0.35)"); // insulating baffles
+    glint([5, 8, 14], 0.42, 0.26);                                             // you can see the room through it
   });
   R(String(HULL), () => {
     const n = fbmFill((x, y, nn) => nn * 0.03);                               // faint panel tone
@@ -1035,7 +1077,68 @@ export function getAtlasCanvas(): HTMLCanvasElement {
     }
     for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) px(8 + dx, 7 + dy, col(0.12)); // reel hub
     for (let x = 5; x <= 10; x++) px(x, 12, col(0.16)); px(5, 13, col(0.3, 1, -0.1, 0.15, 0.1));       // output chute down
-    px(7, 3, col(0.3, 1, -0.2, 0.25, 0.1)); px(8, 3, col(0.3, 1, -0.2, 0.15, 0.1));                    // harvest eye
+    px(7, 3, col(0.3, 1, -0.2, 0.25, 0.1)); px(8, 3, col(0.3, 1, -0.2, 0.25, 0.1));                    // harvest eye
+  });
+  // Alabaster masonry: pale stone, warm cast; the plain ore keeps its own tile.
+  R(String(ALAB_BRICK), () => {
+    fbmFill((x, y, nn) => nn * 0.03 + (y % 4 === 0 ? -0.12 : 0.02));                                   // courses of pale brick
+    for (const y of [3, 7, 11]) for (let x = 0; x < 16; x++) px(x, y, col(-0.16));                     // mortar lines
+    for (const [y, off] of [[0, 0], [4, 8], [8, 0], [12, 8]] as const) px((off) % 16, y, col(-0.14));  // staggered joints
+  });
+  R(String(ALAB_POLISHED), () => {
+    fbmFill((x, y, nn) => nn * 0.015 + 0.04);                                                          // ground smooth, barely veined
+    for (let i = 0; i < 3; i++) {                                                                      // faint calcite veins
+      let x = rng.int(1, 13), y = rng.int(1, 13);
+      for (let s = 0; s < 7; s++) { px(x, y, col(0.06)); x += rng.int(0, 1); y += rng.int(-1, 1); x = Math.min(15, Math.max(0, x)); y = Math.min(15, Math.max(0, y)); }
+    }
+    glint([4, 12], 0.16, 0.1);                                                                        // sheen off the polish
+  });
+  R(String(ALAB_CHISELLED), () => {
+    fbmFill((x, y, nn) => nn * 0.02 - 0.02);                                                           // recessed field
+    for (let y = 2; y <= 5; y++) for (let x = 2; x <= 7; x++) px(x, y, col(-0.08));                    // two sunken panels
+    for (let y = 2; y <= 5; y++) for (let x = 9; x <= 14; x++) px(x, y, col(-0.08));
+    for (let y = 9; y <= 12; y++) for (let x = 2; x <= 7; x++) px(x, y, col(-0.08));
+    for (let y = 9; y <= 12; y++) for (let x = 9; x <= 14; x++) px(x, y, col(-0.08));
+    for (let y = 2; y <= 12; y++) px(8, y, col(0.12));                                                 // raised mullion catching light
+    for (let x = 2; x <= 14; x++) { px(x, 6, col(0.1)); px(x, 13, col(0.1)); }                         // raised rails
+  });
+  R(String(ALAB_PILLAR), () => {
+    fbmFill((x, y, nn) => nn * 0.02);
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++)                                          // flutes: alternating light/shadow reeds
+      if (x % 4 === 1) px(x, y, col(0.1)); else if (x % 4 === 3) px(x, y, col(-0.12));
+    for (let x = 0; x < 16; x++) { px(x, 1, col(0.14)); px(x, 14, col(0.14)); }                        // base and capital bands
+  });
+  R(String(ALAB_FENCE), () => {
+    fbmFill((x, y, nn) => nn * 0.03 + 0.02);                                                           // pale stone kit
+    for (let y = 0; y < 16; y++) for (const x of [4, 5, 10, 11]) px(x, y, col(-0.05));                 // post seams
+    for (const y of [3, 9]) for (let x = 0; x < 16; x++) px(x, y, col(0.12));                          // rail highlights
+  });
+  R(String(ALAB_GATE), () => {
+    fbmFill((x, y, nn) => nn * 0.03);
+    for (let y = 0; y < 16; y++) for (const x of [1, 2, 13, 14]) px(x, y, col(0.1));                   // stiles catch the light
+    for (const y of [3, 9]) for (let x = 2; x <= 13; x++) px(x, y, col(-0.08));                        // rail shadow lines
+    px(2, 7, col(0.25)); px(13, 7, col(0.25));                                                         // latch bolts
+  });
+  R(String(ALAB_GATE_OPEN), () => {
+    fbmFill((x, y, nn) => nn * 0.03);
+    for (let y = 0; y < 16; y++) for (const x of [3, 4]) px(x, y, col(0.12));                          // leaf seen edge-on
+    for (const y of [3, 9]) px(5, y, col(-0.06));
+  });
+  R(String(ALAB_DOOR), () => {
+    fbmFill((x, y, nn) => nn * 0.02 + 0.02);                                                           // single dressed stone leaf
+    for (let y = 1; y <= 14; y++) { px(3, y, col(-0.07)); px(12, y, col(-0.07)); }                     // inset panel edges
+    for (let x = 3; x <= 12; x++) { px(x, 1, col(-0.07)); px(x, 14, col(-0.07)); }
+    px(12, 8, col(0.3));                                                                               // iron ring handle
+  });
+  R(String(ALAB_DOOR_UPPER), () => {
+    fbmFill((x, y, nn) => nn * 0.02 + 0.02);
+    for (let y = 1; y <= 14; y++) { px(3, y, col(-0.07)); px(12, y, col(-0.07)); }                     // panel continues up
+    for (let x = 3; x <= 12; x++) { px(x, 1, col(-0.07)); px(x, 14, col(-0.07)); }
+  });
+  R(String(ALAB_DOOR_OPEN), () => {
+    fbmFill((x, y, nn) => nn * 0.02);
+    for (let y = 1; y <= 14; y++) px(5, y, col(-0.05));                                                // leaf from the side
+    px(10, 8, col(0.28));
   });
 
   // paint every registered tile into its slot
@@ -1350,6 +1453,27 @@ export class Renderer {
     return this.dynLights.some((d) => d.x === x && d.y === y && d.z === z);
   }
 
+  /** A live electric lamp glows: a faint emissive shell hung just outside the
+   *  fixture, so the block itself reads lit from every side, not just the
+   *  faces the point light happens to fall on. */
+  setLampGlow(x: number, y: number, z: number, on: boolean) {
+    const key = x + "," + y + "," + z;
+    const has = this.lampGlows.get(key);
+    if (on && !has) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(1.06, 1.06, 1.06),
+        new THREE.MeshBasicMaterial({ color: 0xbfd9ff, transparent: true, opacity: 0.5, depthWrite: false }));
+      m.position.set(x + 0.5, y + 0.5, z + 0.5);
+      m.renderOrder = 2;
+      this.group.add(m);
+      this.lampGlows.set(key, m);
+    } else if (!on && has) {
+      this.group.remove(has);
+      has.geometry.dispose();
+      this.lampGlows.delete(key);
+    }
+  }
+  private lampGlows = new Map<string, THREE.Mesh>();
+
   removePointLight(x: number, y: number, z: number) {
     const i = this.dynLights.findIndex((d) => d.x === x && d.y === y && d.z === z);
     if (i < 0) return;
@@ -1405,6 +1529,10 @@ export class Renderer {
     else if (id === CURVED_HULL || id === HULL_SLOPE) faces = HULL_SHAPES[id].filter((f) => !f.fill);
     else if (id === BENCH) faces = BENCH_MODEL;
     else if (id === BENCH_EXT) faces = BENCHX_MODEL;
+    else if (id === ALAB_PILLAR) faces = PILLAR_MODEL;
+    else if (id === ALAB_FENCE) faces = FENCE_FULL;
+    else if (id === ALAB_GATE) faces = GATE_MODEL;
+    else if (id === ALAB_GATE_OPEN) faces = GATE_OPEN_MODEL;
     else if (id >= WATER7 && id <= WATER1) faces = slabFaces(0, 0, 0, 1, (33 - id) / 8, 1);
     else faces = FACES.map((f, fi) => ({
       dir: f.dir, kind: (fi === 0 ? 0 : fi === 1 ? 1 : 2) as 0 | 1 | 2,
@@ -1412,7 +1540,8 @@ export class Renderer {
       uv: (p: [number, number, number]) => [p[f.uv[0]], p[f.uv[1]]] as [number, number],
     }));
     // only the shape-bearing blocks turn with the rotation nibble
-    if (rot && (DOOR_BLOCKS.has(id) || id === CURVED_HULL || id === HULL_SLOPE || id === BENCH || id === BENCH_EXT))
+    if (rot && (DOOR_BLOCKS.has(id) || id === CURVED_HULL || id === HULL_SLOPE || id === BENCH || id === BENCH_EXT ||
+      id === ALAB_GATE || id === ALAB_GATE_OPEN))
       faces = rotShapes(faces, rot);
     const P: number[] = [], C: number[] = [], U: number[] = [], I: number[] = [];
     for (const f of faces) {
@@ -1726,6 +1855,34 @@ export class Renderer {
         this.emitShape(rotShapes(base, (d + rr) & 3), pos, col, idx, uvs, lite, id, world, x, y, z, cx * CS, cz * CS, faceLight);
         continue;
       }
+      if (id === ALAB_PILLAR) {
+        this.emitShape(rotShapes(PILLAR_MODEL, r), pos, col, idx, uvs, lite, id, world, x, y, z, cx * CS, cz * CS, faceLight);
+        continue;
+      }
+      if (id === ALAB_FENCE) {
+        // rails only reach toward a fence or gate beside us; the post alone
+        // stands for anything else
+        const wx2 = cx * CS + x, wz2 = cz * CS + z;
+        const link = (nx: number, nz: number) => {
+          const nb = world.get(nx, y, nz);
+          return nb === ALAB_FENCE || nb === ALAB_GATE || nb === ALAB_GATE_OPEN;
+        };
+        let faces = FENCE_POST;
+        if (link(wx2 + 1, wz2)) faces = [...faces, ...fenceRails(0)];
+        if (link(wx2 - 1, wz2)) faces = [...faces, ...fenceRails(1)];
+        if (link(wx2, wz2 + 1)) faces = [...faces, ...fenceRails(2)];
+        if (link(wx2, wz2 - 1)) faces = [...faces, ...fenceRails(3)];
+        this.emitShape(faces, pos, col, idx, uvs, lite, id, world, x, y, z, cx * CS, cz * CS, faceLight);
+        continue;
+      }
+      if (id === ALAB_GATE) {
+        this.emitShape(rotShapes(GATE_MODEL, r), pos, col, idx, uvs, lite, id, world, x, y, z, cx * CS, cz * CS, faceLight);
+        continue;
+      }
+      if (id === ALAB_GATE_OPEN) {
+        this.emitShape(rotShapes(GATE_OPEN_MODEL, r), pos, col, idx, uvs, lite, id, world, x, y, z, cx * CS, cz * CS, faceLight);
+        continue;
+      }
       if (id >= WATER7 && id <= WATER1) {
         // Flowing water lies shallower the further it has run from its
         // Source: level/8 of the cell. Top and step edges get faces; where a
@@ -1825,11 +1982,15 @@ export class Renderer {
     lx: number, ly: number, lz: number, ox: number, oz: number, id: number) {
     const wx = ox + lx, wz = oz + lz;
     const inner = id === DOOR_INNER || id === DOOR_INNER_UPPER || id === DOOR_INNER_OPEN;
-    const upper = id === DOOR_UPPER || id === DOOR_INNER_UPPER ||
+    const alab = id === ALAB_DOOR || id === ALAB_DOOR_UPPER || id === ALAB_DOOR_OPEN;
+    const upper = id === DOOR_UPPER || id === DOOR_INNER_UPPER || id === ALAB_DOOR_UPPER ||
       (id === DOOR_OPEN && world.get(wx, ly - 1, wz) === DOOR_OPEN) ||
-      (id === DOOR_INNER_OPEN && world.get(wx, ly - 1, wz) === DOOR_INNER_OPEN);
-    const tile = TILE_SRC(upper ? (inner ? DOOR_INNER_UPPER : DOOR_UPPER) : (inner ? DOOR_INNER : DOOR_CLOSED));
-    const open = id === DOOR_OPEN || id === DOOR_INNER_OPEN;
+      (id === DOOR_INNER_OPEN && world.get(wx, ly - 1, wz) === DOOR_INNER_OPEN) ||
+      (id === ALAB_DOOR_OPEN && world.get(wx, ly - 1, wz) === ALAB_DOOR_OPEN);
+    const tile = TILE_SRC(upper
+      ? (alab ? ALAB_DOOR_UPPER : inner ? DOOR_INNER_UPPER : DOOR_UPPER)
+      : (alab ? ALAB_DOOR : inner ? DOOR_INNER : DOOR_CLOSED));
+    const open = id === DOOR_OPEN || id === DOOR_INNER_OPEN || id === ALAB_DOOR_OPEN;
     // wall running along x -> leaf spans x, thin in z; running along z -> spans z, thin in x
     const wallX = isSolid(world.get(wx - 1, ly, wz)) || isSolid(world.get(wx + 1, ly, wz));
     const spanZ = !wallX && (isSolid(world.get(wx, ly, wz - 1)) || isSolid(world.get(wx, ly, wz + 1)));

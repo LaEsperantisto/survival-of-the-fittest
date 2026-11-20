@@ -153,6 +153,10 @@ Chests touching face-to-face form one cluster with a single Grid: 3×3 per chest
 **Chest Rail**:
 A cheap connector that carries a chest link through itself: a Chest sits against a Rail links to the Chest on the Rail's far side, though the Rail itself stores nothing and is never opened.
 
+**Alabaster Masonry**:
+The decorative building family cut from Alabaster: Bricks, Polished, Chiselled and the Pillar, plus the slim Fence and the swingable Fence Gate (opened with E, like a door). An Alabaster Door is the pale twin of the hatchway Door — same two-cell pair, same open/close rules. The Gate keeps its quarter-turn when it swings.
+_Avoid_: stone brick, railing, turnstile
+
 **World Export / Import**:
 A file format for a world, so the same world can be played on different devices.
 

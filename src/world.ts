@@ -1,4 +1,4 @@
-import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, LEAVES, REGULATOR, CAMPFIRE, BED, BED_EXT, STORM_BREAKER, POWER_PANEL, INSGLASS, BENCH, BENCH_EXT, CURVED_HULL, HULL_SLOPE, CS, CH, isOpaque, isWater, waterStrength, flowId } from "./blocks";
+import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, LEAVES, REGULATOR, CAMPFIRE, BED, BED_EXT, STORM_BREAKER, POWER_PANEL, INSGLASS, BENCH, BENCH_EXT, CURVED_HULL, HULL_SLOPE, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_GATE_OPEN, CS, CH, isOpaque, isWater, waterStrength, flowId } from "./blocks";
 import { genChunk, Structures } from "./gen";
 
 export const ckey = (cx: number, cz: number) => cx + "," + cz;
@@ -309,10 +309,50 @@ export function faceVisible(world: World, x: number, y: number, z: number, selfI
   // faces so no see-through gap opens at the door jamb
   if (n === DOOR_CLOSED || n === DOOR_UPPER || n === DOOR_INNER || n === DOOR_INNER_UPPER) return true;
   // model-shaped blocks (the bench's legs and slab, the chamfered hulls'
-  // clipped corners) do not cover their cell faces: keeping the neighbour's
-  // face is the only thing that stops those gaps reading as holes in the ground
-  if (n === BENCH || n === BENCH_EXT || n === CURVED_HULL || n === HULL_SLOPE) return true;
+  // clipped corners, alabaster masonry's posts and rails) do not cover their
+  // cell faces: keeping the neighbour's face is the only thing that stops
+  // those gaps reading as holes in the ground
+  if (n === BENCH || n === BENCH_EXT || n === CURVED_HULL || n === HULL_SLOPE ||
+    n === ALAB_PILLAR || n === ALAB_FENCE || n === ALAB_GATE || n === ALAB_GATE_OPEN) return true;
   if (isOpaque(n)) return false;
   if (n === selfId) return false; // hide interior faces between same transparent block
   return true;
+}
+
+/** Sub-cell solid boxes for non-cube blocks — [x0,y0,z0,x1,y1,z1] in world
+ *  space at cell (x,y,z). The Fence's rails only reach toward a neighbouring
+ *  Fence or Gate, exactly like the mesher draws them; Gates read their axis
+ *  from the rotation nibble. Anything not listed collides as a full cube. */
+export function subBoxes(world: World, id: number, x: number, y: number, z: number): number[][] {
+  if (id === ALAB_PILLAR) return [
+    [x + 0.12, y, z + 0.12, x + 0.88, y + 0.12, z + 0.88],
+    [x + 0.25, y + 0.12, z + 0.25, x + 0.75, y + 0.88, z + 0.75],
+    [x + 0.12, y + 0.88, z + 0.12, x + 0.88, y + 1, z + 0.88],
+  ];
+  if (id === ALAB_FENCE) {
+    const boxes = [[x + 0.32, y, z + 0.32, x + 0.68, y + 1.5, z + 0.68]];
+    const link = (nx: number, nz: number) => {
+      const nb = world.get(nx, y, nz);
+      return nb === ALAB_FENCE || nb === ALAB_GATE || nb === ALAB_GATE_OPEN;
+    };
+    if (link(x + 1, z)) boxes.push([x + 0.6, y, z + 0.42, x + 1, y + 1.5, z + 0.58]);
+    if (link(x - 1, z)) boxes.push([x, y, z + 0.42, x + 0.4, y + 1.5, z + 0.58]);
+    if (link(x, z + 1)) boxes.push([x + 0.42, y, z + 0.6, x + 0.58, y + 1.5, z + 1]);
+    if (link(x, z - 1)) boxes.push([x + 0.42, y, z, x + 0.58, y + 1.5, z + 0.4]);
+    return boxes;
+  }
+  if (id === ALAB_GATE) {
+    const r = world.getRot(x, y, z);
+    return r % 2 === 0
+      ? [[x, y, z + 0.4, x + 1, y + 1.5, z + 0.6]]   // rails run along x
+      : [[x + 0.4, y, z, x + 0.6, y + 1.5, z + 1]];  // rails run along z
+  }
+  // open gate: stile + leaf stand proud along the fence line (local box
+  // x 0..0.16, z 0.02..0.96, quarter-turned by the nibble)
+  const r = world.getRot(x, y, z);
+  const [x0, x1, z0, z1] = r === 0 ? [0, 0.16, 0.02, 0.96]
+    : r === 1 ? [0.04, 0.98, 0, 0.16]
+      : r === 2 ? [0.84, 1, 0.04, 0.98]
+        : [0.02, 0.96, 0.84, 1];
+  return [[x + x0, y, z + z0, x + x1, y + 1.5, z + z1]];
 }

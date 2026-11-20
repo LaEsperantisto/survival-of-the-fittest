@@ -1,8 +1,11 @@
 import * as THREE from "three";
-import { World } from "./world";
-import { isSolid, isWater, waterStrength } from "./blocks";
+import { World, subBoxes } from "./world";
+import { isSolid, isWater, waterStrength, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_GATE_OPEN } from "./blocks";
 
 const W = 0.6, H = 1.8, EYE = 1.62;
+/** cells whose solid is a model, not a cube: collides against its boxes only,
+ *  so you can lean into a fence rail or stand beside a pillar's shaft */
+const SHAPE_SOLID = new Set([ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_GATE_OPEN]);
 
 export class Player {
   pos = new THREE.Vector3(0.5, 31.01, 2.5); // feet center; inside ship, beside beacon
@@ -32,8 +35,14 @@ export class Player {
     const y0 = Math.floor(y), y1 = Math.floor(y + H - 0.001);
     for (let bx = x0; bx <= x1; bx++)
       for (let bz = z0; bz <= z1; bz++)
-        for (let by = y0; by <= y1; by++)
-          if (isSolid(this.world.get(bx, by, bz))) return true;
+        for (let by = y0; by <= y1; by++) {
+          const id = this.world.get(bx, by, bz);
+          if (!isSolid(id)) continue;
+          if (!SHAPE_SOLID.has(id)) return true;
+          for (const b of subBoxes(this.world, id, bx, by, bz))
+            if (x - W / 2 < b[3] && x + W / 2 > b[0] && y < b[4] && y + H > b[1] && z - W / 2 < b[5] && z + W / 2 > b[2])
+              return true;
+        }
     return false;
   }
 
