@@ -392,8 +392,10 @@ export class Game {
     this.ui = "inv";
     this.unlockPointer();
     this.audio.door();
-    this.renderInv();
+    // show before rendering: fitCells measures the panel, and a hidden
+    // panel measures zero, so cells would keep their stale size on open
     document.getElementById("ui-inventory")!.classList.remove("hidden");
+    this.renderInv();
   }
 
   /** After placing a chest, fold every neighbouring cluster's contents into the new cluster. */
@@ -3705,7 +3707,7 @@ export class Game {
 
   toggleInv() {
     if (this.ui === "inv") this.closeUI();
-    else if (!this.paused) { this.unlockPointer(); this.ui = "inv"; this.renderInv(); document.getElementById("ui-inventory")!.classList.remove("hidden"); }
+    else if (!this.paused) { this.unlockPointer(); this.ui = "inv"; document.getElementById("ui-inventory")!.classList.remove("hidden"); this.renderInv(); }
   }
 
   closeUI() {
