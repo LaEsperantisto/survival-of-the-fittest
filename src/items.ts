@@ -20,7 +20,7 @@ export interface ItemDef {
   weapon?: { reach: number; dmg: number };   // swings reach farther and hit harder than fists/tools
   eat?: { water?: number; health?: number };  // eating applies these to the player
   equip?: "backpack" | "head" | "body" | "regulator" | "light"; // goes in that Armour Slot
-  bag?: { w: number; h: number; kg: number }; // Backpack-slot gear: grid size + weight bonus
+  bag?: { w: number; h: number }; // Backpack-slot gear: grid size
   armor?: number; // Body-slot gear: fraction of every damage shrugged off
   stormResist?: boolean; // Body-slot gear wearing Chitin: Sandstorm terms bite at a quarter
   fuel?: number;             // max fuel charges (Head Lantern)
@@ -80,7 +80,7 @@ const ITEM_LIST: ItemDef[] = [
     desc: "A forged blade. Hits Desert Snakes and rats far harder than any tool, and reaches farther.",
     w: 1, h: 2, mass: 2.2, weapon: { reach: 4.6, dmg: 7 }, color: "#c9d2dc",
   }),
-  I({ id: "backpack1", name: "Backpack I", desc: "Equipped in the Backpack slot: inventory grid grows to 6×5, weight limit +20 kg.", w: 2, h: 2, mass: 2.0, equip: "backpack", bag: { w: 6, h: 5, kg: 20 }, color: "#7a5a3a" }),
+  I({ id: "backpack1", name: "Backpack I", desc: "Equipped in the Backpack slot: inventory grid grows to 6×5.", w: 2, h: 2, mass: 2.0, equip: "backpack", bag: { w: 6, h: 5 }, color: "#7a5a3a" }),
   I({ id: "cactus", name: "Cactus", desc: "Tall desert column. Replantable anywhere on sand or farm land; with water it fruits on its own. Break a fruit-topped one for the Prickly Pear.", w: 1, h: 2, mass: 1.5, block: CACTUS, color: "#3d8042" }),
   I({ id: "prickly_pear", name: "Prickly Pear", desc: "Cactus fruit. Eat it: +8 Water, +1 Health.", w: 1, h: 1, mass: 0.2, eat: { water: 8, health: 1 }, color: "#d64a82" }),
   I({ id: "snake_skin", name: "Snake Skin", desc: "Tough desert hide. Three of them stitch into Reptile Armour at a Crafting Bench.", w: 1, h: 2, mass: 0.6, color: "#b3946a" }),
@@ -116,7 +116,7 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "copperrod", name: "Copper Rod", desc: "Smelted from Copper Ore. Never a tool by itself - always a component of better things.", w: 1, h: 1, mass: 1.0, color: "#c07848" }),
   I({ id: "cobaltrod", name: "Cobalt Rod", desc: "Smelted from Cobalt Ore, found only in the deep underground. One Thruster Nozzle needs one.", w: 1, h: 1, mass: 1.4, color: "#6a84bc" }),
   // ---- gear: slots ----
-  I({ id: "backpack2", name: "Backpack II", desc: "The big pack: inventory grid grows to 7×6, weight limit +40 kg. Reptile-hide stitching.", w: 3, h: 2, mass: 3.5, equip: "backpack", bag: { w: 7, h: 6, kg: 40 }, color: "#6a4c30" }),
+  I({ id: "backpack2", name: "Backpack II", desc: "The big pack: inventory grid grows to 7×6. Reptile-hide stitching.", w: 3, h: 2, mass: 3.5, equip: "backpack", bag: { w: 7, h: 6 }, color: "#6a4c30" }),
   I({ id: "body_regulator", name: "Body Heat Regulator", desc: "Worn in the Regulator slot: pins your Heat toward neutral while a Coolant Cell lasts. It regulates you - never a room.", w: 2, h: 2, mass: 3.0, equip: "regulator", color: "#4fa8c8" }),
   I({ id: "coolant_cell", name: "Coolant Cell", desc: "Consumable fuel for the Body Heat Regulator: one cell carries about 2 game days of regulation. Spent cells are gone.", w: 1, h: 1, mass: 0.8, color: "#7fd4e8" }),
   I({ id: "head_lantern", name: "Head Lantern", desc: "The Portable Light: worn in the Light slot, toggled with T. Burns fuel charges (5 max) - refill at a Campfire or load Kindling.", w: 1, h: 1, mass: 1.0, equip: "light", fuel: 5, color: "#ffd76a" }),
@@ -190,8 +190,7 @@ export function slotDims(s: Slot): { w: number; h: number } {
 export class Inventory {
   slots: Slot[] = [];
   w = 5; h = 4;
-  baseLimit = 30; // kg
-  bonusLimit = 0;
+  cellPx = 64; // effective on-screen cell size (rendering only; slot count never changes)
   // fired with the item id whenever an item actually lands in the pack (the Codex listens)
   learn: (id: string) => void = () => {};
 
@@ -199,21 +198,13 @@ export class Inventory {
 
   capacity(): { w: number; h: number } { return { w: this.w, h: this.h }; }
 
-  setBackpack(sizeW: number, sizeH: number, extraKg: number) {
+  setBackpack(sizeW: number, sizeH: number) {
     const old = this.slots;
-    this.w = sizeW; this.h = sizeH; this.bonusLimit = extraKg;
+    this.w = sizeW; this.h = sizeH;
     this.slots = [];
     for (const s of old) if (!this.addSlot(s)) this.droppedOnResize.push(s);
   }
   droppedOnResize: Slot[] = [];
-
-  weightLimit(): number { return this.baseLimit + this.bonusLimit; }
-
-  weight(): number {
-    let m = 0;
-    for (const s of this.slots) m += ITEMS[s.itemId].mass;
-    return m;
-  }
 
   /** Occupancy grid over footprint cells; `ignore` skips one slot (for move/rotate checks). */
   private occupied(x: number, y: number, ignore?: Slot): Slot | null {
@@ -299,7 +290,7 @@ export class Inventory {
     return 0;
   }
 
-  /** Try to add regardless of weight (weight is not a fit constraint, only an effect). */
+  /** Remove up to `count` instances; returns how many were removed. */
   removeItem(itemId: string, count = 1): number {
     let removed = 0;
     for (let i = this.slots.length - 1; i >= 0 && removed < count; i--) {

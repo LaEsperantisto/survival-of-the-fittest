@@ -38,13 +38,13 @@ export class Player {
   }
 
   /** move & collide; returns true if a collision stopped horizontal motion this axis-step */
-  update(dt: number, moveX: number, moveZ: number, jump: boolean, speedMul: number, slow: boolean) {
+  update(dt: number, moveX: number, moveZ: number, jump: boolean, speedMul: number) {
     if (this.onGround) this.fallPeakY = this.pos.y;
     else if (this.pos.y > this.fallPeakY) this.fallPeakY = this.pos.y;
     this.inWater = this.waterAt(0.1) || this.waterAt(1.0);
     this.headUnder = this.waterAt(EYE);
     const swim = this.inWater;
-    const speed = (this.sprinting ? 7.2 : 4.5) * speedMul * (slow ? 0.25 : 1) * (swim ? 0.55 : 1);
+    const speed = (this.sprinting ? 7.2 : 4.5) * speedMul * (swim ? 0.55 : 1);
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
     const wish = fwd.multiplyScalar(moveZ).add(right.multiplyScalar(moveX));

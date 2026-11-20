@@ -53,7 +53,7 @@ export class Survival {
 
   /** body-temp target from shelter + sun; nothing hardcoded "inside ship". */
   update(dt: number, world: World, pos: THREE.Vector3, opts: {
-    sprinting: boolean; overencumbered: boolean; biome: number; tSec: number; sunElev: number;
+    sprinting: boolean; biome: number; tSec: number; sunElev: number;
     sunDir: { x: number; y: number; z: number } | null; inWater: boolean; warmth: number;
     regulator: boolean; terrainH: (x: number, z: number) => number;
     stormShield: boolean; stormMul: number; // Breaker calm zeroes the storm; Chitin armour quarters it
@@ -143,11 +143,10 @@ export class Survival {
     this.body += (target - this.body) * k * dt;
     this.body = THREE.MathUtils.clamp(this.body, 12, 44.5);
 
-    // Water drain: ~1.5 days per full bar, plus sweat / sprint / overencumbrance
+    // Water drain: ~1.5 days per full bar, plus sweat / sprint
     let drain = 100 / (DAY_SECONDS * 1.5);
     if (this.body > 37) drain += (this.body - 37) * 0.02;
     if (opts.sprinting) drain *= 1.7;
-    if (opts.overencumbered) drain += 0.05;
     if (storm > 0.05 && here.shelter < 0.8) drain *= 1 + 0.7 * storm; // the wind drinks you
     this.water = Math.max(0, this.water - drain * dt);
 

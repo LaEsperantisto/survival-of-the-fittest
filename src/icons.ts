@@ -476,6 +476,18 @@ function drawArt(id: string, w: number, h: number, color: string, tier = ""): HT
       blit(g, 0, 0, BED);
       blit(g, T, 0, BED_EXT);
       return cv;
+    case "prickly_pear": { // cactus fruit: a magenta pear perched on a spined green pad
+      g.fillStyle = "#3d8042"; g.beginPath(); g.ellipse(8, 11, 5.5, 5, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#2b5c30"; g.lineWidth = 1;
+      g.beginPath(); g.ellipse(8, 11, 5.5, 5, 0, 0, Math.PI * 2); g.stroke();
+      for (const [x, y] of [[4, 8], [12, 9], [8, 15], [5, 13], [11, 14]]) rect(g, x, y, 1, 1, "#dfe6c8");
+      g.fillStyle = "#d64a82"; g.beginPath(); g.ellipse(8, 5.5, 4, 4.5, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#a2366a"; g.lineWidth = 1;
+      g.beginPath(); g.ellipse(8, 5.5, 4, 4.5, 0, 0, Math.PI * 2); g.stroke();
+      rect(g, 7, 1, 2, 1, "#6b5238");   // stub
+      rect(g, 6, 4, 1, 1, "#f2a8c4");   // glint
+      return cv;
+    }
     case "dune_melon": // striped desert melon, 2x1
       g.fillStyle = "#5f7f2c"; g.beginPath(); g.ellipse(16, 11, 12, 8, 0, 0, Math.PI * 2); g.fill();
       g.strokeStyle = "#3c541c"; g.lineWidth = 2;

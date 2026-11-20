@@ -11,7 +11,7 @@ The player's vitality. Reaches zero → death (respawn at last Save Point). Dama
 _Avoid_: HP, lives
 
 **Water**:
-The player's hydration. Drains steadily, faster when Hot (sweating) and when Overencumbered. Low Water worsens vision; very low Water damages Health. There is no hunger.
+The player's hydration. Drains steadily, faster when Hot (sweating). Low Water worsens vision; very low Water damages Health. There is no hunger.
 _Avoid_: thirst bar, hydration meter
 
 **Heat**:
@@ -122,7 +122,7 @@ Cactus fruit — eating is the first way to drink away from water.
 _Avoid_: cactus berry
 
 **Bed**:
-A 2×1 block in every Town and a craftable comfort of one's own. Sleeping in a Bed passes 8 in-game hours no matter the hour, but only once per game day — and a game day is 24 real minutes.
+A 2×1 block in every Town and a craftable comfort of one's own. Sleeping in a Bed passes 8 in-game hours no matter the hour, but only once every six real minutes.
 _Avoid_: cot, sleep (as the block's name)
 
 **Metal Plating**:
@@ -251,12 +251,6 @@ _Avoid_: trash can, delete button
 **Dropped Item**:
 An item thrown out of the pack (the R key, a botched drag, death). Loose items rot away in the open desert within minutes; a Death Cache does not rot.
 _Avoid_: ground item, loose loot
-
-**Weight Limit**:
-How much mass the Inventory Grid may hold. Exceedable by at most 10% — while Overencumbered the player is incredibly slow and Water drains. Weight itself never affects Water or Heat except through Overencumbrance.
-
-**Overencumbrance**:
-The state of carrying above the Weight Limit (max +10%): incredibly slow, draining Water.
 
 **Visor**:
 Head-slot gear powering the player's HUD. While equipped it draws the Map, beams Caches, Supply Chests, and Pins through walls, and marks known Landmarks — the marked points being the Ship and the player's Base. Upgradeable to show more: heat fluctuations. Upgrades count only while equipped.
@@ -406,7 +400,7 @@ _Avoid_: fennec (bare, in prose)
 The Portable Light worn in the Light slot: toggled at will, it burns fuel charges and must be refueled — the only way to carry a Cave's worth of darkness back out.
 
 **Backpack**:
-An upgrade worn in the Backpack slot, expanding the Inventory Grid and/or raising the Weight Limit. The bare Grid is 5×4; Backpack I grows it to 6×5 and adds 20 kg, then the larger Backpack II to 7×6 and 40 kg.
+An upgrade worn in the Backpack slot, expanding the Inventory Grid. The bare Grid is 5×4; Backpack I grows it to 6×5, then the larger Backpack II to 7×6.
 
 **Voidbreaker**:
 A Cheat Menu tool that shatters any block on the spot — Tool tiers, break times and unbreakable blocks (even a Broken Thruster) all lose the argument. It has no recipe and exists only for play-mode mischief.

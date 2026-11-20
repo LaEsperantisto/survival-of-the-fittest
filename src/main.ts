@@ -386,7 +386,7 @@ $("btn-cheat-quest").onclick = () => {
   if (!game) return;
   game.questJump(Number(cheatQuestSel.value));
 };
-for (const b of Array.from($("cheats").querySelectorAll<HTMLButtonElement>("button[data-speed], button[data-immortal], button[data-frac]"))) {
+for (const b of Array.from($("cheats").querySelectorAll<HTMLButtonElement>("button[data-speed], button[data-immortal], button[data-keep], button[data-frac]"))) {
   b.onclick = () => {
     if (!game) return;
     if (b.dataset.speed !== undefined) {
@@ -397,6 +397,11 @@ for (const b of Array.from($("cheats").querySelectorAll<HTMLButtonElement>("butt
     if (b.dataset.immortal !== undefined) {
       game.survival.invincible = b.dataset.immortal === "1";
       hud.toast(`Immortality ${game.survival.invincible ? "on" : "off"}.`);
+      return;
+    }
+    if (b.dataset.keep !== undefined) {
+      game.keepInventory = b.dataset.keep === "1";
+      hud.toast(`Keeping inventory on death ${game.keepInventory ? "on" : "off"}.`);
       return;
     }
     const frac = Number(b.dataset.frac);

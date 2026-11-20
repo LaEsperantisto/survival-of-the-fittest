@@ -46,7 +46,6 @@
       <span id="warn-cold" class="hidden" title="Hypothermia">&#10052;</span></div>
   </div>
   <div id="held"></div>
-  <div id="weight"></div>
   <div id="waypoint" class="hidden"><span id="wp-arrow">↑</span> <span id="wp-name"></span> <span id="wp-dist"></span></div>
   <div id="toast"></div>
 </div>
@@ -156,6 +155,9 @@
     <div class="cheat-lab">Immortality</div>
     <button data-immortal="0">Off</button>
     <button data-immortal="1">On</button>
+    <div class="cheat-lab">Keep inventory on death</div>
+    <button data-keep="0">Off</button>
+    <button data-keep="1">On</button>
     <div class="cheat-lab">Add item</div>
     <div id="cheat-item-row">
       <select id="cheat-item" aria-label="Item to add"></select>
@@ -176,7 +178,7 @@
     <h3>Supply Chest <span id="chest-info"></span></h3>
     <div id="chest-grid"></div>
   </div>
-  <h3>Inventory <span id="inv-weight"></span></h3>
+  <h3>Inventory</h3>
   <div id="equip-row">
     <div class="equip-slot"><div class="equip-cell" id="eq-backpack"></div><div class="equip-lab">Backpack</div></div>
     <div class="equip-slot"><div class="equip-cell" id="eq-head"></div><div class="equip-lab">Head</div></div>

@@ -137,11 +137,6 @@ export function updateHud(s: Survival, inv: Inventory, tSec: number, days: numbe
   $("chip-storm").classList.toggle("hidden", !status?.stormBroken);
   $("chip-nap").classList.toggle("hidden", !status?.napReady);
 
-  const kg = inv.weight(), lim = inv.weightLimit();
-  const wEl = $("weight");
-  wEl.textContent = `${kg.toFixed(1)} / ${lim} kg`;
-  wEl.classList.toggle("encumbered", kg > lim);
-
   // vision overlays
   $("vision-vignette").style.opacity = String(s.vision * 0.85);
   const crit = s.water < 5 || s.health < 30;

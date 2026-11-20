@@ -29,6 +29,7 @@ const ROT_DIRS: ReadonlyArray<readonly [number, number]> = [[1, 0], [0, 1], [-1,
 
 // Falls: the first 4 blocks are free, ~16 without armour is lethal.
 const FALL_GRACE = 4, FALL_DMG_PER_BLOCK = 8.5;
+const SLEEP_COOLDOWN = 360; // one long sleep every 6 real minutes
 
 export interface DroppedItem {
   id: number; x: number; y: number; z: number; itemId: string;
@@ -115,13 +116,14 @@ export class Game {
   private sprintOn = false;
   private lastPrick = -9;
   private tempOrigin: Inventory | null = null;
-  lastSleep = -1e9; // timeSec of the last bed sleep; one long sleep per game day
+  lastSleep = -1e9; // timeSec of the last bed sleep; one long sleep per cooldown
   private mouseDown = false;
   private breakMsg = false;
   private keys = new Set<string>();
   private stick = { x: 0, y: 0 };
   private mobile = matchMedia("(pointer: coarse)").matches;
   speedMul = 1; // cheat-menu movement multiplier, session-only
+  keepInventory = false; // cheat-menu toggle: death costs nothing, session-only
   private regGlow = new Map<string, number>(); // "x,y,z" -> entity mesh id of an active regulator's glow shell
   private regGlowMat: THREE.MeshLambertMaterial | null = null;
   private regTick = -1;
@@ -283,7 +285,12 @@ export class Game {
   }
 
   private static chestDims(n: number): [number, number] {
-    return n <= 3 ? [3 * n, 3] : [9, 3 + (n - 3)];
+    if (n <= 6) return [3 * n, 3];
+    // linked clusters grow wide first (one row of 3-wide chest faces), then taller,
+    // with the width capped at 18 so the panel stays readable
+    const h = Math.max(3, Math.ceil((9 * n) / 18));
+    const w = Math.min(18, Math.ceil((9 * n) / h / 3) * 3);
+    return [w, h];
   }
 
   /** Put an existing slot (exactly one item) into a free spot of `target`; re-orients if needed. */
@@ -308,7 +315,6 @@ export class Game {
     ci.slots = [];
     const [w, h] = Game.chestDims(n);
     ci.w = w; ci.h = h;
-    ci.baseLimit = 1e9; // chests carry no weight limit
     return ci;
   }
 
@@ -446,9 +452,8 @@ export class Game {
     this.inv.selected = run.inventory.selected;
     if (run.inventory.w !== this.inv.w || run.inventory.h !== this.inv.h) {
       this.inv.w = run.inventory.w; this.inv.h = run.inventory.h;
-      this.inv.baseLimit = 30; this.inv.bonusLimit = run.inventory.bonusLimit;
-    } else this.inv.bonusLimit = run.inventory.bonusLimit;
-    // Armour Slots: restore gear without touching grid sizes (the saved w/h/bonusLimit already encode them)
+    }
+    // Armour Slots: restore gear without touching grid sizes (the saved w/h already encode them)
     for (const slot of ["backpack", "head", "body", "regulator", "light"] as const) {
       const id = run.equip?.[slot];
       if (id) this.equip[slot] = { itemId: id, x: 0, y: 0, charges: run.equip?.charges?.[slot as "regulator" | "light"] };
@@ -539,7 +544,7 @@ export class Game {
       player: { x: this.player.pos.x, y: this.player.pos.y, z: this.player.pos.z, yaw: this.player.yaw, pitch: this.player.pitch },
       survival: { health: this.survival.health, water: this.survival.water, body: this.survival.body },
       quest: { i: this.quests.i, p: this.quests.p.slice(), e: { ...this.quests.e } },
-      inventory: { slots: this.inv.slots.map((s) => ({ ...s })), selected: this.inv.selected, w: this.inv.w, h: this.inv.h, bonusLimit: this.inv.bonusLimit },
+      inventory: { slots: this.inv.slots.map((s) => ({ ...s })), selected: this.inv.selected, w: this.inv.w, h: this.inv.h },
       equip: {
         backpack: this.equip.backpack?.itemId, head: this.equip.head?.itemId, body: this.equip.body?.itemId,
         regulator: this.equip.regulator?.itemId, light: this.equip.light?.itemId,
@@ -1562,7 +1567,6 @@ export class Game {
 
     const kf = this.renderer.updateSky(this.timeSec, this.player.pos);
     const biome = biomeAt(Math.floor(this.player.pos.x), Math.floor(this.player.pos.z), this.seed);
-    const overencumbered = this.inv.weight() > this.inv.weightLimit();
 
     if (!this.ui && !this.cine) {
       let mx = this.stick.x, mz = -this.stick.y;
@@ -1572,7 +1576,7 @@ export class Game {
       if (this.keys.has("KeyD")) mx += 1;
       const jump = this.keys.has("Space") || this.mobileJump;
       this.player.sprinting = this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || this.sprintOn;
-      this.player.update(dt, mx, mz, jump, this.speedMul, overencumbered);
+      this.player.update(dt, mx, mz, jump, this.speedMul);
       // landing a fall: the first 4 blocks are free; ~16 without armour is lethal
       if (this.player.lastFallDist > 0) {
         const fd = this.player.lastFallDist;
@@ -1595,7 +1599,7 @@ export class Game {
       this.cozyTick(dt);
       this.survival.update(dt, this.world, this.player.pos, {
         sprinting: this.player.sprinting && (mx !== 0 || mz !== 0),
-        overencumbered, biome, tSec: this.timeSec, sunElev: kf.sunElev, sunDir, inWater: this.player.inWater,
+        biome, tSec: this.timeSec, sunElev: kf.sunElev, sunDir, inWater: this.player.inWater,
         warmth: this.fireWarmth(this.player.pos),
         regulator: (this.equip.regulator?.charges ?? 0) > 0,
         terrainH: (x, z) => heightAt(this.seed, x, z),
@@ -1745,7 +1749,7 @@ export class Game {
     hud.updateHud(this.survival, this.inv, this.timeSec, this.dayNumber(), this.settings.units, now, {
       regulated: this.roomRegulated(),
       stormBroken: this.stormShieldOn,
-      napReady: this.timeSec - this.lastSleep >= DAY_SECONDS,
+      napReady: this.timeSec - this.lastSleep >= SLEEP_COOLDOWN,
     });
     this.podFrame(dt);
     this.questFrame();
@@ -2424,15 +2428,15 @@ export class Game {
     return true;
   }
 
-  private bagSize(): { w: number; h: number; kg: number } {
+  private bagSize(): { w: number; h: number } {
     const b = this.equip.backpack ? ITEMS[this.equip.backpack.itemId].bag : null;
-    return b ?? { w: 5, h: 4, kg: 0 };
+    return b ?? { w: 5, h: 4 };
   }
 
   private applyEquip() {
     const b = this.bagSize();
     if (this.inv.w !== b.w || this.inv.h !== b.h)
-      this.inv.setBackpack(b.w, b.h, b.kg);
+      this.inv.setBackpack(b.w, b.h);
     if (this.inv.selected >= this.inv.slots.length) this.inv.selected = 0;
     // a slot that no longer fits after a shrink lands on the sand, fuel and all
     while (this.inv.droppedOnResize.length) {
@@ -2822,17 +2826,17 @@ export class Game {
     }
   }
 
-  /** E at a Bed: one long sleep per game day — 8 hours pass in the dark. */
+  /** E at a Bed: one long sleep every six minutes — 8 hours pass in the dark. */
   private sleep() {
     const since = this.timeSec - this.lastSleep;
-    if (since < DAY_SECONDS) {
-      const left = Math.ceil((DAY_SECONDS - since) / 60);
+    if (since < SLEEP_COOLDOWN) {
+      const left = Math.max(1, Math.ceil((SLEEP_COOLDOWN - since) / 60));
       hud.toast(`You just slept. The next long sleep comes in ${left} min.`);
       this.audio.error();
       return;
     }
-    this.lastSleep = this.timeSec;
     this.timeSec += DAY_SECONDS / 3; // 8 of the 24 hours
+    this.lastSleep = this.timeSec;   // the cooldown counts from waking, not from lying down
     const fade = document.getElementById("sleepfade")!;
     fade.classList.add("on");
     this.audio.door();
@@ -3586,22 +3590,25 @@ export class Game {
     if (this.caches.some((c) => Math.abs(c.x - this.player.pos.x) < 0.5)) return;
     this.deathCause = this.survival.causeOfDeath ?? "exposure";
     this.audio.death();
-    // everything you carried AND everything you wore waits in the cache
-    const lost = [
-      ...this.inv.slots.map((s) => ({ itemId: s.itemId, count: 1, charges: s.charges })),
-      ...(["backpack", "head", "body", "regulator", "light"] as const)
-        .map((sl) => this.equip[sl])
-        .filter((s): s is Slot => !!s)
-        .map((s) => ({ itemId: s.itemId, count: 1, charges: s.charges })),
-    ];
-    if (lost.length)
-      this.caches.push({
-        id: this.entitySeq++,
-        x: Math.floor(this.player.pos.x), y: Math.floor(this.player.pos.y), z: Math.floor(this.player.pos.z),
-        kind: "death", items: lost,
-      });
-    this.inv.slots = []; this.inv.selected = 0;
-    this.equip = { backpack: null, head: null, body: null, regulator: null, light: null };
+    if (!this.keepInventory) {
+      // everything you carried AND everything you wore waits in the cache
+      const lost = [
+        ...this.inv.slots.map((s) => ({ itemId: s.itemId, count: 1, charges: s.charges })),
+        ...(["backpack", "head", "body", "regulator", "light"] as const)
+          .map((sl) => this.equip[sl])
+          .filter((s): s is Slot => !!s)
+          .map((s) => ({ itemId: s.itemId, count: 1, charges: s.charges })),
+      ];
+      if (lost.length)
+        this.caches.push({
+          id: this.entitySeq++,
+          x: Math.floor(this.player.pos.x), y: Math.floor(this.player.pos.y), z: Math.floor(this.player.pos.z),
+          kind: "death", items: lost,
+        });
+      this.inv.slots = []; this.inv.selected = 0;
+      this.equip = { backpack: null, head: null, body: null, regulator: null, light: null };
+      this.inv.setBackpack(5, 4); // the worn pack is gone — the grid shrinks back with it
+    }
     this.lanternOn = false;
     submitBest(this.scoreDays());
     this.survival.health = 0; // stay dead until respawn button
@@ -3611,7 +3618,8 @@ export class Game {
     if (document.pointerLockElement) document.exitPointerLock();
     document.getElementById("death-cause")!.textContent = `Cause: ${this.deathCause}.`;
     document.getElementById("death-stats")!.textContent =
-      `Survived ${this.scoreDays().toFixed(1)} days in this run. Best: ${bestScore().toFixed(1)} days. Your belongings wait in a Death Cache where you fell.`;
+      `Survived ${this.scoreDays().toFixed(1)} days in this run. Best: ${bestScore().toFixed(1)} days.` +
+      (this.keepInventory ? " Your belongings stayed with you." : " Your belongings wait in a Death Cache where you fell.");
     this.saveNow();
     if (this.onDeathCb) this.onDeathCb();
   }
@@ -3639,9 +3647,13 @@ export class Game {
 
   closeUI() {
     if (this.ui === "inv" && this.temp) {
-      hud.toast("Temporary storage is occupied — place or drop the item first.");
-      this.audio.error();
-      return;
+      // the lifted item is never left stranded: back to the grid it came from,
+      // else onto the ground in front of the player — closing always closes
+      const home = this.tempOrigin ?? this.inv;
+      const s = this.temp;
+      if (!Game.placeSlotFree(home, s)) this.dropEntity(s.itemId, 1, 1, s.charges);
+      this.temp = null;
+      this.tempOrigin = null;
     }
     this.ui = null; this.openStation = null; this.openCacheId = null;
     this.chestInv = null; this.gridFocus = "inv";
@@ -3655,7 +3667,7 @@ export class Game {
   }
 
   private roomRegulated(): boolean { return this.regActive; }
-  private renderHeld() { hud.updateHud(this.survival, this.inv, this.timeSec, this.dayNumber(), this.settings.units, performance.now(), { regulated: this.regActive, stormBroken: this.stormShieldOn, napReady: this.timeSec - this.lastSleep >= DAY_SECONDS }); }
+  private renderHeld() { hud.updateHud(this.survival, this.inv, this.timeSec, this.dayNumber(), this.settings.units, performance.now(), { regulated: this.regActive, stormBroken: this.stormShieldOn, napReady: this.timeSec - this.lastSleep >= SLEEP_COOLDOWN }); }
 
   /** Distinct carried item types in pack order — the hotbar's rows. */
   private hotbarItems(): string[] {
@@ -3708,7 +3720,7 @@ export class Game {
     if (this.temp) {
       const d = ITEMS[this.temp.itemId];
       tempEl.classList.add("filled");
-      tempEl.style.background = d.color;
+      tempEl.style.backgroundColor = d.color;
       tempEl.style.backgroundImage = `url(${itemTiles(this.temp.itemId, this.temp.charges)[0] ?? ""})`;
       tempEl.onmousedown = (e) => {
         if (Date.now() - this.lastTouchTs < 700) { this.tapTemp(); return; }
@@ -3724,7 +3736,7 @@ export class Game {
       };
     } else {
       tempEl.classList.remove("filled");
-      tempEl.style.background = "";
+      tempEl.style.backgroundColor = "";
       tempEl.style.backgroundImage = "";
       // handler stays live: tapping the EMPTY shelf lifts the selected item onto it
       tempEl.onmousedown = (e) => {
@@ -3741,7 +3753,7 @@ export class Game {
       if (it) {
         const d = ITEMS[it.itemId];
         el.classList.add("filled");
-        el.style.background = d.color;
+        el.style.backgroundColor = d.color;
         el.style.backgroundImage = `url(${itemTiles(it.itemId, it.charges)[0] ?? ""})`;
         const ch = it.charges;
         el.textContent = ch !== undefined && ch > 0 ? String(ch) : "";
@@ -3751,7 +3763,7 @@ export class Game {
         el.onclick = () => this.unequipSlot(slot);
       } else {
         el.classList.remove("filled");
-        el.style.background = "#23262e";
+        el.style.backgroundColor = "#23262e";
         el.style.backgroundImage = "";
         el.textContent = "";
         el.title = "";
@@ -3770,15 +3782,13 @@ export class Game {
     const fInv = this.gridFocus === "chest" && this.chestInv ? this.chestInv : this.inv;
     const sel = fInv.selectedSlot();
     const shown = this.temp ?? sel;
-    const kg = this.inv.weight() + (this.temp ? ITEMS[this.temp.itemId].mass : 0);
-    const lim = this.inv.weightLimit();
     const dims = shown ? slotDims(shown) : null;
     side.innerHTML = "";
     const txt = document.createElement("div");
     txt.id = "side-text";
-    txt.textContent = (shown
+    txt.textContent = shown
       ? `${ITEMS[shown.itemId].name} — ${ITEMS[shown.itemId].desc}`
-      : "Click an item to inspect it; drag to move it.") + ` Weight ${kg.toFixed(1)} / ${lim} kg`;
+      : "Click an item to inspect it; drag to move it.";
     side.appendChild(txt);
     if (shown && dims && dims.w !== dims.h) {
       const rotBtn = document.createElement("button");
@@ -3847,9 +3857,10 @@ export class Game {
 
   /** Render one Inventory Grid (backpack or linked-chest cluster) into a container element. */
   private renderGrid(inv: Inventory, grid: HTMLElement) {
-    const CELL = Game.CELL;
     grid.innerHTML = "";
-    grid.style.gridTemplateColumns = `repeat(${inv.w}, ${CELL}px)`;
+    grid.style.removeProperty("--cell");
+    grid.style.gridTemplateColumns = `repeat(${inv.w}, ${Game.CELL}px)`;
+    inv.cellPx = Game.CELL;
     const at = (x: number, y: number) => inv.slots.find((s) => {
       const d = slotDims(s);
       return x >= s.x && x < s.x + d.w && y >= s.y && y < s.y + d.h;
@@ -3864,7 +3875,7 @@ export class Game {
         // the art is one picture across the whole footprint: pick this cell's slice
         const tiles = itemTiles(s.itemId, s.charges);
         const idx = s.rot ? (d.h - 1 - dx) * d.w + dy : dy * d.w + dx;
-        cell.style.background = d.color;
+        cell.style.backgroundColor = d.color;
         cell.style.backgroundImage = `url(${tiles[Math.min(idx, tiles.length - 1)] ?? ""})`;
         const si = inv.slots.indexOf(s);
         if (si === inv.selected) cell.classList.add("active");
@@ -3888,6 +3899,20 @@ export class Game {
       }
       grid.appendChild(cell);
     }
+    this.fitCells(inv, grid);
+  }
+
+  /** Shrink cell SIZE (never slot count) until the grid stops forcing the panel to scroll. */
+  private fitCells(inv: Inventory, grid: HTMLElement) {
+    const panel = grid.closest(".panel");
+    if (!panel) return;
+    let cell = Game.CELL;
+    while (cell > 16 && (panel.scrollWidth > panel.clientWidth + 1 || panel.scrollHeight > panel.clientHeight + 1)) {
+      cell = Math.max(16, cell - 4);
+      grid.style.setProperty("--cell", `${cell}px`);
+      grid.style.gridTemplateColumns = `repeat(${inv.w}, ${cell}px)`;
+    }
+    inv.cellPx = cell;
   }
 
   /** Touch semantics: tap selects; tapping another cell moves the selected item there — swapping when occupied. A lifted item (temporary storage) lands wherever the next cell tap falls. There is ONE selection across pack and chest grids: tapping the far grid pulls the selected item across. */
@@ -4007,18 +4032,22 @@ export class Game {
     this.temp = s;
     this.tempOrigin = src;
     if (prev) {
-      // dragging another item back swaps it into the vacated cell
+      // the other lifted item swaps back into the grid — always lands somewhere
+      prev.x = s.x; prev.y = s.y;
       src.slots.push(prev);
-      if (!src.move(prev, s.x, s.y)) this.giveOrDrop(prev.itemId, 1);
+      if (!src.move(prev, s.x, s.y)) {
+        src.slots.splice(src.slots.indexOf(prev), 1);
+        if (!Game.placeSlotFree(src, prev)) this.giveOrDrop(prev.itemId, 1);
+      }
     }
-    const STEP = (Game.CELL + Game.GAP) * this.uiZoom();
+    const STEP = (src.cellPx + Game.GAP) * this.uiZoom();
     const GAP = Game.GAP * this.uiZoom();
     const d = slotDims(s);
     const ghost = document.createElement("div");
     ghost.className = "inv-ghost";
     ghost.style.width = d.w * STEP - GAP + "px";
     ghost.style.height = d.h * STEP - GAP + "px";
-    ghost.style.background = ITEMS[s.itemId].color;
+    ghost.style.backgroundColor = ITEMS[s.itemId].color;
     ghost.style.backgroundImage = `url(${itemArtUrl(s.itemId, s.rot ? 1 : 0, s.charges)})`;
     document.body.appendChild(ghost);
     const rect = (src === this.inv ? document.getElementById("inv-grid") : document.getElementById("chest-grid"))!.getBoundingClientRect();
@@ -4038,8 +4067,9 @@ export class Game {
       let target: Inventory | null = null, ax = 0, ay = 0;
       for (const [el, inv] of this.gridsEls()) {
         const r = el.getBoundingClientRect();
-        ax = Math.round((ev.clientX - r.left - D.gx) / STEP);
-        ay = Math.round((ev.clientY - r.top - D.gy) / STEP);
+        const S = (inv.cellPx + Game.GAP) * this.uiZoom();
+        ax = Math.round((ev.clientX - r.left - D.gx * (S / STEP)) / S);
+        ay = Math.round((ev.clientY - r.top - D.gy * (S / STEP)) / S);
         if (ax >= 0 && ay >= 0 && ax <= inv.w - dd.w && ay <= inv.h - dd.h) { target = inv; break; }
       }
       if (target) {
@@ -4089,8 +4119,13 @@ export class Game {
     this.temp = s;
     this.tempOrigin = src;
     if (prev) {
+      // the other lifted item swaps back into the grid — always lands somewhere
+      prev.x = s.x; prev.y = s.y;
       src.slots.push(prev);
-      if (!src.move(prev, s.x, s.y)) this.giveOrDrop(prev.itemId, 1);
+      if (!src.move(prev, s.x, s.y)) {
+        src.slots.splice(src.slots.indexOf(prev), 1);
+        if (!Game.placeSlotFree(src, prev)) this.giveOrDrop(prev.itemId, 1);
+      }
     }
     this.renderInv();
     this.renderHeld();
@@ -4114,7 +4149,7 @@ export class Game {
     ghost.className = "inv-ghost";
     ghost.style.width = d.w * STEP - GAP + "px";
     ghost.style.height = d.h * STEP - GAP + "px";
-    ghost.style.background = ITEMS[s.itemId].color;
+    ghost.style.backgroundColor = ITEMS[s.itemId].color;
     ghost.style.backgroundImage = `url(${itemArtUrl(s.itemId, s.rot ? 1 : 0, s.charges)})`;
     document.body.appendChild(ghost);
     const move = (ev: MouseEvent) => {
@@ -4128,12 +4163,13 @@ export class Game {
       ghost.remove();
       document.getElementById("inv-bin")!.classList.remove("hot");
       if (this.overBin(ev.clientX, ev.clientY)) { this.binDiscard(); return; } // the item is already in temp
-      const hw = (d.w * STEP - GAP) / 2, hh = (d.h * STEP - GAP) / 2;
       let target: Inventory | null = null, ax = 0, ay = 0;
       for (const [el, inv] of this.gridsEls()) {
         const r = el.getBoundingClientRect();
-        ax = Math.round((ev.clientX - r.left - hw) / STEP);
-        ay = Math.round((ev.clientY - r.top - hh) / STEP);
+        const S = (inv.cellPx + Game.GAP) * this.uiZoom();
+        const hw = (d.w * S - Game.GAP * this.uiZoom()) / 2, hh = (d.h * S - Game.GAP * this.uiZoom()) / 2;
+        ax = Math.round((ev.clientX - r.left - hw) / S);
+        ay = Math.round((ev.clientY - r.top - hh) / S);
         if (ax >= 0 && ay >= 0 && ax <= inv.w - d.w && ay <= inv.h - d.h) { target = inv; break; }
       }
       if (target) {
