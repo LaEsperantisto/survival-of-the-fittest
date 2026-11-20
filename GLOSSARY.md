@@ -237,7 +237,7 @@ The first crop found — wild at Oases. Eaten raw: a big drink with a little hea
 The harder crop, discovered in Town loot: it tolerates cold but not the midday, and its cooked food heals more than anything else on the farm.
 
 **Inventory Grid**:
-A rectangular grid of slots; items occupy footprints (Water Canister 1×2). Expandable via Backpacks. Every item instance claims its own cells — duplicates never share a slot, so more of something means more space taken.
+A rectangular grid of slots; items occupy footprints (Water Canister 1×2). Expandable via Backpacks. Every item instance claims its own cells — duplicates never share a slot, so more of something means more space taken. A Sort button on every Grid (pack, Supply Chests, each Campfire slot) arranges items alphabetically, identical items adjacent.
 _Avoid_: stacking, merging slots
 
 **Armour Slot**:

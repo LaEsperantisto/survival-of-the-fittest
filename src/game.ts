@@ -1547,6 +1547,16 @@ export class Game {
     }, document);
     // The Bin: click it to destroy the selected item, or drag anything onto it.
     document.getElementById("inv-bin")!.onclick = () => this.binDiscard();
+    // Sort buttons: every grid (pack, chest, Campfire slots) alphabetizes itself.
+    document.getElementById("btn-sort-inv")!.onclick = () => { this.inv.sort(); this.audio.place(); this.renderInv(); };
+    document.getElementById("btn-sort-chest")!.onclick = () => { this.chestInv?.sort(); this.audio.place(); this.renderInv(); };
+    for (const b of document.querySelectorAll<HTMLButtonElement>(".fire-sort"))
+      b.onclick = () => {
+        const f = this.fire;
+        if (!f) return;
+        f[b.dataset.grid as "fuel" | "input" | "output"].sort();
+        this.audio.place(); this.renderFire();
+      };
   }
 
   /** Send one item down the Bin: gone for good, no drop, no undo. */

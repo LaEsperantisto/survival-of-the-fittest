@@ -177,9 +177,11 @@
   <button class="close-btn close-x" aria-label="Close">✕</button>
   <div id="chest-section" class="hidden">
     <h3>Supply Chest <span id="chest-info"></span></h3>
+    <button id="btn-sort-chest" class="sort-btn">Sort</button>
     <div id="chest-grid"></div>
   </div>
   <h3>Inventory</h3>
+  <button id="btn-sort-inv" class="sort-btn">Sort</button>
   <div id="equip-row">
     <div class="equip-slot"><div class="equip-cell" id="eq-backpack"></div><div class="equip-lab">Backpack</div></div>
     <div class="equip-slot"><div class="equip-cell" id="eq-head"></div><div class="equip-lab">Head</div></div>
@@ -212,9 +214,9 @@
       </div>
     </div>
     <div id="fire-grids">
-      <div class="fire-col"><div class="fire-lab">Fuel Slot</div><div id="fire-fuel-grid"></div></div>
-      <div class="fire-col"><div class="fire-lab">Input Slot</div><div id="fire-input-grid"></div></div>
-      <div class="fire-col"><div class="fire-lab">Output Slot</div><div id="fire-output-grid"></div></div>
+      <div class="fire-col"><div class="fire-lab">Fuel Slot</div><div id="fire-fuel-grid"></div><button class="sort-btn fire-sort" data-grid="fuel">Sort</button></div>
+      <div class="fire-col"><div class="fire-lab">Input Slot</div><div id="fire-input-grid"></div><button class="sort-btn fire-sort" data-grid="input">Sort</button></div>
+      <div class="fire-col"><div class="fire-lab">Output Slot</div><div id="fire-output-grid"></div><button class="sort-btn fire-sort" data-grid="output">Sort</button></div>
     </div>
     <div class="fire-hint">Drag fuel into the Fuel Slot, cookables into the Input Slot; finished cooking lands in the Output Slot. Each cooking job costs one fuel charge; a lit fire also burns one charge every 10 minutes.</div>
   </div>

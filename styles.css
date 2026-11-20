@@ -184,6 +184,8 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 #fire-lamp-wrap { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #c9c2b4; }
 #fire-grids { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
 .fire-col { display: flex; flex-direction: column; gap: 6px; }
+.sort-btn { margin: 2px 0 8px; padding: 4px 16px; font-size: 12px; }
+.fire-sort { margin-top: 2px; align-self: flex-start; }
 .fire-lab { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #9aa0aa; }
 #fire-fuel-grid, #fire-input-grid, #fire-output-grid { display: grid; gap: 6px; }
 .fire-hint { margin-top: 12px; font-size: 12px; color: #8a93a5; }
