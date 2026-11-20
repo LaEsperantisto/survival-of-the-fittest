@@ -1791,6 +1791,32 @@ export class Renderer {
     const faceLight = (nx: number, ny: number, nz: number): number =>
       Lb && ny >= 0 && ny < CH ? Lb[lidx(nx, nz, ny)] / MAX_LIGHT : 0;
 
+    // soil within reach of Water reads damp: mark DIRT/GRASS cells that have a
+    // Water block in a 7×5×7 box (Chebyshev, ±2 y) — one pass over the water
+    // that can touch this chunk, then O(1) lookups in the mesh loop
+    const damp = new Uint8Array(CS * CS * CH);
+    const x0w = cx * CS - 3, z0w = cz * CS - 3;
+    for (let wx = x0w; wx < cx * CS + CS + 3; wx++)
+      for (let wz = z0w; wz < cz * CS + CS + 3; wz++)
+        for (let y = 0; y < CH; y++) {
+          if (!isWater(world.get(wx, y, wz))) continue;
+          for (let dx = -3; dx <= 3; dx++) {
+            const lx = wx + dx - cx * CS;
+            if (lx < 0 || lx >= CS) continue;
+            for (let dz = -3; dz <= 3; dz++) {
+              const lz = wz + dz - cz * CS;
+              if (lz < 0 || lz >= CS) continue;
+              for (let dy = -2; dy <= 2; dy++) {
+                const ly = y + dy;
+                if (ly < 0 || ly >= CH) continue;
+                const li = (lx * CS + lz) * CH + ly;
+                const b = c[li];
+                if (b === DIRT || b === GRASS) damp[li] = 1;
+              }
+            }
+          }
+        }
+
     for (let x = 0; x < CS; x++) for (let z = 0; z < CS; z++) for (let y = 0; y < CH; y++) {
       const id = c[(x * CS + z) * CH + y];
       if (id === AIR) continue;
@@ -1916,6 +1942,8 @@ export class Renderer {
       // soil under water bakes a darker face shade — the mesher owns the chunk,
       // so this rides in as vertex colour, never as a post pass
       const wet = SOIL_BLOCKS.has(id) && isWater(world.get(wx, y + 1, wz));
+      // damp soil beside water: same trick, lighter touch (plan: ~0.7x)
+      const dampSoil = (id === DIRT || id === GRASS) && damp[(x * CS + z) * CH + y];
       // a campfire only glows while it has fuel charges; empty ones are cold
       // charcoal — dark tile, opaque pass, no point light
       const coldFire = id === CAMPFIRE && (this.fires.get(wx + "," + y + "," + wz) ?? 0) <= 0;
@@ -1934,7 +1962,7 @@ export class Renderer {
         const ft = coldFire ? VI.campfire_cold : FACE_T[id * 6 + fi];
         const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
         const base = P.length / 3;
-        const sh = useE ? 1 : wet ? f.shade * 0.78 : f.shade;
+        const sh = useE ? 1 : wet ? f.shade * 0.78 : dampSoil ? f.shade * 0.7 : f.shade;
         const lv = LM ? faceLight(nx, ny, nz) : 0;
         for (const cn of f.corners) {
           const [px, pz] = r ? rot2(cn[0], cn[2], r) : [cn[0], cn[2]];

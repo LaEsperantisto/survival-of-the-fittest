@@ -151,10 +151,14 @@ export class World {
     this.rots.delete(x + "," + y + "," + z); // a new block starts unrotated
     this.markDirty(cx, cz);
     const lx = x - cx * CS, lz = z - cz * CS;
-    if (lx === 0) this.markDirty(cx - 1, cz);
-    if (lz === 0) this.markDirty(cx, cz - 1);
-    if (lx === CS - 1) this.markDirty(cx + 1, cz);
-    if (lz === CS - 1) this.markDirty(cx, cz + 1);
+    // soil within 3 cells of water renders damp, so a water edit near a chunk
+    // edge must also re-mesh the neighbour chunk
+    const wetEdge = isWater(id) || isWater(prev);
+    const reach = wetEdge ? 3 : 0;
+    if (lx === 0 || lx <= reach) this.markDirty(cx - 1, cz);
+    if (lz === 0 || lz <= reach) this.markDirty(cx, cz - 1);
+    if (lx === CS - 1 || lx >= CS - 1 - reach) this.markDirty(cx + 1, cz);
+    if (lz === CS - 1 || lz >= CS - 1 - reach) this.markDirty(cx, cz + 1);
   }
 
   markDirty(cx: number, cz: number) {
