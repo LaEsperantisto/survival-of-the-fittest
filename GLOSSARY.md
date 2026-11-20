@@ -137,7 +137,7 @@ the container holding a dead player's items at the death spot. It accepts no new
 _Avoid_: grave, drop bag
 
 **Death Indicator**:
-the pair of markers on any Cache with items in it: a ground ring in the Cache's kind-colour (red for a Death Cache, gold for a Reward Cache) and, for Death Caches only, a red beam of light rising from the spot. Both go dark the moment the Cache runs dry.
+the markers on any Cache with items in it: a ground ring in the Cache's kind-colour (red for a Death Cache, gold for a Reward Cache) plus a tall light beam for whatever the player is currently tracking — always a red beam for a Death Cache, a cyan beam for every standing Save Beacon, a gold beam for a Reward Cache only through the Visor. Past about 96 m a tracked marker swaps its beam for an edge-pinned HUD arrow in the same colour with a distance readout — never both. Everything goes dark the moment a Cache runs dry.
 _Avoid_: grave marker, beacon (reserved for the Save Beacon)
 
 **Reward Cache**:

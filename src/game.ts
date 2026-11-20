@@ -175,6 +175,7 @@ export class Game {
   private cineSegs: CineSeg[] = [];
   private cineOnEnd: (() => void) | null = null;
   private visorBeams = new Map<string, number>(); // cache/cluster key -> beam mesh id
+  private beaconBeams = new Map<string, number>(); // Save Beacon key -> tall cyan beam (near the player)
   private lockAt = 0;
   private guideAcc = 1;
   private lastTouchTs = 0;
@@ -815,10 +816,45 @@ export class Game {
     }
 
     const want = new Map<string, [number, number, number, number]>();
+    const arrows: { ang: number; dist: number; color: string }[] = [];
+    const MARK_RANGE = 96; // metres: near -> 3D beam, far -> edge arrow, never both
+    const arrowFor = (x: number, z: number, color: string): boolean => {
+      const dx = x - p.x, dz = z - p.z, dist = Math.hypot(dx, dz);
+      if (dist <= MARK_RANGE) return false;
+      arrows.push({ ang: Math.atan2(dx, -dz) + this.player.yaw, dist, color });
+      return true;
+    };
+    // Death Caches: a 40 m beam close by, an edge arrow anywhere farther
+    for (const c of this.caches) {
+      if (!c.items.length || c.kind !== "death") continue;
+      if (arrowFor(c.x + 0.5, c.z + 0.5, "#cc3322")) {
+        if (c.beamEid !== undefined) { this.renderer.removeEntityMesh(c.beamEid); c.beamEid = undefined; }
+      } else if (c.beamEid === undefined) {
+        c.beamEid = this.renderer.addBeam(c.x + 0.5, c.y, c.z + 0.5, 0xcc3322, 40);
+      }
+    }
+    // every standing Save Beacon: the same treatment in Beacon cyan
+    const liveBeacons = new Set<string>();
+    for (const b of this.beaconMarks) {
+      const k = `${b.x},${b.y},${b.z}`;
+      liveBeacons.add(k);
+      if (arrowFor(b.x + 0.5, b.z + 0.5, "#35e0ff")) {
+        const eid = this.beaconBeams.get(k);
+        if (eid !== undefined) { this.renderer.removeEntityMesh(eid); this.beaconBeams.delete(k); }
+      } else if (!this.beaconBeams.has(k)) {
+        this.beaconBeams.set(k, this.renderer.addBeam(b.x + 0.5, b.y, b.z + 0.5, 0x35e0ff, 40));
+      }
+    }
+    for (const [k, eid] of this.beaconBeams)
+      if (!liveBeacons.has(k)) { this.renderer.removeEntityMesh(eid); this.beaconBeams.delete(k); }
     if (this.equip.head?.itemId === "visor") {
-      for (const c of this.caches)
-        if (c.items.length)
-          want.set(`c${c.id}`, [c.x + 0.5, c.y, c.z + 0.5, c.kind === "reward" ? 0xd8a24a : 0xcc4433]);
+      // Reward Caches get the gold treatment only through the Visor;
+      // Death Cache beams are the always-on rule above — never twice
+      for (const c of this.caches) {
+        if (!c.items.length || c.kind !== "reward") continue;
+        if (arrowFor(c.x + 0.5, c.z + 0.5, "#d8a24a")) continue; // far: arrow, no beam
+        want.set(`c${c.id}`, [c.x + 0.5, c.y, c.z + 0.5, 0xd8a24a]);
+      }
       for (const key of this.chests.keys()) {
         const [x, y, z] = key.split(";")[0].split(",").map(Number);
         want.set(`x${key}`, [x + 0.5, y, z + 0.5, 0xe6c96a]);
@@ -832,6 +868,7 @@ export class Game {
       if (!want.has(k)) { this.renderer.removeEntityMesh(eid); this.visorBeams.delete(k); }
     for (const [k, [x, y, z, col]] of want)
       if (!this.visorBeams.has(k)) this.visorBeams.set(k, this.renderer.addBeam(x, y, z, col, 10));
+    hud.updateMarkArrows(arrows);
     this.drawMap();
   }
 
@@ -1725,8 +1762,7 @@ export class Game {
         // every Cache is findable from far: a ground ring in its kind colour
         c.markerEid = this.renderer.addGroundRing(c.x + 0.5, c.y, c.z + 0.5,
           c.kind === "reward" ? 0xd8a24a : 0xcc3322, 1.4);
-        // a Death Cache also throws a beam up to the sky — gone the moment it runs dry
-        if (c.kind === "death") c.beamEid = this.renderer.addBeam(c.x + 0.5, c.y, c.z + 0.5, 0xcc3322);
+        // beams are guideFrame's job: tall beam when near, edge arrow when far
       } else if (mesh && !c.items.length) {
         this.renderer.removeEntityMesh(c.id);
         if (c.markerEid !== undefined) { this.renderer.removeEntityMesh(c.markerEid); c.markerEid = undefined; }

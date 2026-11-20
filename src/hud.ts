@@ -109,6 +109,32 @@ export function updateWaypoint(name: string | null, wx = 0, wz = 0, px = 0, pz =
   wp.classList.remove("hidden");
 }
 
+/** Edge-pinned arrows for markers too far for a 3D beam: bearing vs camera yaw,
+ *  tinted per marker kind, with the straight-line distance. */
+export function updateMarkArrows(list: { ang: number; dist: number; color: string }[]) {
+  const box = document.getElementById("mark-arrows")!;
+  box.textContent = "";
+  const W = window.innerWidth, H = window.innerHeight;
+  const rx = W / 2 - 70, ry = H / 2 - 70;
+  const placed: number[][] = [];
+  for (const m of [...list].sort((a, b) => a.dist - b.dist)) {
+    // screen direction: 0 rad is up, +x right, +y down
+    const sx = Math.sin(m.ang), sy = -Math.cos(m.ang);
+    const t = Math.min(rx / Math.max(Math.abs(sx), 1e-6), ry / Math.max(Math.abs(sy), 1e-6));
+    let x = W / 2 + sx * t, y = H / 2 + sy * t;
+    // co-bearing markers slide apart instead of stacking
+    while (placed.some(([px, py]) => Math.abs(px - x) < 60 && Math.abs(py - y) < 60)) y += 44;
+    placed.push([x, y]);
+    const el = document.createElement("div");
+    el.className = "mark-arrow";
+    el.style.left = x + "px";
+    el.style.top = y + "px";
+    el.style.color = m.color;
+    el.innerHTML = `<span class="ma-glyph" style="transform: rotate(${m.ang * 180 / Math.PI}deg)">&#9650;</span><span class="ma-dist">${Math.round(m.dist)} m</span>`;
+    box.appendChild(el);
+  }
+}
+
 export function updateHud(s: Survival, inv: Inventory, tSec: number, days: number, units: "C" | "F", now: number,
   status?: { regulated: boolean; napReady: boolean; stormBroken: boolean }) {
   const fill = (id: string) => document.querySelector(`#${id} .fill`) as HTMLElement;
