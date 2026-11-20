@@ -69,7 +69,7 @@ export const BLOCKS: BlockDef[] = [
   def({ id: DEADWOOD, name: "Dead Wood", solid: true, opaque: true, transparent: false, emissive: false, R: 0.6, breakTime: 1.2, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.38, 0.30, 0.22] }),
   def({ id: GLASS, name: "Glass", solid: true, opaque: false, transparent: true, emissive: false, R: 0.15, breakTime: 0.4, tool: null, minTier: 0, placeable: true, color: [0.65, 0.8, 0.9] }),
   def({ id: INSGLASS, name: "Insulating Glass", solid: true, opaque: false, transparent: true, emissive: false, R: 2.0, breakTime: 1.2, tool: null, minTier: 0, placeable: true, color: [0.55, 0.75, 0.62] }),
-  def({ id: HULL, name: "Hull Plating", solid: true, opaque: true, transparent: false, emissive: false, R: 3, breakTime: 6, tool: "disassembler", minTier: 0, placeable: true, color: [0.52, 0.55, 0.6] }),
+  def({ id: HULL, name: "Hull Plating", solid: true, opaque: true, transparent: false, emissive: false, R: 3, breakTime: 1.5, tool: "disassembler", minTier: 0, placeable: true, color: [0.52, 0.55, 0.6] }),
   // Doors are two blocks tall: DOOR_CLOSED is the bottom half (handle), DOOR_UPPER the top half (window).
   def({ id: DOOR_CLOSED, name: "Door (closed)", solid: true, opaque: true, transparent: false, emissive: false, R: 3, breakTime: 2, tool: "disassembler", minTier: 0, placeable: true, color: [0.60, 0.62, 0.66] }),
   // Open door: the leaf stands in the frame edge-on — see-through, walk-through.
@@ -129,7 +129,7 @@ export const BLOCKS: BlockDef[] = [
   def({ id: CHEST_CONNECTOR, name: "Chest Connector", solid: true, opaque: true, transparent: false, emissive: false, R: 0.9, breakTime: 1.2, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.48, 0.4, 0.26] }),
   // Metal Plating: the ship's inner floor-and-skin plating — same properties as a
   // Metal Block; the wreck is plated, not roped.
-  def({ id: METAL_PLATING, name: "Metal Plating", solid: true, opaque: true, transparent: false, emissive: false, R: 0.3, breakTime: 4, tool: "disassembler", minTier: 0, placeable: true, color: [0.58, 0.6, 0.66] }),
+  def({ id: METAL_PLATING, name: "Metal Plating", solid: true, opaque: true, transparent: false, emissive: false, R: 0.3, breakTime: 1, tool: "disassembler", minTier: 0, placeable: true, color: [0.58, 0.6, 0.66] }),
   // Inside Doors: interior bulkhead doors — in temperature terms exactly AIR,
   // open or closed (R 0; roomInfo passes air straight through them). They divide
   // rooms visually and for movement only; the Ship's outside doors insulate.
@@ -151,8 +151,8 @@ export const BLOCKS: BlockDef[] = [
   def({ id: SAPLING, name: "Sapling", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: true, color: [0.3, 0.55, 0.3] }),
   // Curved Hull Plating: the same insulating hull metal, drawn as real geometry —
   // a corner-cut elbow and a top-slope — used to round the Ship's corners and spine.
-  def({ id: CURVED_HULL, name: "Curved Hull Plating", solid: true, opaque: true, transparent: false, emissive: false, R: 3, breakTime: 6, tool: "disassembler", minTier: 0, placeable: true, color: [0.52, 0.55, 0.6] }),
-  def({ id: HULL_SLOPE, name: "Hull Slope", solid: true, opaque: true, transparent: false, emissive: false, R: 3, breakTime: 6, tool: "disassembler", minTier: 0, placeable: true, color: [0.5, 0.53, 0.58] }),
+  def({ id: CURVED_HULL, name: "Curved Hull Plating", solid: true, opaque: true, transparent: false, emissive: false, R: 3, breakTime: 1.5, tool: "disassembler", minTier: 0, placeable: true, color: [0.52, 0.55, 0.6] }),
+  def({ id: HULL_SLOPE, name: "Hull Slope", solid: true, opaque: true, transparent: false, emissive: false, R: 3, breakTime: 1.5, tool: "disassembler", minTier: 0, placeable: true, color: [0.5, 0.53, 0.58] }),
   // Minerals: ore blocks that crust the walls of Caves (see gen.ts). Each drops
   // its Raw Ore; Campfires smelt Rods out of them. Cobalt veins run only in the
   // deepest stone — the Ship's repair hangs on them. Raw Ore is a material:

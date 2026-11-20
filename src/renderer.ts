@@ -20,6 +20,8 @@ import { SkyLighting, MAX_LIGHT, lidx } from "./light";
 const DOOR_BLOCKS = new Set([DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN]);
 /** blocks that render as crossed blade quads instead of cubes */
 const CROSS_BLOCKS = new Set([WHEAT_1, WHEAT_2, SAPLING]);
+/** ground material that looks soaked while a water cell stands on it */
+const SOIL_BLOCKS = new Set([DIRT, FARMLAND, SAND, SANDSTONE, GRAVEL, SALT]);
 
 const FACES: { dir: [number, number, number]; corners: number[][]; shade: number; uv: [number, number] }[] = [
   { dir: [0, 1, 0], corners: [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]], shade: 1.0, uv: [0, 2] },
@@ -1754,6 +1756,9 @@ export class Renderer {
         continue;
       }
       const def = BLOCKS[id];
+      // soil under water bakes a darker face shade — the mesher owns the chunk,
+      // so this rides in as vertex colour, never as a post pass
+      const wet = SOIL_BLOCKS.has(id) && isWater(world.get(wx, y + 1, wz));
       // a campfire only glows while it has fuel charges; empty ones are cold
       // charcoal — dark tile, opaque pass, no point light
       const coldFire = id === CAMPFIRE && (this.fires.get(wx + "," + y + "," + wz) ?? 0) <= 0;
@@ -1772,7 +1777,7 @@ export class Renderer {
         const ft = coldFire ? VI.campfire_cold : FACE_T[id * 6 + fi];
         const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
         const base = P.length / 3;
-        const sh = useE ? 1 : f.shade;
+        const sh = useE ? 1 : wet ? f.shade * 0.78 : f.shade;
         const lv = LM ? faceLight(nx, ny, nz) : 0;
         for (const cn of f.corners) {
           const [px, pz] = r ? rot2(cn[0], cn[2], r) : [cn[0], cn[2]];

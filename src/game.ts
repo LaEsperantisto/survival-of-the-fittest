@@ -209,9 +209,7 @@ export class Game {
     if (run) this.restore(run);
     else this.spawnStarterEntities();
     if (run) this.reconcileQuests(); // deeds from before the save, paid on return
-    // the wreck's ceiling lamps are worldgen (not deltas): light them explicitly
-    if (this.world.get(-6, 35, 0) === LAMP) this.renderer.addPointLight(-6, 35, 0, "lamp");
-    if (this.world.get(6, 35, 0) === LAMP) this.renderer.addPointLight(6, 35, 0, "lamp");
+    // the wreck's ceiling lamps have no Panel — dark until the player wires power
     // Sandstorm Breakers: the wreck's pylon is worldgen (not a delta) — scan the
     // hull; player-placed ones are already in the run's deltas.
     for (let x = -10; x <= 8; x++) for (let z = -14; z <= 14; z++) for (let y = 28; y <= 36; y++)
@@ -512,8 +510,9 @@ export class Game {
       beamEid: this.renderer.addBeam(p.x + 0.5, Math.round(heightAt(this.seed, p.x, p.z)), p.z + 0.5, 0xcc3322),
     }));
     this.won = !!run.won;
-    // re-light lamps and campfires that live in the saved deltas; a campfire
+    // re-light campfires that live in the saved deltas; a campfire
     // without fuel charges stays cold charcoal and keeps no light
+    // (Lamps wait for the power tick — they glow only on a live Grid)
     for (const [k, m] of this.world.deltas) {
       const [cx, cz] = k.split(",").map(Number);
       for (const [i, id] of m) {
@@ -522,8 +521,9 @@ export class Game {
         const lx = Math.floor(i / (CS * CH)), rem = i % (CS * CH);
         const wx = cx * CS + lx, wy = rem % CH, wz = cz * CS + Math.floor(rem / CH);
         if (isPower) { this.powerCells.set(`${wx},${wy},${wz}`, id); continue; }
+        if (id === LAMP) continue; // the power tick relights it if a live Panel feeds it
         if (id === CAMPFIRE && (this.campCharges.get(`${wx},${wy},${wz}`) ?? 0) <= 0) continue;
-        this.renderer.addPointLight(wx, wy, wz, id === LAMP ? "lamp" : "fire");
+        this.renderer.addPointLight(wx, wy, wz, "fire");
       }
     }
     this.rebuildPower();
@@ -2034,7 +2034,12 @@ export class Game {
       const pk = `${x},${y},${z}`;
       this.powerCells.delete(pk); this.genFuel.delete(pk); this.batteryCharge.delete(pk);
       if (id === ELEC_LAMP) this.renderer.removePointLight(x, y, z);
-      if (id === POWER_PANEL) this.trippedPanels.delete(pk);
+      if (id === POWER_PANEL) {
+        this.trippedPanels.delete(pk);
+        // the Lamps fed by this Panel just lost their feed
+        for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const)
+          if (this.world.get(x + dx, y + dy, z + dz) === LAMP) this.renderer.removePointLight(x + dx, y + dy, z + dz);
+      }
       this.rebuildPower();
     }
     this.world.set(x, y, z, AIR);
@@ -2647,9 +2652,8 @@ export class Game {
         else hud.toast("The Core hums next to the beacon. Power runs — now wake the wingtip engines.");
       } else hud.toast("The relay needs the Core right next to a Save Beacon.");
     }
-    if (def.block === LAMP) this.renderer.addPointLight(bx, by, bz, "lamp");
-    // a fresh campfire is cold kindling — feed it before it glows
-    else if (def.block === THRUSTER_LIT) this.renderer.addPointLight(bx, by, bz, "fire"); // a carried engine keeps burning
+    // a LAMP only lights once the power tick finds a live Panel beside it
+    if (def.block === THRUSTER_LIT) this.renderer.addPointLight(bx, by, bz, "fire"); // a carried engine keeps burning
     if (def.block === STORM_BREAKER) this.breakers.add(`${bx},${by},${bz}`);
     if (isPowerBlock(def.block)) {
       const pk = `${bx},${by},${bz}`;
@@ -2800,7 +2804,7 @@ export class Game {
     }
   }
 
-  /** E at a ripe crop: pick it. Melons re-ripen on the vine; wheat clears back to Farmland. */
+  /** E at a ripe crop: pick it. Melons re-ripen on the vine; wheat leaves the Farmland it stood on. */
   private harvest(x: number, y: number, z: number, id: number) {
     if (id === MELON_2) {
       this.world.set(x, y, z, MELON_1);
@@ -2810,7 +2814,7 @@ export class Game {
       this.audio.pickup();
       hud.toast("Dune Melon picked — the plant keeps growing.");
     } else if (id === WHEAT_2) {
-      this.world.set(x, y, z, FARMLAND);
+      this.world.set(x, y, z, AIR); // the tilled Farmland under the cut stays put
       this.crops.delete(`${x},${y},${z}`);
       this.giveOrDrop("wheat", 2);
       this.giveOrDrop("seed_wheat", 1);
@@ -3012,6 +3016,17 @@ export class Game {
       if (on && !g.powered) for (const id of g.cells.values())
         if (id === ELEC_LAMP) { this.questBump("grid"); break; }
       g.powered = on;
+      // a LAMP hanging off a live Panel glows; a Lamp with no live Panel is dead
+      for (const [pk, pid] of g.cells) {
+        if (pid !== POWER_PANEL) continue;
+        const [px, py, pz] = pk.split(",").map(Number);
+        for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const) {
+          const lx = px + dx, ly = py + dy, lz = pz + dz;
+          if (this.world.get(lx, ly, lz) !== LAMP) continue;
+          if (on) { if (!this.renderer.hasPointLight(lx, ly, lz)) this.renderer.addPointLight(lx, ly, lz, "lamp"); }
+          else this.renderer.removePointLight(lx, ly, lz);
+        }
+      }
     }
     this.machineAcc += step;
     if (this.machineAcc >= 1) { this.machineAcc = 0; this.runMachines(); }
@@ -3148,7 +3163,7 @@ export class Game {
         if (slots && slots[slots.length - 1]?.itemId === "wheat") slots.pop();
         return false;
       }
-      this.world.set(x, y - 1, z, FARMLAND);
+      this.world.set(x, y - 1, z, AIR); // the Farmland under the cut stays put
       this.crops.delete(ck);
     } else if (cid === CACTUS_FRUIT) {
       if (!this.putInChest(x, y + 1, z, "prickly_pear")) return false;

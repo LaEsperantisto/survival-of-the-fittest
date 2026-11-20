@@ -24,6 +24,7 @@ export class World {
   rots = new Map<string, number>();
   /** cells whose water situation may have changed (Minecraft-style flow sim). */
   private waterQ = new Set<string>();
+  private waterGen = 0; // counts propagation steps; odd steps skip the fall
   gen: Structures;
 
   constructor(public seed: number, public worldMode: "easy" | "hard" = "easy") {
@@ -187,11 +188,14 @@ export class World {
     let ops = 0;
     const wave = [...this.waterQ];
     this.waterQ.clear();
+    // vertical steps only run on every other propagation generation — a column
+    // of water falls at half the speed it spreads sideways
+    const gen = this.waterGen++ & 1;
     for (const k of wave) {
       if (ops >= budget) break;
       const [x, y, z] = k.split(",").map(Number);
       ops += this.drainFlow(x, y, z, budget - ops);
-      ops += this.floodFrom(x, y, z, budget - ops);
+      ops += this.floodFrom(x, y, z, budget - ops, gen);
     }
     return ops;
   }
@@ -224,7 +228,7 @@ export class World {
     return waterStrength(this.get(x, y + 1, z)) > 0;
   }
 
-  private floodFrom(sx: number, sy: number, sz: number, budget: number): number {
+  private floodFrom(sx: number, sy: number, sz: number, budget: number, gen = 0): number {
     let ops = 0;
     // the queued cell only — each call advances the front exactly one cell;
     // placements re-queue themselves for the next generation (see set())
@@ -239,9 +243,11 @@ export class World {
         s = 7;
       }
       if (!s) continue;
-      if (y > 0) { // fall straight down: a Source sends level 7, flow keeps its level
+      if (gen === 0 && y > 0) { // fall straight down: a Source sends level 7, flow keeps its level
         if ((below === AIR || isWater(below)) && waterStrength(below) < s)
           this.set(x, y - 1, z, flowId(s === 8 ? 7 : s));
+      } else if (gen === 1 && y > 0 && (below === AIR || isWater(below)) && waterStrength(below) < s) {
+        this.queueWater(x, y, z); // off-gen: keep this cell in the wave so the fall isn't lost
       }
       // flow only spreads sideways when it stands on something — water must
       // reach the ground first, instead of floating across open air
