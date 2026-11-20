@@ -210,7 +210,7 @@ A full Water Canister heated at a lit Campfire — it costs the fire one fuel ch
 _Avoid_: canteen, thermos, heat pack (the wearable is the Hot Pad idea, dead)
 
 **Campfire**:
-A fuel-charged heat source. It glows and warms only while it has charges; an empty fire is cold charcoal — no light, no glow, no smelting. Feed it (E, holding fuel): a Wood Log adds 2 charges, Kindling half a charge. Charges are spent by use — heating and smelting — never by decay. Its Fuel Slot also takes fuel pushed into it by a powered Inserter.
+a heat source and cooking station. Its Fuel Slot holds real fuel items — a Wood Log carries 2 charges, a Deadwood 3, Kindling half — and charges burn down slot by slot (the art shows the charred remainder); with no charges left the fire is cold charcoal — no light, no glow, no cooking. A lit fire glows, warms whoever stands close, and cooks: an Input Slot job costs one fuel charge up front and takes six seconds, finished cooking lands in the Output Slot. Pressing <b>E</b> at a Campfire opens its panel inside the Inventory. A powered Inserter can also push fuel straight into the Fuel Slot. Charges are spent by use — warming and cooking — never by decay.
 _Avoid_: bonfire, furnace
 
 **Water Bucket**:

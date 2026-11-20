@@ -49,6 +49,13 @@ export function deleteWorld(id: string) {
   localStorage.removeItem("sotf:w:" + id);
 }
 
+export interface FireSave {
+  lit: boolean; drip?: number;
+  fuel: { itemId: string; x: number; y: number; rot?: boolean; charges?: number }[];
+  input: { itemId: string; x: number; y: number; rot?: boolean; charges?: number; cook?: number; done?: boolean }[];
+  output: { itemId: string; x: number; y: number; rot?: boolean; charges?: number }[];
+}
+
 export interface RunSave {
   v: 1 | 2;
   seedStr: string;
@@ -68,7 +75,7 @@ export interface RunSave {
   won?: boolean;
   caches: { x: number; y: number; z: number; kind?: "death" | "chest" | "reward"; items: { itemId: string; count: number; charges?: number }[] }[];
   chests?: { cells: string; slots: { itemId: string; count?: number; x: number; y: number; rot?: boolean; blockRot?: number; charges?: number }[] }[];
-  campfires: Record<string, number>;
+  campfires: Record<string, number | FireSave>;
   battery?: [string, number][];      // Battery cell -> stored Grid units
   genFuel?: [string, number][];      // Wood Generator cell -> burn seconds left
   trippedPanels?: string[];          // Power Panel cells latched off (ADR-0007)

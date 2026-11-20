@@ -190,8 +190,9 @@ BLOCK_TO_ITEM[STORM_BREAKER_HUSK] = "storm_breaker_broken";
 
 // ---------------- Inventory Grid ----------------
 
-/** One slot holds exactly one item — items never stack, anywhere. */
-export interface Slot { itemId: string; x: number; y: number; rot?: boolean; charges?: number; blockRot?: number; }
+/** One slot holds exactly one item — items never stack, anywhere.
+ *  `charges`: fuel burnt left in a Campfire fuel slot; `cook`/`done`: Campfire cooking job progress. */
+export interface Slot { itemId: string; x: number; y: number; rot?: boolean; charges?: number; blockRot?: number; cook?: number; done?: boolean; }
 
 /** Effective footprint of a placed item (rot swaps w/h). */
 export function slotDims(s: Slot): { w: number; h: number } {
@@ -319,6 +320,61 @@ export class Inventory {
   }
 
   has(itemId: string, n = 1): boolean { return this.countOf(itemId) >= n; }
+
+  /** Order instances row-major: identical items adjacent, groups alphabetical by display
+   *  name, worn charges first within a group. Rotations stay fixed; a piece with no free
+   *  footprint keeps its original cell, and if that collides, the whole sort reverts.
+   *  In place: the slots array keeps its identity (the chest map holds it by reference). */
+  sort(): void {
+    const snap = this.slots.map((s) => ({ s, x: s.x, y: s.y, rot: s.rot }));
+    const order = snap.map((o) => o.s).sort((a, b) =>
+      a.itemId === b.itemId ? (a.charges ?? 0) - (b.charges ?? 0)
+        : ITEMS[a.itemId].name.localeCompare(ITEMS[b.itemId].name));
+    const pos = new Map(snap.map((o) => [o.s, o] as const));
+    const overlaps = (s: Slot, list: Slot[]): boolean => {
+      const d = slotDims(s);
+      for (const t of list) {
+        const td = slotDims(t);
+        if (s.x < t.x + td.w && t.x < s.x + d.w && s.y < t.y + td.h && t.y < s.y + d.h) return true;
+      }
+      return false;
+    };
+    const tryPlace = (s: Slot, taken: Slot[]): boolean => {
+      const d = slotDims(s);
+      for (let y = 0; y + d.h <= this.h; y++) for (let x = 0; x + d.w <= this.w; x++) {
+        s.x = x; s.y = y;
+        if (!overlaps(s, taken)) { taken.push(s); return true; }
+      }
+      return false;
+    };
+    const placed: Slot[] = [], stuck: Slot[] = [];
+    for (const s of order) if (!tryPlace(s, placed)) stuck.push(s);
+    if (stuck.length) {
+      for (const s of stuck) { const p = pos.get(s)!; s.x = p.x; s.y = p.y; s.rot = p.rot; }
+      const taken = stuck.slice();
+      for (const s of order) {
+        if (stuck.includes(s)) continue;
+        if (!tryPlace(s, taken)) {
+          const p = pos.get(s)!; s.x = p.x; s.y = p.y; s.rot = p.rot; // stuck too: stays put
+          taken.push(s);
+        }
+      }
+    }
+    // no two items may end up sharing a cell; if the in-place struts collided, revert
+    for (let i = 0; i < this.slots.length; i++) {
+      if (overlaps(this.slots[i], this.slots.slice(0, i).concat(this.slots.slice(i + 1)))) {
+        for (const o of snap) { o.s.x = o.x; o.s.y = o.y; o.s.rot = o.rot; }
+        this.slots.length = 0;
+        for (const o of snap) this.slots.push(o.s);
+        return;
+      }
+    }
+    // selection follows the item, not the array index
+    const sel = this.slots[this.selected];
+    this.slots.length = 0;
+    for (const s of order) this.slots.push(s);
+    if (sel) this.selected = this.slots.indexOf(sel);
+  }
 
   /** Held item = first tool, else first placeable, else first. Managed by selection index. */
   selected = 0;

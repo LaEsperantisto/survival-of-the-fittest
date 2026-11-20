@@ -2,7 +2,7 @@
 // items sample the world texture atlas; hand-drawn items (canisters, tools,
 // backpacks, rods, visors) are painted per footprint, then sliced into 16px
 // cells matching the item's Inventory Grid shape (row-major, unrotated).
-import { DOOR_UPPER, DOOR_CLOSED, BENCH, BENCH_EXT, BEACON, CAMPFIRE, BED, BED_EXT } from "./blocks";
+import { DOOR_UPPER, DOOR_CLOSED, BENCH, BENCH_EXT, BEACON, CAMPFIRE, BED, BED_EXT, WOOD, DEADWOOD } from "./blocks";
 import { ITEMS } from "./items";
 import { TILE_SRC, TILE_PX, getAtlasCanvas } from "./renderer";
 
@@ -38,6 +38,8 @@ const poly = (g: CanvasRenderingContext2D, pts: number[][], c: string) => {
 export function fuelTier(id: string, charges?: number): string {
   if (id === "head_lantern") return !charges ? "0" : charges <= 2 ? "1" : "2";
   if (id === "body_regulator") return !charges ? "0" : charges <= 1 ? "1" : "2";
+  // logs and dead wood sit in the Campfire's Fuel Slot burning down charge by charge
+  if (id === "wood_log" || id === "deadwood") return charges === undefined ? "" : charges < 1 ? "0" : charges < 2 ? "1" : "";
   return "";
 }
 
@@ -517,6 +519,18 @@ function drawArt(id: string, w: number, h: number, color: string, tier = ""): HT
       rect(g, 5, 2, 1, 3, "#8a98a8"); rect(g, 10, 2, 1, 3, "#8a98a8"); // bail ears
       line(g, 5, 3, 11, 3, "#8a98a8", 1);        // handle
       if (full) rect(g, 5, 7, 6, 1, "#5fa3ea");
+      return cv;
+    }
+    case "wood_log": case "deadwood": {
+      blit(g, 0, 0, id === "wood_log" ? WOOD : DEADWOOD);
+      if (tier === "1") { // burned down halfway: charred end
+        rect(g, 9, 2, 6, 12, "#2c2622");
+        rect(g, 10, 5, 4, 2, "#48392c");
+      } else if (tier === "0") { // a smoking stub of coals
+        rect(g, 0, 0, 16, 16, "#2c2622");
+        rect(g, 3, 8, 10, 5, "#241f1b");
+        rect(g, 5, 9, 2, 2, "#d8612f"); rect(g, 9, 10, 2, 2, "#a34a22");
+      }
       return cv;
     }
     case "kindling": // leafy twigs bundled

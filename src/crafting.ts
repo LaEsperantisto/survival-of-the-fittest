@@ -101,7 +101,11 @@ export const SMELT: { in: string; out: string; n?: number }[] = [
   { in: "iron_ore", out: "metal", n: 2 },
   { in: "copper_ore", out: "copperrod", n: 2 },
   { in: "cobalt_ore", out: "cobaltrod", n: 2 },
+  { in: "canister_full", out: "hot_water_pouch" }, // sealed hot for the cold hours
 ];
+
+/** What a fuel item feeds a Campfire, in charges (a lit fire drips 1 charge per 10 real minutes). */
+export const FIRE_FUEL: Record<string, number> = { kindling: 0.5, wood_log: 2, deadwood: 3 };
 
 export function canCraft(inv: Inventory, r: Recipe): boolean {
   return Object.entries(r.needs).every(([id, n]) => inv.has(id, n));

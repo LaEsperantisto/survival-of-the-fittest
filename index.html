@@ -201,6 +201,23 @@
     </div>
   </div>
   <div id="inv-side"></div>
+  <div id="fire-section" class="hidden">
+    <h3>Campfire <span id="fire-gauge"></span></h3>
+    <div id="fire-row">
+      <div id="fire-art"></div>
+      <button id="btn-fire">Light fire</button>
+      <div id="fire-lamp-wrap" class="hidden">
+        <span id="fire-lamp-info"></span>
+        <button id="btn-fire-lamp">Refuel Lantern</button>
+      </div>
+    </div>
+    <div id="fire-grids">
+      <div class="fire-col"><div class="fire-lab">Fuel Slot</div><div id="fire-fuel-grid"></div></div>
+      <div class="fire-col"><div class="fire-lab">Input Slot</div><div id="fire-input-grid"></div></div>
+      <div class="fire-col"><div class="fire-lab">Output Slot</div><div id="fire-output-grid"></div></div>
+    </div>
+    <div class="fire-hint">Drag fuel into the Fuel Slot, cookables into the Input Slot; finished cooking lands in the Output Slot. Each cooking job costs one fuel charge; a lit fire also burns one charge every 10 minutes.</div>
+  </div>
   <div id="inv-craft-bar"><button id="btn-inv-craft">Craft by hand</button></div>
   <div id="inv-craft" class="hidden"></div>
 </div>
@@ -209,9 +226,6 @@
   <button class="close-btn close-x" aria-label="Close">✕</button>
   <h3 id="craft-title">Crafting Bench</h3>
   <div id="craft-list"></div>
-  <div id="smelt-ui" class="hidden">
-    <div>Fuel: <span id="smelt-fuel"></span> <button id="btn-addfuel">Add wood</button></div>
-  </div>
 </div>
 
 <div id="ui-cache" class="panel hidden">

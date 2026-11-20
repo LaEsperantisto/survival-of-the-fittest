@@ -267,7 +267,7 @@ const DESKTOP_KEYS: [string, string][] = [
   ["Falls", "falling more than 4 blocks hurts — about 16 blocks without armour is fatal; land in water or climb down"],
   ["Mouse", "look (click the world to capture the pointer)"], ["Left click, hold", "mine a block or hit a mob (right tool tier matters)"],
   ["Metal Sword", "Crafting Bench: 2 Iron Rods + 1 Dead Wood — far harder hits, longer reach (snake dies in 2 swings, rat in 1)"],
-  ["Right click", "place the selected block"], ["E", "interact: doors, beacon save, bench, campfire (hold Wood or Kindling and press E to feed the fire), Heat Regulator (set body to 37 °C), oasis / water-station refill, death caches, trade with a camp Trader, Broken Thruster on a wingtip (needs a Thruster Nozzle)"],
+  ["Right click", "place the selected block"], ["E", "interact: doors, beacon save, bench, campfire (opens its Cooking panel: Fuel, Input and Output Slots), Heat Regulator (set body to 37 °C), oasis / water-station refill, death caches, trade with a camp Trader, Broken Thruster on a wingtip (needs a Thruster Nozzle)"],
   ["R", "turn a held built block a quarter turn (Crafting Bench, Bed, Thruster, walls …) — it places facing that way"],
   ["G", "toss the held item away"],
   ["T", "toggle the Head Lantern — it burns one fuel charge per 4 game-minutes; refuel it at a Campfire"],

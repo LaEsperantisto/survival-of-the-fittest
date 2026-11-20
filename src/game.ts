@@ -13,11 +13,11 @@ import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
 import { heightAt, biomeAt, TOWN_L, CAMP_L, CAVE_MOUTH_L, OUTPOST_L, OASIS_L, CANISTER_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
 import { offersFor, Offer } from "./trades";
-import { RECIPES, SMELT, canCraft, doCraft } from "./crafting";
+import { RECIPES, SMELT, canCraft, doCraft, FIRE_FUEL } from "./crafting";
 import { QUESTS, currentQuest, loadQuestState, questEvent, recordDeed, reconcile, type QuestDef, type QuestState } from "./quests";
 import { LESSON_BY_ID, LESSONS, loadIdSet } from "./chronicle";
 import { Tutorial, INTRO_CINE, type CineSeg } from "./tutorial";
-import { WorldMeta, RunSave, saveRun, exportRun, bestScore, submitBest, Settings } from "./save";
+import { WorldMeta, RunSave, FireSave, saveRun, exportRun, bestScore, submitBest, Settings } from "./save";
 import { itemTiles, itemArtUrl } from "./icons";
 import * as hud from "./hud";
 
@@ -26,6 +26,20 @@ const isDoorHalf = (i: number) => { const g = DOOR_GROUP.get(i); return g !== un
 // quarter-turn index -> partner-cell offset, matching the renderer's bench
 // orientation indexing (0=+X, 1=+Z, 2=-X, 3=-Z)
 const ROT_DIRS: ReadonlyArray<readonly [number, number]> = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+
+/** One Campfire's whole station: staging grids (fuel 2×2, input/output 1×3 each),
+ *  the lit flag, and the idle-burn accumulator. */
+export interface FireState {
+  fuel: Inventory;
+  input: Inventory;
+  output: Inventory;
+  lit: boolean;
+  drip: number; // seconds banked toward the next idle charge
+}
+
+// a lit fire drips one fuel charge per 10 real minutes; one cooking job takes 6s and costs 1 charge
+const FIRE_DRIP = 600;
+const COOK_SECONDS = 6;
 
 // Falls: the first 4 blocks are free, ~16 without armour is lethal.
 const FALL_GRACE = 4, FALL_DMG_PER_BLOCK = 8.5;
@@ -64,8 +78,13 @@ export class Game {
   caches: DeathCache[] = [];
   chests = new Map<string, Slot[]>();   // linked-chest cluster key -> grid slots
   chestInv: Inventory | null = null;    // live view of the open chest's cluster
-  private gridFocus: "inv" | "chest" = "inv";
-  campCharges = new Map<string, number>();
+  private gridFocus: "inv" | "chest" | "fire-in" | "fire-fuel" | "fire-out" = "inv";
+  /** Campfire cooking stations keyed by "x,y,z" — the staging grids are live Inventory instances. */
+  fires = new Map<string, FireState>();
+  /** The renderer's fire gauges: 0 = cold charcoal tile, >0 = flame (a lit fire only). */
+  gauges = new Map<string, number>();
+  fire: FireState | null = null; // the station whose panel is open
+  openFire: [number, number, number] | null = null;
   beaconMarks: { x: number; y: number; z: number }[] = [];
   // ---- the Map kit and the lessons (save v2) ----
   worldMode: "easy" | "hard" = "easy";
@@ -102,7 +121,7 @@ export class Game {
   private prevHp = 100;
   private lastHitFlash = -10;
   private lastDmgAt = -10;
-  ui: null | "inv" | "bench" | "smelt" | "cache" | "liftoff" | "trade" = null;
+  ui: null | "inv" | "bench" | "cache" | "liftoff" | "trade" = null;
   openCacheId: number | null = null;
   openStation: [number, number, number] | null = null;
   private breaking: { x: number; y: number; z: number; need: number; elapsed: number } | null = null;
@@ -199,7 +218,7 @@ export class Game {
     this.survival = new Survival(this.seed ^ 7);
     this.quests = loadQuestState(run?.quest);
     this.renderer = new Renderer(parent);
-    this.renderer.fires = this.campCharges;
+    this.renderer.fires = this.gauges;
     this.player = new Player(this.world);
     this.inv.learn = (id) => this.codex.add(id); // the Codex learns on first pickup, not at save
     this.timeSec = run?.time ?? DAY_SECONDS * 0.7; // new worlds start mid-afternoon, near the day's hottest
@@ -497,12 +516,28 @@ export class Game {
       const cache: DeathCache = { id: this.entitySeq++, x: c.x, y: c.y, z: c.z, kind, items: c.items.map((i) => ({ ...i })) };
       this.caches.push(cache); // crate, ring and beam get (re)built by the marker loop
     }
-    this.campCharges.clear();
-    for (const [k, v] of Object.entries(run.campfires ?? {})) this.campCharges.set(k, v);
+    this.fires.clear();
+    this.gauges.clear();
+    for (const [k, v] of Object.entries(run.campfires ?? {})) {
+      const f = Game.newFire();
+      if (typeof v === "number") {
+        // old saves model the coals as a raw charge pool: reshape it into Log instances
+        for (const s of Game.legacyFuel(v)) f.fuel.addSlot(s);
+        f.lit = v > 0;
+      } else {
+        f.lit = !!v.lit;
+        f.drip = v.drip ?? 0;
+        for (const s of v.fuel ?? []) f.fuel.addSlot({ ...s });
+        for (const s of v.input ?? []) f.input.addSlot({ ...s });
+        for (const s of v.output ?? []) f.output.addSlot({ ...s });
+      }
+      this.gauges.set(k, f.lit ? Game.fireFuel(f) : 0);
+      this.fires.set(k, f);
+    }
     this.batteryCharge = new Map(run.battery ?? []);
     this.genFuel = new Map(run.genFuel ?? []);
     this.trippedPanels = new Set(run.trippedPanels ?? []);
-    this.renderer.fires = this.campCharges;
+    this.renderer.fires = this.gauges;
     this.world.loadRots(run.rots ?? {});
     this.crops = new Map(run.crops ?? []);
     if (run.lastSleep) this.lastSleep = run.lastSleep;
@@ -525,7 +560,7 @@ export class Game {
         const wx = cx * CS + lx, wy = rem % CH, wz = cz * CS + Math.floor(rem / CH);
         if (isPower) { this.powerCells.set(`${wx},${wy},${wz}`, id); continue; }
         if (id === LAMP) continue; // the power tick relights it if a live Panel feeds it
-        if (id === CAMPFIRE && (this.campCharges.get(`${wx},${wy},${wz}`) ?? 0) <= 0) continue;
+        if (id === CAMPFIRE && !this.fireLit(`${wx},${wy},${wz}`)) continue;
         this.renderer.addPointLight(wx, wy, wz, "fire");
       }
     }
@@ -563,7 +598,12 @@ export class Game {
       won: this.won || undefined,
       caches: this.caches.map((c) => ({ x: c.x, y: c.y, z: c.z, kind: c.kind, items: c.items.map((i) => ({ ...i })) })),
       chests: [...this.chests].map(([cells, slots]) => ({ cells, slots: slots.map((s) => ({ ...s })) })),
-      campfires: Object.fromEntries(this.campCharges),
+      campfires: Object.fromEntries([...this.fires].map(([k, f]) => [k, {
+        lit: f.lit, drip: Math.floor(f.drip),
+        fuel: f.fuel.slots.map((s) => ({ ...s })),
+        input: f.input.slots.map((s) => ({ ...s })),
+        output: f.output.slots.map((s) => ({ ...s })),
+      } satisfies FireSave])),
       battery: [...this.batteryCharge],
       genFuel: [...this.genFuel],
       trippedPanels: [...this.trippedPanels],
@@ -1304,7 +1344,7 @@ export class Game {
           this.temp.rot = !this.temp.rot; // temp is off-grid: always free to rotate
           this.audio.place();
         } else {
-          const tgt = this.gridFocus === "chest" && this.chestInv ? this.chestInv : this.inv;
+          const tgt = this.focusedGrid();
           const s = tgt.selectedSlot();
           if (s && !tgt.rotate(s)) { hud.toast("No room to rotate."); this.audio.error(); }
         }
@@ -1679,6 +1719,8 @@ export class Game {
       this.updateBreaking(dt);
       this.updatePickups();
     }
+    // the Campfire's cooking job keeps running whether or not a panel is open
+    if (!this.cine) this.tickFires(dt);
     this.audio.heartbeat(dt, this.survival.health);
 
     if (this.cine) this.cineFrame(dt);
@@ -1862,8 +1904,7 @@ export class Game {
       if (id === BEACON) return "E: Save game (respawn point)";
       if (id === BENCH || id === BENCH_EXT) return "E: Craft";
       if (id === ARMORY) return "E: Forge armour and gear";
-      if (id === CAMPFIRE) return this.canHeatWater(t.hit.x, t.hit.y, t.hit.z) ? "E: Heat the water"
-        : this.canFeed(t.hit.x, t.hit.y, t.hit.z) ? "E: Feed the fire" : "E: Smelt";
+      if (id === CAMPFIRE) return "E: Cook at the Campfire";
       if (id === REGULATOR) return "E: Draw neutral air (37 °C)";
       if (id === POWER_PANEL) return this.trippedPanels.has(`${t.hit.x},${t.hit.y},${t.hit.z}`)
         ? "E: Reset the tripped Power Panel" : "E: Power Panel — check the meters";
@@ -2028,7 +2069,17 @@ export class Game {
       this.audio.blockBreak();
       return;
     }
-    if (id === CAMPFIRE) this.campCharges.delete(`${x},${y},${z}`);
+    if (id === CAMPFIRE) {
+      const key = `${x},${y},${z}`;
+      const f = this.fires.get(key);
+      if (f) {
+        for (const g of [f.fuel, f.input, f.output])
+          for (const s of g.slots) this.dropEntity(s.itemId, 1, 2, s.charges);
+        this.fires.delete(key);
+        if (this.fire === f) this.closeUI();
+      }
+      this.syncFire(key);
+    }
     if (id === CHEST) {
       // breaking one chest of a linked cluster: the grid shrinks; contents that
       // no longer fit spill onto the sand. The chest block itself drops too.
@@ -2796,9 +2847,17 @@ export class Game {
       if (id === BENCH || id === BENCH_EXT) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("bench"); return; }
       if (id === ARMORY) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("armory"); return; }
       if (id === CAMPFIRE) {
-        if (this.canHeatWater(x, y, z)) { this.heatWater(x, y, z); return; }
-        if (this.canFeed(x, y, z)) { this.feed(x, y, z); return; }
-        this.openStation = [x, y, z]; this.ui = "smelt"; this.unlockPointer(); this.renderCraft("smelt"); return;
+        this.openFire = [x, y, z];
+        this.fire = this.fireAt(x, y, z);
+        this.gridFocus = "inv";
+        this.ui = "inv";
+        this.unlockPointer();
+        this.audio.door();
+        // show before rendering: fitCells measures the panel, and a hidden
+        // panel measures zero, so cells would keep their stale size on open
+        document.getElementById("ui-inventory")!.classList.remove("hidden");
+        this.renderInv();
+        return;
       }
       if (id === THRUSTER) {
         if (!this.inv.has("thruster_nozzle", 1)) {
@@ -2905,7 +2964,7 @@ export class Game {
     let best = 0;
     for (let dx = -6; dx <= 6; dx++) for (let dz = -6; dz <= 6; dz++) for (let dy = -2; dy <= 2; dy++) {
       if (this.world.get(fx + dx, fy + dy, fz + dz) !== CAMPFIRE) continue;
-      if ((this.campCharges.get(`${fx + dx},${fy + dy},${fz + dz}`) ?? 0) <= 0) continue; // cold charcoal warms nothing
+      if (!this.fireLit(`${fx + dx},${fy + dy},${fz + dz}`)) continue; // cold charcoal warms nothing
       const d = Math.max(Math.abs(dx), Math.abs(dz));
       best = Math.max(best, d <= 4 ? 18 : 9);
     }
@@ -3165,15 +3224,19 @@ export class Game {
     if (!src || !src.length) return false;
     const bx = x - dx, bz = z - dz, bid = this.world.get(bx, y, bz);
     if (bid === CAMPFIRE) {
-      // a Campfire's Fuel Slot: any fuel push charges the fire directly
-      const i = src.findIndex((s) => s.itemId === "wood_log" || s.itemId === "kindling");
-      if (i < 0) return false;
-      const was = src[i].itemId;
-      src.splice(i, 1);
+      // route by kind: a fuel item joins the fire's fuel zone, anything else its input grid
+      const f = this.fireAt(bx, y, bz);
       const key = `${bx},${y},${bz}`;
-      this.campCharges.set(key, (this.campCharges.get(key) ?? 0) + (was === "wood_log" ? 2 : 0.5));
-      this.syncFire(bx, y, bz);
-      return true;
+      for (let i = 0; i < src.length; i++) {
+        const s = src[i];
+        const dest = FIRE_FUEL[s.itemId] !== undefined ? f.fuel : f.input;
+        src.splice(i, 1);
+        if (!Game.placeSlotFree(dest, s)) { src.splice(i, 0, s); continue; }
+        if (dest === f.fuel && s.charges === undefined) s.charges = FIRE_FUEL[s.itemId];
+        this.syncFire(key);
+        return true;
+      }
+      return false;
     }
     if (bid !== CHEST) return false;
     if (!this.putInChest(bx, y, bz, src[0].itemId)) return false; // destination full: nothing moves
@@ -3374,51 +3437,177 @@ export class Game {
     this.renderHeld();
   }
 
-  /** Heating a full canister at a LIT Campfire: the held item must be the
-   *  canister itself, and the fire must have a fuel charge to spend. */
-  private canHeatWater(x: number, y: number, z: number): boolean {
-    return this.inv.selectedSlot()?.itemId === "canister_full" && (this.campCharges.get(`${x},${y},${z}`) ?? 0) > 0;
+  // ---------------- Campfire cooking stations ----------------
+
+  private static newFire(): FireState {
+    const f: FireState = { fuel: new Inventory(), input: new Inventory(), output: new Inventory(), lit: false, drip: 0 };
+    f.fuel.w = 2; f.fuel.h = 2;
+    f.input.w = 3; f.input.h = 1;
+    f.output.w = 3; f.output.h = 1;
+    return f;
   }
 
-  /** Holding Wood or Kindling in front of a Campfire: E stokes the coals
-   *  instead of opening the smelter — Wood +2 charges, Kindling +0.5. */
-  private canFeed(x: number, y: number, z: number): boolean {
-    const s = this.inv.selectedSlot();
-    return !!s && (s.itemId === "wood_log" || s.itemId === "kindling");
+  /** Old saves store the coals as a charge number: reshape it into Log instances
+   *  (2 charges each; the odd charge is a half-burnt Log; below one, a Kindling). */
+  private static legacyFuel(n: number): Slot[] {
+    const out: Slot[] = [];
+    if (n <= 0) return out;
+    if (n < 1) { out.push({ itemId: "kindling", x: 0, y: 0, charges: n }); return out; }
+    for (let i = 0; i < Math.floor(n / 2); i++) out.push({ itemId: "wood_log", x: 0, y: 0, charges: 2 });
+    if (n % 2) out.push({ itemId: "wood_log", x: 0, y: 0, charges: 1 });
+    return out;
   }
-  private feed(x: number, y: number, z: number) {
-    const s = this.inv.selectedSlot();
-    if (!s || !this.canFeed(x, y, z)) return;
-    const was = `${s.itemId === "wood_log" ? "log" : "kindling"}`;
-    const add = s.itemId === "wood_log" ? 2 : 0.5;
-    this.inv.removeItem(s.itemId, 1);
+
+  private fireAt(x: number, y: number, z: number): FireState {
     const key = `${x},${y},${z}`;
-    const fuel = (this.campCharges.get(key) ?? 0) + add;
-    this.campCharges.set(key, fuel);
-    this.syncFire(x, y, z);
-    this.audio.place();
-    this.renderHeld();
-    hud.toast(fuel > 0 ? `The ${was} catches — the fire breathes again.` : `The ${was} smoulders; the fire needs more.`);
+    let f = this.fires.get(key);
+    if (!f) { f = Game.newFire(); this.fires.set(key, f); }
+    return f;
   }
-  /** Keep the campfire's point light in step with its fuel charges. */
-  private syncFire(x: number, y: number, z: number) {
-    const lit = (this.campCharges.get(`${x},${y},${z}`) ?? 0) > 0;
+
+  private static fireFuel(f: FireState): number {
+    let t = 0;
+    for (const s of f.fuel.slots) t += s.charges ?? 0;
+    return t;
+  }
+
+  /** A fire warms, glows and cooks only when lit and still holding fuel. */
+  private fireLit(key: string): boolean {
+    const f = this.fires.get(key);
+    return !!f && f.lit && Game.fireFuel(f) > 0;
+  }
+
+  /** Give every fuel slot its charge value (a half-burnt Log keeps what's left). */
+  private static fuelSanity(f: FireState) {
+    for (const s of f.fuel.slots) if (s.charges === undefined) s.charges = FIRE_FUEL[s.itemId] ?? 0;
+    for (let i = f.fuel.slots.length - 1; i >= 0; i--) if ((f.fuel.slots[i].charges ?? 0) <= 0) f.fuel.slots.splice(i, 1);
+  }
+
+  /** Drain `amt` charges from the front of the fuel zone; a Log can burn down halfway. */
+  private spendFuel(f: FireState, amt: number): boolean {
+    if (Game.fireFuel(f) < amt) return false;
+    for (const s of f.fuel.slots) {
+      if (amt <= 0) break;
+      const c = s.charges ?? 0;
+      if (c <= 0) continue;
+      const use = Math.min(c, amt);
+      s.charges = c - use;
+      amt -= use;
+    }
+    for (let i = f.fuel.slots.length - 1; i >= 0; i--) if ((f.fuel.slots[i].charges ?? 0) <= 0) f.fuel.slots.splice(i, 1);
+    return true;
+  }
+
+  /** Keep the point light, the cold/lit charcoal tile and the gauge in step with the fire. */
+  private syncFire(key: string) {
+    const [x, y, z] = key.split(",").map(Number);
+    const lit = this.fireLit(key);
+    const total = lit ? Game.fireFuel(this.fires.get(key)!) : 0;
+    if (this.gauges.get(key) !== total) {
+      this.gauges.set(key, total);
+      this.world.dirty.add(Math.floor(x / CS) + "," + Math.floor(z / CS)); // cold vs lit charcoal
+    }
     if (lit && !this.renderer.hasPointLight(x, y, z)) this.renderer.addPointLight(x, y, z, "fire");
     else if (!lit && this.renderer.hasPointLight(x, y, z)) this.renderer.removePointLight(x, y, z);
-    this.world.dirty.add(Math.floor(x / CS) + "," + Math.floor(z / CS)); // cold vs lit charcoal
   }
 
-  private heatWater(x: number, y: number, z: number) {
-    const key = `${x},${y},${z}`;
-    const fuel = this.campCharges.get(key) ?? 0;
-    if (!this.canHeatWater(x, y, z)) { this.audio.error(); return; }
-    this.campCharges.set(key, fuel - 1);
-    this.syncFire(x, y, z);
-    this.inv.removeItem("canister_full", 1);
-    this.giveOrDrop("hot_water_pouch", 1);
-    this.audio.drink();
-    hud.toast("The canister hisses over the coals — sealed hot for the cold hours.");
-    this.renderHeld();
+  /** Burn charges, run cooking jobs, keep gauges honest — panel open or not. */
+  private tickFires(dt: number) {
+    for (const [key, f] of this.fires) {
+      Game.fuelSanity(f);
+      if (f.lit && Game.fireFuel(f) <= 0) {
+        f.lit = false;
+        this.syncFire(key);
+        continue;
+      }
+      if (!f.lit) continue;
+      f.drip += dt;
+      while (f.lit && f.drip >= FIRE_DRIP) {
+        f.drip -= FIRE_DRIP;
+        if (Game.fireFuel(f) < 1) { f.lit = false; break; }
+        this.spendFuel(f, 1);
+      }
+      this.syncFire(key);
+      if (!f.lit) continue;
+      for (const s of f.input.slots.slice()) {
+        const rec = SMELT.find((r) => r.in === s.itemId);
+        if (!rec) continue;
+        if (s.done) { this.moveCooked(f, key, s, rec); continue; }
+        if (s.cook === undefined) {
+          if (Game.fireFuel(f) < 1) continue; // one charge per job, paid up front
+          this.spendFuel(f, 1);
+          s.cook = 0;
+          this.syncFire(key);
+          continue;
+        }
+        s.cook += dt;
+        if (s.cook >= COOK_SECONDS) { s.cook = COOK_SECONDS; s.done = true; this.moveCooked(f, key, s, rec); }
+      }
+      if (this.fire === f) this.paintFireStatus();
+    }
+  }
+
+  /** A finished job walks to the output grid; a full grid keeps it waiting on the fire. */
+  private moveCooked(f: FireState, key: string, s: Slot, rec: { out: string; n?: number }) {
+    const want = rec.n ?? 1;
+    const missing = f.output.addItem(rec.out, want); // returns how many did NOT fit
+    if (missing === want) return; // Output Slot full - the cooked item waits in the Input Slot
+    if (missing > 0) this.dropEntity(rec.out, missing, 2); // partial fit: the rest lands on the sand
+    f.input.slots.splice(f.input.slots.indexOf(s), 1);
+    this.syncFire(key);
+    if (this.fire === f) this.renderInv();
+  }
+
+  /** Light fire / put it out (the panel button). */
+  private toggleFire() {
+    if (!this.fire || !this.openFire) return;
+    const key = this.openFire.join(",");
+    const f = this.fire;
+    if (f.lit) {
+      f.lit = false;
+      hud.toast("You smother the coals — cold charcoal until you light it again.");
+    } else {
+      if (Game.fireFuel(f) <= 0) { hud.toast("No fuel in the fire box."); this.audio.error(); return; }
+      f.lit = true;
+      f.drip = 0;
+      hud.toast("The fuel catches — the fire breathes again.");
+    }
+    this.audio.place();
+    this.syncFire(key);
+    this.renderInv();
+  }
+
+  /** Cheap live refresh of the open panel's gauge, button, art and cook bars. */
+  private paintFireStatus() {
+    if (!this.fire) return;
+    const sec = document.getElementById("fire-section")!;
+    if (sec.classList.contains("hidden")) return;
+    const f = this.fire;
+    const total = Game.fireFuel(f);
+    document.getElementById("fire-art")!.classList.toggle("lit", f.lit);
+    const btn = document.getElementById("btn-fire") as HTMLButtonElement;
+    btn.textContent = f.lit ? "Put out the fire" : "Light fire";
+    btn.disabled = !f.lit && total <= 0;
+    document.getElementById("fire-gauge")!.textContent = f.lit
+      ? `lit — ${total} fuel charge${total === 1 ? "" : "s"} burning`
+      : `${total} fuel charge${total === 1 ? "" : "s"} waiting`;
+    const el = document.getElementById("fire-input-grid")!;
+    for (let y = 0; y < f.input.h; y++) for (let x = 0; x < f.input.w; x++) {
+      const cell = el.children[y * f.input.w + x] as HTMLElement | undefined;
+      if (!cell) continue;
+      const s = f.input.slots.find((sl) => sl.x === x && sl.y === y); // the bar lives on the anchor cell
+      const bar = cell.querySelector(".cook-bar") as HTMLElement | null;
+      const frac = !s || s.cook === undefined ? 0 : s.done ? 1 : Math.min(1, s.cook / COOK_SECONDS);
+      if (frac > 0) {
+        if (bar) bar.style.width = `${frac * 100}%`;
+        else {
+          const b = document.createElement("div");
+          b.className = "cook-bar";
+          b.style.width = `${frac * 100}%`;
+          cell.appendChild(b);
+        }
+      } else if (bar) bar.remove();
+    }
   }
 
   /** T: the Head Lantern — burns one fuel charge per 4 game hours. */
@@ -3481,7 +3670,7 @@ export class Game {
       if (room.sealed) for (const k of room.anchors) {
         const [x, y, z] = k.split(",").map(Number);
         if (this.world.get(x, y, z) === CAMPFIRE) {
-          if ((this.campCharges.get(k) ?? 0) > 0) { base = true; fire = true; }
+          if (this.fireLit(k)) { base = true; fire = true; }
         } else base = true;
       }
       this.cozyBase = base;
@@ -3721,7 +3910,7 @@ export class Game {
       this.tempOrigin = null;
     }
     this.ui = null; this.openStation = null; this.openCacheId = null;
-    this.chestInv = null; this.gridFocus = "inv";
+    this.chestInv = null; this.fire = null; this.openFire = null; this.gridFocus = "inv";
     for (const id of ["ui-inventory", "ui-craft", "ui-cache", "ui-trade"]) document.getElementById(id)!.classList.add("hidden");
     // closing any in-game menu also drops the pause menu, if one was open
     if (this.paused) {
@@ -3777,6 +3966,7 @@ export class Game {
       document.getElementById("chest-info")!.textContent = `(${this.chestInv.w}×${this.chestInv.h})`;
       this.renderGrid(this.chestInv, document.getElementById("chest-grid")!);
     } else cs.classList.add("hidden");
+    this.renderFire();
 
     // temporary storage: the slot an item sits in while being moved
     const tempEl = document.getElementById("inv-temp")!;
@@ -3844,7 +4034,7 @@ export class Game {
     // rebuild the side panel from scratch every render (accumulating text/buttons bug)
     const side = document.getElementById("inv-side")!;
     this.renderCraftTab();
-    const fInv = this.gridFocus === "chest" && this.chestInv ? this.chestInv : this.inv;
+    const fInv = this.focusedGrid();
     const sel = fInv.selectedSlot();
     const shown = this.temp ?? sel;
     const dims = shown ? slotDims(shown) : null;
@@ -3893,7 +4083,7 @@ export class Game {
       }
     }
     if (sel) {
-      if (fInv === this.chestInv) {
+      if (fInv !== this.inv) {
         const packBtn = document.createElement("button");
         packBtn.textContent = "Move to pack";
         packBtn.onclick = () => {
@@ -3914,13 +4104,81 @@ export class Game {
           this.inv.slots.splice(this.inv.slots.indexOf(sel), 1);
           this.dropEntity(sel.itemId, 1, 1, sel.charges);
           this.renderInv();
+          this.renderHeld();
         };
         side.appendChild(useBtn);
       }
     }
+
+    // with every section visible, remeasure: if the panel now scrolls, shrink
+    // cells (two passes so grids shrinking frees room for the others' art)
+    for (let pass = 0; pass < 2; pass++)
+      for (const [el, g] of this.gridsEls()) this.fitCells(g, el);
   }
 
-  /** Render one Inventory Grid (backpack or linked-chest cluster) into a container element. */
+  /** The Campfire panel: pack mirror plus the fire's three staging grids. */
+  private renderFire() {
+    const fs = document.getElementById("fire-section")!;
+    if (!this.fire) { fs.classList.add("hidden"); return; }
+    fs.classList.remove("hidden");
+    const f = this.fire;
+    const art = document.getElementById("fire-art")!;
+    art.style.backgroundImage = `url(${itemArtUrl("campfire", 0, Game.fireFuel(f))})`;
+    art.classList.toggle("lit", f.lit);
+    const btn = document.getElementById("btn-fire") as HTMLButtonElement;
+    btn.onclick = () => this.toggleFire();
+    // an equipped Head Lantern drinks from the fire too
+    const lamp = this.equip.light;
+    const lw = document.getElementById("fire-lamp-wrap")!;
+    if (lamp) {
+      lw.classList.remove("hidden");
+      const lc = lamp.charges ?? 0;
+      document.getElementById("fire-lamp-info")!.textContent = `Head Lantern — ${lc}/5 charges`;
+      const lb = document.getElementById("btn-fire-lamp") as HTMLButtonElement;
+      lb.disabled = lc >= 5 || !this.fireLit(this.openFire!.join(","));
+      lb.onclick = () => {
+        if (lc >= 5 || !this.fireLit(this.openFire!.join(","))) return;
+        if (!this.spendFuel(f, 1)) return;
+        lamp.charges = lc + 1;
+        this.audio.place();
+        hud.toast(`The lantern drinks from the flames — ${lamp.charges}/5 charges.`);
+        this.syncFire(this.openFire!.join(","));
+        this.renderInv();
+      };
+    } else lw.classList.add("hidden");
+    this.renderGrid(f.input, document.getElementById("fire-input-grid")!);
+    this.renderGrid(f.fuel, document.getElementById("fire-fuel-grid")!);
+    this.renderGrid(f.output, document.getElementById("fire-output-grid")!);
+    this.paintFireStatus();
+  }
+
+  /** Clicking any grid gives it keyboard focus: G rotates there, R drops its
+   *  item, and the side panel lists that grid's items. */
+  private focusInv(inv: Inventory) {
+    const id = this.invGridId(inv);
+    if (id) this.gridFocus = id as typeof this.gridFocus;
+  }
+  /** The grid keyboard actions (Rotate, side panel) apply to. */
+  private focusedGrid(): Inventory {
+    if (this.gridFocus === "chest" && this.chestInv) return this.chestInv;
+    if (this.fire) {
+      if (this.gridFocus === "fire-in") return this.fire.input;
+      if (this.gridFocus === "fire-fuel") return this.fire.fuel;
+      if (this.gridFocus === "fire-out") return this.fire.output;
+    }
+    return this.inv;
+  }
+  private invGridId(inv: Inventory): string {
+    if (inv === this.inv) return "inv";
+    if (inv === this.chestInv) return "chest";
+    if (this.fire) {
+      if (inv === this.fire.input) return "fire-in";
+      if (inv === this.fire.fuel) return "fire-fuel";
+      if (inv === this.fire.output) return "fire-out";
+    }
+    return "";
+  }
+
   private renderGrid(inv: Inventory, grid: HTMLElement) {
     grid.innerHTML = "";
     grid.style.removeProperty("--cell");
@@ -3953,12 +4211,14 @@ export class Game {
           if (t) t.textContent = `${d.name} — ${d.desc}`;
         };
         cell.onmousedown = (e) => {
+          this.focusInv(inv);
           // touch taps synthesise mousedown: recent touch means this tap selects/moves, not drags
           if (Date.now() - this.lastTouchTs < 700) this.tapCell(inv, x, y);
           else this.startInvDrag(e, s, inv);
         };
       } else {
         cell.onmousedown = () => {
+          this.focusInv(inv);
           if (Date.now() - this.lastTouchTs < 700) this.tapCell(inv, x, y);
         };
       }
@@ -4017,27 +4277,26 @@ export class Game {
       this.audio.error();
       return;
     }
-    const other = inv === this.inv ? this.chestInv : this.inv;
-    if (other) {
+    for (const other of this.openGrids()) {
+      if (other === inv) continue;
       const oSel = other.selectedSlot();
-      if (oSel && oSel !== hit) {
-        const da = slotDims(oSel);
-        const ax = Math.min(x, inv.w - da.w), ay = Math.min(y, inv.h - da.h);
-        if (ax >= 0 && ay >= 0 && inv.fits(ax, ay, da.w, da.h, oSel)) {
-          other.slots.splice(other.slots.indexOf(oSel), 1);
-          other.selected = -1;
-          oSel.x = ax; oSel.y = ay;
-          inv.slots.push(oSel);
-          inv.selected = inv.slots.indexOf(oSel);
-          this.audio.place();
-          this.renderInv();
-          this.renderHeld();
-          return;
-        }
-        hud.toast("No room there.");
-        this.audio.error();
+      if (!oSel || oSel === hit) continue;
+      const da = slotDims(oSel);
+      const ax = Math.min(x, inv.w - da.w), ay = Math.min(y, inv.h - da.h);
+      if (ax >= 0 && ay >= 0 && inv.fits(ax, ay, da.w, da.h, oSel)) {
+        other.slots.splice(other.slots.indexOf(oSel), 1);
+        other.selected = -1;
+        oSel.x = ax; oSel.y = ay;
+        inv.slots.push(oSel);
+        inv.selected = inv.slots.indexOf(oSel);
+        this.audio.place();
+        this.renderInv();
+        this.renderHeld();
         return;
       }
+      hud.toast("No room there.");
+      this.audio.error();
+      return;
     }
     const sel = inv.selectedSlot();
     if (sel && sel !== hit) {
@@ -4075,10 +4334,17 @@ export class Game {
     return ok;
   }
 
-  /** One selection across the open grids: selecting in one clears the other. */
+  /** Every grid the panel currently shows. */
+  private openGrids(): Inventory[] {
+    const g: Inventory[] = [this.inv];
+    if (this.chestInv) g.push(this.chestInv);
+    if (this.fire) g.push(this.fire.input, this.fire.fuel, this.fire.output);
+    return g;
+  }
+
+  /** One selection across the open grids: selecting in one clears the others. */
   private setSel(inv: Inventory, i: number) {
-    const other = inv === this.inv ? this.chestInv : this.inv;
-    if (other) other.selected = -1;
+    for (const o of this.openGrids()) if (o !== inv) o.selected = -1;
     inv.selected = i;
   }
 
@@ -4115,7 +4381,7 @@ export class Game {
     ghost.style.backgroundColor = ITEMS[s.itemId].color;
     ghost.style.backgroundImage = `url(${itemArtUrl(s.itemId, s.rot ? 1 : 0, s.charges)})`;
     document.body.appendChild(ghost);
-    const rect = (src === this.inv ? document.getElementById("inv-grid") : document.getElementById("chest-grid"))!.getBoundingClientRect();
+    const rect = this.gridsEls().find(([, g]) => g === src)![0].getBoundingClientRect();
     const D = { gx: e.clientX - (rect.left + s.x * STEP), gy: e.clientY - (rect.top + s.y * STEP) };
     const move = (ev: MouseEvent) => {
       ghost.style.left = ev.clientX - D.gx + "px";
@@ -4156,18 +4422,26 @@ export class Game {
     move(e);
   }
 
-  /** Shift-click quick-move: pack ⇄ open chest; with no chest open, lift the
-   *  item into temporary storage (a lifted item swaps into the vacated cell). */
+  /** Quick-move destination for shift-click: to the chest/fire when coming from
+   *  the pack (fuel items land in the fire's Fuel Slot, the rest in its Input
+   *  Slot), and back to the pack from anywhere else. */
+  private quickTarget(s: Slot, src: Inventory): Inventory | null {
+    if (src !== this.inv) return this.inv;
+    if (this.chestInv) return this.chestInv;
+    if (this.fire) return FIRE_FUEL[s.itemId] !== undefined ? this.fire.fuel : this.fire.input;
+    return null;
+  }
+
+  /** Shift-click quick-move: pack ⇄ open chest/fire zone; with nowhere to go,
+   *  lift the item into temporary storage (a lifted item swaps into the vacated cell). */
   private shiftMove(s: Slot, src: Inventory) {
-    const target = this.chestInv
-      ? (src === this.inv ? this.chestInv : src === this.chestInv ? this.inv : null)
-      : null;
+    const target = this.quickTarget(s, src);
     if (target) {
       const i = src.slots.indexOf(s);
       src.slots.splice(i, 1);
       if (!Game.placeSlotFree(target, s)) {
         src.slots.splice(i, 0, s); // it would not fit — contents stay put
-        hud.toast(src === this.inv ? "No room in the chest." : "No room in your pack.");
+        hud.toast(target === this.chestInv ? "No room in the chest." : target === this.inv ? "No room in your pack." : "No room at the fire.");
         this.audio.error();
         this.renderInv();
         return;
@@ -4199,6 +4473,11 @@ export class Game {
   private gridsEls(): [HTMLElement, Inventory][] {
     const els: [HTMLElement, Inventory][] = [[document.getElementById("inv-grid")!, this.inv]];
     if (this.chestInv) els.push([document.getElementById("chest-grid")!, this.chestInv]);
+    if (this.fire) els.push(
+      [document.getElementById("fire-input-grid")!, this.fire.input],
+      [document.getElementById("fire-fuel-grid")!, this.fire.fuel],
+      [document.getElementById("fire-output-grid")!, this.fire.output],
+    );
     return els;
   }
 
@@ -4318,92 +4597,36 @@ export class Game {
     }
   }
 
-  renderCraft(mode: "bench" | "smelt" | "armory") {
+  renderCraft(mode: "bench" | "armory") {
     document.getElementById("ui-craft")!.classList.remove("hidden");
     document.getElementById("craft-title")!.textContent =
-      mode === "bench" ? "Crafting Bench" : mode === "armory" ? "Armoury — gear that guards the body" : "Campfire Smelting";
+      mode === "bench" ? "Crafting Bench" : "Armoury — gear that guards the body";
     const list = document.getElementById("craft-list")!;
     list.innerHTML = "";
-    const smeltUi = document.getElementById("smelt-ui")!;
-    smeltUi.classList.toggle("hidden", mode !== "smelt");
-    if (mode !== "smelt") {
-      for (const r of RECIPES) {
-        // each recipe has exactly one home: hand, Bench or Armoury — never two
-        if (mode === "armory" ? r.station !== "armory" : r.station !== "bench") continue;
-        const row = document.createElement("div");
-        row.className = "craft-row";
-        const label = `${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""}`;
-        const needs = Object.entries(r.needs).map(([id, n]) => `${n}× ${ITEMS[id].name}`).join(", ");
-        const ok = canCraft(this.inv, r);
-        row.innerHTML = `<span class="what"><img class="craft-art" src="${itemArtUrl(r.out)}" alt="">${label} <span class="needs">(${needs})</span></span>`;
-        const b = document.createElement("button");
-        b.textContent = "Craft";
-        b.disabled = !ok;
-        b.onclick = () => {
-          const left = doCraft(this.inv, r);
-          if (left === null) { this.audio.error(); return; }
-          if (left > 0) this.giveOrDrop(r.out, left);
-          this.tut?.notify("craft");
-          this.craftLesson(r.out);
-          if (ITEMS[r.out]?.tool) this.questBump("tool");
-          this.audio.place();
-          this.renderCraft(mode);
-        };
-        row.appendChild(b);
-        list.appendChild(row);
-      }
-    } else {
-      const pos = this.openStation!;
-      const key = `${pos[0]},${pos[1]},${pos[2]}`;
-      const fuel = this.campCharges.get(key) ?? 0;
-      document.getElementById("smelt-fuel")!.textContent = `${fuel} charges`;
-      document.getElementById("btn-addfuel")!.onclick = () => {
-        if (!this.inv.has("deadwood", 1)) { hud.toast("No Dead Wood to burn."); this.audio.error(); return; }
-        this.inv.removeItem("deadwood", 1);
-        this.campCharges.set(key, fuel + 3);
-        this.syncFire(pos[0], pos[1], pos[2]);
-        this.renderCraft("smelt");
+    for (const r of RECIPES) {
+      // each recipe has exactly one home: hand, Bench or Armoury — never two
+      if (mode === "armory" ? r.station !== "armory" : r.station !== "bench") continue;
+      const row = document.createElement("div");
+      row.className = "craft-row";
+      const label = `${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""}`;
+      const needs = Object.entries(r.needs).map(([id, n]) => `${n}× ${ITEMS[id].name}`).join(", ");
+      const ok = canCraft(this.inv, r);
+      row.innerHTML = `<span class="what"><img class="craft-art" src="${itemArtUrl(r.out)}" alt="">${label} <span class="needs">(${needs})</span></span>`;
+      const b = document.createElement("button");
+      b.textContent = "Craft";
+      b.disabled = !ok;
+      b.onclick = () => {
+        const left = doCraft(this.inv, r);
+        if (left === null) { this.audio.error(); return; }
+        if (left > 0) this.giveOrDrop(r.out, left);
+        this.tut?.notify("craft");
+        this.craftLesson(r.out);
+        if (ITEMS[r.out]?.tool) this.questBump("tool");
+        this.audio.place();
+        this.renderCraft(mode);
       };
-      // an equipped Head Lantern drinks from the fire too
-      const lamp = this.equip.light;
-      if (lamp) {
-        const lc = lamp.charges ?? 0;
-        const ref = document.createElement("div");
-        ref.className = "craft-row";
-        ref.innerHTML = `<span class="what">Head Lantern <span class="needs">(${lc}/5 charges)</span></span>`;
-        const rb = document.createElement("button");
-        rb.textContent = "Refuel Lantern (+1, uses 1 fuel)";
-        rb.disabled = lc >= 5 || fuel < 1;
-        rb.onclick = () => {
-          if (lc >= 5 || fuel < 1) return;
-          this.campCharges.set(key, fuel - 1);
-          this.syncFire(pos[0], pos[1], pos[2]);
-          lamp.charges = lc + 1;
-          this.audio.place();
-          this.renderCraft("smelt");
-        };
-        ref.appendChild(rb);
-        list.appendChild(ref);
-      }
-      for (const s of SMELT) {
-        const row = document.createElement("div");
-        row.className = "craft-row";
-        row.innerHTML = `<span class="what"><img class="craft-art" src="${itemArtUrl(s.out)}" alt="">${ITEMS[s.in].name} → ${ITEMS[s.out].name}${s.n && s.n > 1 ? " ×" + s.n : ""} <span class="needs">(1 fuel charge)</span></span>`;
-        const b = document.createElement("button");
-        b.textContent = "Smelt";
-        b.disabled = !this.inv.has(s.in, 1) || fuel < 1;
-        b.onclick = () => {
-          this.inv.removeItem(s.in, 1);
-          this.campCharges.set(key, fuel - 1);
-          this.syncFire(pos[0], pos[1], pos[2]);
-          const left = this.inv.addItem(s.out, s.n ?? 1);
-          if (left > 0) this.giveOrDrop(s.out, left);
-          this.audio.place();
-          this.renderCraft("smelt");
-        };
-        row.appendChild(b);
-        list.appendChild(row);
-      }
+      row.appendChild(b);
+      list.appendChild(row);
     }
   }
 
