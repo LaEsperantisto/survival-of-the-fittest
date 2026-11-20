@@ -218,7 +218,7 @@ A carrying vessel for Water itself: it scoops from a Source and pours back as a 
 _Avoid_: pail, canteen
 
 **Farming**:
-Growing crops on Farmland where Air Temperature suits the species and Water is within reach. Growth follows Air Temperature, not sun or shade: the reason outdoor farming is dangerous is that the danger that costs you health is the same danger that costs you time.
+Growing crops on Farmland where Air Temperature suits the species and Water is within reach. Growth follows Air Temperature, not sun or shade: the reason outdoor farming is dangerous is that the danger that costs you health is the same danger that costs you time. Aiming at a Crop (or the Farmland under it) names it with its growth percentage toward Ripe.
 _Avoid_: greenhouse (crops are not tied to glass), gardening
 
 **Farmland**:

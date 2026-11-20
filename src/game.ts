@@ -1772,7 +1772,7 @@ export class Game {
     }
     hud.setPrompt((this.ui || this.cine) ? null : this.promptFor(target));
     hud.setBlockName((this.ui || this.cine) || !target?.hit ? null
-      : blockDisplayName(this.world.get(target.hit.x, target.hit.y, target.hit.z)));
+      : this.aimLabel(this.world, target.hit.x, target.hit.y, target.hit.z));
     hud.setSubmerged(this.player.headUnder);
 
     for (let ei = this.entities.length - 1; ei >= 0; ei--) {
@@ -2969,6 +2969,25 @@ export class Game {
       best = Math.max(best, d <= 4 ? 18 : 9);
     }
     return best;
+  }
+
+  /** Aimed-block label: crop name plus its growth percent, so the plot tells
+   *  you how far the season has come. Looking at the Farmland reads the crop
+   *  standing on it; a ripe crop says so outright. */
+  private aimLabel(world: World, x: number, y: number, z: number): string {
+    let id = world.get(x, y, z);
+    let cy = y;
+    if (id === FARMLAND) {
+      const up = world.get(x, y + 1, z);
+      if (up === MELON_1 || up === MELON_2 || up === WHEAT_1 || up === WHEAT_2) { id = up; cy = y + 1; }
+    }
+    if (id !== MELON_1 && id !== MELON_2 && id !== WHEAT_1 && id !== WHEAT_2) return blockDisplayName(id);
+    const name = blockDisplayName(id);
+    if (id === MELON_2 || id === WHEAT_2) return `${name} — ripe`;
+    const p = this.crops.get(`${x},${cy},${z}`);
+    if (p === undefined) return name;
+    const pct = Math.floor((p / (id === MELON_1 ? 60 : 90)) * 100);
+    return `${name} — ${Math.min(99, pct)}%`;
   }
 
   /** Crops advance only while their cell has water within 4 blocks and air in its temperature band. */
