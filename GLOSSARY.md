@@ -61,7 +61,7 @@ The small wreck at the world origin — a rounded hull with broken wings — spl
 The wreck's Compartment containing the starting Save Beacon, reachable only through the hall — the safest room in the crash site.
 
 **Water Station**:
-The wreck's water compartment: its tank is a pool sunk into the ground, an effectively bottomless refill point for Water Canisters, unlike finite Oases.
+The wreck's water compartment: its tank is a pool sunk into the ground — a refill point for Water Canisters that never runs dry, oasis-style.
 
 **Ship Interior**:
 Whatever space the player has enclosed with Insulating Blocks. Enclosing alone only keeps out sun and wind; a Sealed Space's air still matches the outside until Heat Regulators hold it neutral.
@@ -203,7 +203,7 @@ Not in scope for M1 or M2; a definite later addition.
 Two parts: days survived and Main Quest progress. Completing the game scores higher with fewer days. Best score persists across deaths.
 
 **Water Canister**:
-A drinkable item (1×2 in the Inventory Grid). Buried sites dot the desert on a recurring spacing — containers, not water, so finding them never makes drinking easy. Oases provide finite water; a late-game method synthesizes water. A buried site marks the Map only once one of its canisters is dug up.
+A drinkable item (1×2 in the Inventory Grid). Buried sites dot the desert on a recurring spacing — containers, not water, so finding them never makes drinking easy. Refilling at an Oasis or the ship's tank costs nothing; a late-game method synthesizes water. A buried site marks the Map only once one of its canisters is dug up.
 
 **Hot Water Pouch**:
 A full Water Canister heated at a lit Campfire — it costs the fire one fuel charge. Using it (Q) is a heat pulse: +10 °C toward body-warm, clamped at the top of the safe zone so it can never overshoot, and the empty canister comes back.

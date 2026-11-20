@@ -14,7 +14,7 @@ export const LESSONS: Lesson[] = [
   {
     id: "oasis", title: "First Oasis",
     hint: "open water — refill your canisters here",
-    text: "Open water on the horizon: an Oasis. Refill your canisters here — the water itself is finite, the walk to it is the price. Oases never run out across the world; they are just far apart.",
+    text: "Open water on the horizon: an Oasis. Refill your canisters here — the water never runs dry, the walk to it is the price. Oases never run out across the world; they are just far apart.",
   },
   {
     id: "town", title: "First Town",
