@@ -347,6 +347,33 @@ function drawArt(id: string, w: number, h: number, color: string, tier = ""): HT
       g.fillStyle = "#f0c89a"; g.fillRect(7, 5, 1, 1);
       return cv;
     }
+    case "rat_raw": {                                  // raw kangaroo rat: big ears, haunch, tufted tail
+      line(g, 4, 12, 1, 13, "#8a5548", 1); line(g, 1, 13, 0, 11, "#8a5548", 1);
+      g.fillStyle = "#c9a08c"; g.fillRect(0, 9, 2, 3);                    // tail tuft
+      poly(g, [[4, 12], [5, 8], [8, 6], [12, 6], [15, 8], [15, 11], [12, 13], [6, 13]], "#a86a5a");
+      poly(g, [[8, 6], [12, 6], [14, 8], [10, 8], [7, 9]], "#c08472");    // lit back
+      poly(g, [[6, 13], [12, 13], [11, 14], [7, 14]], "#6e3f33");         // shadow belly
+      g.fillStyle = "#a86a5a"; g.fillRect(11, 3, 2, 4); g.fillRect(14, 4, 2, 3); // big ears
+      g.fillStyle = "#c9917e"; g.fillRect(12, 4, 1, 2); g.fillRect(14, 5, 1, 1); // inner ears
+      g.fillStyle = "#2e1a14"; g.fillRect(13, 8, 1, 1);                   // closed eye
+      g.fillStyle = "#c08472"; g.fillRect(15, 9, 1, 1);                   // muzzle
+      g.fillStyle = "#8a5548"; g.fillRect(7, 12, 1, 2); g.fillRect(11, 12, 1, 2); // feet
+      return cv;
+    }
+    case "rat_cooked": {                                // roasted rat: browned crust, steam
+      g.fillStyle = "#c8d2da"; g.fillRect(7, 2, 1, 2); g.fillRect(10, 1, 1, 2);
+      g.fillStyle = "#eef3f8"; g.fillRect(7, 1, 1, 1); g.fillRect(10, 0, 1, 1); // steam wisps
+      line(g, 4, 12, 1, 13, "#5c3a1c", 1); line(g, 1, 13, 0, 11, "#5c3a1c", 1);
+      g.fillStyle = "#c08a4a"; g.fillRect(0, 9, 2, 3);                    // crisp tail tuft
+      poly(g, [[4, 12], [5, 8], [8, 6], [12, 6], [15, 8], [15, 11], [12, 13], [6, 13]], "#9a6132");
+      poly(g, [[8, 6], [12, 6], [14, 8], [10, 8], [7, 9]], "#c08348");    // browned back
+      poly(g, [[6, 13], [12, 13], [11, 14], [7, 14]], "#5c3a1c");         // char belly
+      line(g, 8, 8, 9, 12, "#4a2c14", 1); line(g, 11, 7, 12, 11, "#4a2c14", 1); // sear marks
+      g.fillStyle = "#9a6132"; g.fillRect(11, 3, 2, 4); g.fillRect(14, 4, 2, 3); // crisped ears
+      g.fillStyle = "#4a2c14"; g.fillRect(13, 8, 1, 1);
+      g.fillStyle = "#d8a05e"; g.fillRect(9, 6, 2, 1);                    // crisp lit bits
+      return cv;
+    }
     case "tortoise_shell": {                             // Thornback dome: scute plates, spiked rim
       poly(g, [[3, 22], [5, 12], [11, 6], [17, 4], [24, 7], [29, 14], [30, 22]], "#5f5a4e");
       poly(g, [[11, 6], [17, 4], [24, 7], [20, 13], [12, 12]], "#7d7768"); // lit crown
