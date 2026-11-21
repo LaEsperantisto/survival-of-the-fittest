@@ -167,6 +167,7 @@ export class Game {
   // Batteries buffer, and a deficit the Batteries can't cover trips the Panel.
   private powerCells = new Map<string, number>();
   private genFuel = new Map<string, number>();      // Wood Generator cell -> burn seconds left
+  private fxAcc = 0;                                // machine-FX collection tick accumulator
   private batteryCharge = new Map<string, number>(); // Battery cell -> stored units
   private trippedPanels = new Set<string>();        // Power Panel cells latched off
   private powerDirty = false;                       // a streamed chunk added gen-made power blocks
@@ -1709,6 +1710,9 @@ export class Game {
       } else if (this.survival.storm < 0.3 && this.stormToast) {
         this.stormToast = false; hud.toast("The Sandstorm passes.");
       }
+      // machine animations: refresh the near-player set a few times a second
+      this.fxAcc += dt;
+      if (this.fxAcc >= 0.3) { this.fxAcc = 0; this.collectFx(); }
       // worn gear burns its charges: a coolant cell holds 2 game days, a lantern charge 4 hours
       const reg = this.equip.regulator;
       if (reg && (reg.charges ?? 0) > 0) {
@@ -3209,6 +3213,50 @@ export class Game {
   }
 
   private gridAtPanel(panelKey: string) { return this.grids.find((g) => g.panel === panelKey) ?? null; }
+
+  /** Gather every animated machine block near the player (Campfire flames,
+   *  thruster jets, beacon pulses, panel blinks, generator smoke, regulator
+   *  vents, rotors) with its live state, and hand the set to the renderer's
+   *  overlay pass. Capped at the 400 nearest so the cost stays bounded. */
+  private collectFx() {
+    const p = this.player.pos;
+    const px = Math.floor(p.x), py = Math.floor(p.y), pz = Math.floor(p.z);
+    const R = 20, storm = this.survival.storm;
+    const found: { x: number; y: number; z: number; k: string; s: number; d2: number }[] = [];
+    for (let x = px - R; x <= px + R; x++)
+      for (let z = pz - R; z <= pz + R; z++)
+        for (let y = Math.max(0, py - 12); y < Math.min(CH, py + 12); y++) {
+          let k = "", s = 0;
+          switch (this.world.get(x, y, z)) {
+            case CAMPFIRE: if (this.fires.get(`${x},${y},${z}`)?.lit) k = "fire"; break;
+            case THRUSTER_LIT: k = "jet"; break;
+            case BEACON: k = "beacon"; break;
+            case STORM_BREAKER: k = "breaker"; s = storm > 0.3 ? 1 : 0; break;
+            case POWER_PANEL: {
+              const g = this.grids.find((gr) => gr.cells.has(`${x},${y},${z}`));
+              k = "panel"; s = this.trippedPanels.has(`${x},${y},${z}`) ? 2 : g?.powered ? 1 : 0;
+              break;
+            }
+            case GEN_WOOD: if ((this.genFuel.get(`${x},${y},${z}`) ?? 0) > 0) k = "gen"; break;
+            case REGULATOR: k = "reg"; break;
+            case WIND_TURBINE: k = "turbine"; break;
+            case WATER_WHEEL:
+              k = "wheel";
+              s = isWater(this.world.get(x + 1, y, z)) || isWater(this.world.get(x - 1, y, z)) ||
+                  isWater(this.world.get(x, y, z + 1)) || isWater(this.world.get(x, y, z - 1)) ||
+                  isWater(this.world.get(x, y - 1, z)) ? 1 : 0;
+              break;
+            default: continue;
+          }
+          if (!k) continue;
+          found.push({ x, y, z, k, s, d2: (x - px) ** 2 + (y - py) ** 2 + (z - pz) ** 2 });
+        }
+    if (found.length > 400) {
+      found.sort((a, b) => a.d2 - b.d2);
+      found.length = 400;
+    }
+    this.renderer.setMachineFx(found);
+  }
 
   /** E at a Power Panel: check the meters, or reset it when it has headroom again. */
   private panelAct(x: number, y: number, z: number) {

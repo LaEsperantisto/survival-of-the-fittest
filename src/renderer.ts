@@ -1168,6 +1168,87 @@ export function getAtlasCanvas(): HTMLCanvasElement {
   return cv;
 }
 
+// ---------------- machine FX overlay sprites ----------------
+// One 32x32 additive sprite texture per animated kind, built once and shared
+// across every sprite of that kind. Art is deliberately loose: these are
+// glows and rotors riding on top of the static block tile, not new tiles.
+const fxTextures = new Map<string, THREE.CanvasTexture>();
+function fxTexture(kind: string): THREE.CanvasTexture {
+  let t = fxTextures.get(kind);
+  if (t) return t;
+  const c = document.createElement("canvas");
+  c.width = c.height = 32;
+  const g = c.getContext("2d")!;
+  if (kind === "fire") {
+    const gr = g.createRadialGradient(16, 22, 2, 16, 15, 14);
+    gr.addColorStop(0, "#fff2b0"); gr.addColorStop(0.35, "#ffb347");
+    gr.addColorStop(0.75, "rgba(255,90,20,0.35)"); gr.addColorStop(1, "rgba(255,60,10,0)");
+    g.fillStyle = gr;
+    g.beginPath(); g.moveTo(16, 2); g.quadraticCurveTo(30, 18, 16, 30); g.quadraticCurveTo(2, 18, 16, 2); g.fill();
+  } else if (kind === "jet") {
+    const gr = g.createLinearGradient(0, 0, 0, 32);
+    gr.addColorStop(0, "#e8f6ff"); gr.addColorStop(0.3, "#79c8ff");
+    gr.addColorStop(0.7, "rgba(60,140,255,0.4)"); gr.addColorStop(1, "rgba(40,110,255,0)");
+    g.fillStyle = gr;
+    g.beginPath(); g.moveTo(12, 0); g.lineTo(20, 0); g.quadraticCurveTo(24, 20, 16, 31); g.quadraticCurveTo(8, 20, 12, 0); g.fill();
+  } else if (kind === "beacon") {
+    const gr = g.createRadialGradient(16, 16, 3, 16, 16, 15);
+    gr.addColorStop(0, "rgba(255,240,170,0)"); gr.addColorStop(0.65, "rgba(255,225,130,0.8)");
+    gr.addColorStop(0.85, "rgba(255,200,90,0.35)"); gr.addColorStop(1, "rgba(255,190,80,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, 32, 32);
+  } else if (kind === "breaker") {
+    const gr = g.createRadialGradient(16, 16, 2, 16, 16, 15);
+    gr.addColorStop(0, "rgba(255,70,50,0.55)"); gr.addColorStop(0.6, "rgba(255,50,40,0.25)"); gr.addColorStop(1, "rgba(255,40,30,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, 32, 32);
+  } else if (kind === "panel") {
+    const gr = g.createRadialGradient(16, 16, 1, 16, 16, 14);
+    gr.addColorStop(0, "#ffffff"); gr.addColorStop(0.35, "rgba(255,255,255,0.7)"); gr.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, 32, 32); // tinted per state by the material color
+  } else if (kind === "gen") {
+    g.fillStyle = "rgba(150,150,150,0.35)";
+    g.beginPath(); g.arc(12, 20, 7, 0, 7); g.arc(20, 14, 8, 0, 7); g.arc(16, 24, 6, 0, 7); g.fill();
+    g.fillStyle = "rgba(190,190,190,0.25)";
+    g.beginPath(); g.arc(18, 10, 6, 0, 7); g.fill();
+  } else if (kind === "reg") {
+    const gr = g.createRadialGradient(16, 16, 1, 16, 16, 14);
+    gr.addColorStop(0, "#bff0ff"); gr.addColorStop(0.4, "rgba(120,210,255,0.55)"); gr.addColorStop(1, "rgba(90,190,255,0)");
+    g.fillStyle = gr; g.fillRect(0, 0, 32, 32);
+  } else if (kind === "turbine") {
+    g.strokeStyle = "rgba(235,240,245,0.9)"; g.lineWidth = 2.5; g.lineCap = "round";
+    for (const a of [45, 135, 225, 315]) {
+      g.beginPath(); g.moveTo(16, 16);
+      g.lineTo(16 + 13 * Math.cos(a * Math.PI / 180), 16 + 13 * Math.sin(a * Math.PI / 180)); g.stroke();
+    }
+    g.fillStyle = "#dfe4ea"; g.beginPath(); g.arc(16, 16, 3, 0, 7); g.fill();
+  } else { // wheel
+    g.strokeStyle = "rgba(210,180,140,0.9)"; g.lineWidth = 3;
+    g.beginPath(); g.arc(16, 16, 12, 0, 7); g.stroke();
+    g.lineWidth = 2;
+    for (let k = 0; k < 6; k++) {
+      const a = k * Math.PI / 3;
+      g.beginPath(); g.moveTo(16, 16);
+      g.lineTo(16 + 12 * Math.cos(a), 16 + 12 * Math.sin(a)); g.stroke();
+    }
+    g.fillStyle = "#c8a878"; g.beginPath(); g.arc(16, 16, 3, 0, 7); g.fill();
+  }
+  t = new THREE.CanvasTexture(c);
+  fxTextures.set(kind, t);
+  return t;
+}
+function fxScale(kind: string): [number, number, number] {
+  switch (kind) {
+    case "fire": return [0.55, 0.8, 1];
+    case "jet": return [0.4, 0.85, 1];
+    case "beacon": return [0.9, 0.9, 1];
+    case "breaker": return [1.15, 1.15, 1];
+    case "panel": return [0.18, 0.18, 1];
+    case "gen": return [0.5, 0.5, 1];
+    case "reg": return [0.3, 0.3, 1];
+    case "turbine": return [1.25, 1.25, 1];
+    default: return [1.0, 1.0, 1]; // wheel
+  }
+}
+
 function makeAtlasTexture(): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(getAtlasCanvas());
   tex.flipY = false; // mesher computes v from canvas top-left; default flip would sample blank rows
@@ -1347,7 +1428,7 @@ export class Renderer {
   torch: THREE.PointLight;
   /** Head Lantern light: shown at the player's head while a lantern is on */
   private playerLight: THREE.PointLight;
-  private dynLights: { x: number; y: number; z: number; light: THREE.PointLight; flame: boolean }[] = [];
+  private dynLights: { x: number; y: number; z: number; light: THREE.PointLight; flame: boolean; kind: string; base: number }[] = [];
   /** live campfire fuel charges ("x,y,z" -> heat units); the mesher dims
    *  unlit fires, the game owns the map and mutates it in place. */
   fires = new Map<string, number>();
@@ -1446,7 +1527,7 @@ export class Renderer {
       kind === "lamp" ? 12 : kind === "fire" ? 9 : kind === "cool" ? 10 : 16, 1.3);
     light.position.set(x + 0.5, y + 0.6, z + 0.5);
     this.scene.add(light);
-    this.dynLights.push({ x, y, z, light, flame: kind === "fire" });
+    this.dynLights.push({ x, y, z, light, flame: kind === "fire", kind, base: light.intensity });
   }
 
   hasPointLight(x: number, y: number, z: number): boolean {
@@ -1479,6 +1560,106 @@ export class Renderer {
     if (i < 0) return;
     this.scene.remove(this.dynLights[i].light);
     this.dynLights.splice(i, 1);
+  }
+
+  // ---- Machine FX: animated overlay sprites over live blocks ----
+  /** The game sends the near-player set of animated blocks a few times a
+   *  second (setMachineFx); sprites are pooled and ticked every frame. */
+  setMachineFx(list: { x: number; y: number; z: number; k: string; s?: number }[]) {
+    const seen = new Set<string>();
+    for (const e of list) {
+      const key = e.x + "," + e.y + "," + e.z;
+      seen.add(key);
+      let f = this.fx.get(key);
+      if (f && f.k === e.k) { f.s = e.s ?? 0; continue; }
+      if (f) this.dropFx(key);
+      const mat = new THREE.SpriteMaterial({ map: fxTexture(e.k), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+      const spr = new THREE.Sprite(mat);
+      spr.scale.set(...fxScale(e.k));
+      spr.position.set(e.x + 0.5, e.y + 0.5, e.z + 0.5);
+      spr.renderOrder = 3;
+      this.group.add(spr);
+      this.fx.set(key, { x: e.x, y: e.y, z: e.z, k: e.k, s: e.s ?? 0, spr });
+    }
+    for (const key of this.fx.keys()) if (!seen.has(key)) this.dropFx(key);
+  }
+  private fx = new Map<string, { x: number; y: number; z: number; k: string; s: number; spr: THREE.Sprite }>();
+  private dropFx(key: string) {
+    const f = this.fx.get(key);
+    if (!f) return;
+    this.group.remove(f.spr);
+    (f.spr.material as THREE.SpriteMaterial).dispose(); // the texture map is shared
+    this.fx.delete(key);
+  }
+  private lastFxT = 0;
+  private tickFx() {
+    const t = performance.now() / 1000;
+    const dt = Math.min(0.1, t - this.lastFxT);
+    this.lastFxT = t;
+    const cp = this.camera.position;
+    for (const f of this.fx.values()) {
+      const x = f.x + 0.5, z = f.z + 0.5;
+      if ((cp.x - x) ** 2 + (cp.y - f.y - 0.5) ** 2 + (cp.z - z) ** 2 > 45 * 45) { f.spr.visible = false; continue; }
+      f.spr.visible = true;
+      const m = f.spr.material as THREE.SpriteMaterial;
+      const n1 = noise1(t * 6 + f.x * 3.1 + f.z, 7); // 0..1 fast flicker seed
+      switch (f.k) {
+        case "fire": // flame billboard licking above the log pile
+          f.spr.position.set(x, f.y + 0.62, z);
+          f.spr.scale.set(0.5 + n1 * 0.14, 0.7 + n1 * 0.28, 1);
+          m.opacity = 0.5 + n1 * 0.25;
+          break;
+        case "jet": // thruster exhaust flickering under the nozzle
+          f.spr.position.set(x, f.y - 0.5, z);
+          f.spr.scale.set(0.38 + n1 * 0.08, 0.75 + n1 * 0.3, 1);
+          m.opacity = 0.55 + n1 * 0.3;
+          break;
+        case "beacon": { // slow heartbeat halo
+          const p = 0.5 + 0.5 * Math.sin(t * 1.4 + f.x + f.z);
+          f.spr.position.set(x, f.y + 1.05, z);
+          f.spr.scale.setScalar(0.7 + p * 0.45);
+          m.opacity = 0.3 + p * 0.35;
+          break;
+        }
+        case "breaker": { // red hum pulse — harder while a storm presses
+          const p = 0.5 + 0.5 * Math.sin(t * (f.s > 0 ? 3.4 : 1.2) + f.z);
+          f.spr.position.set(x, f.y + 0.5, z);
+          f.spr.scale.setScalar(1.1 + p * 0.18);
+          m.opacity = (f.s > 0 ? 0.3 : 0.13) + p * (f.s > 0 ? 0.3 : 0.1);
+          break;
+        }
+        case "panel": { // status blink: steady green alive, hard red tripped
+          const tripped = f.s === 2;
+          const beat = (t * (tripped ? 3.5 : 1.5) + f.x * 0.7 + f.z * 0.3) % 1;
+          m.color.setHex(tripped ? 0xff3524 : 0x46e07a);
+          m.opacity = tripped ? (beat < 0.5 ? 0.95 : 0.12) : f.s === 1 ? (beat < 0.18 ? 0.9 : 0.18) : 0.15;
+          f.spr.position.set(x, f.y + 1.02, z);
+          break;
+        }
+        case "gen": { // smoke wisp rising and fading on a slow loop
+          const ph = ((t + f.x * 0.37 + f.z * 0.11) % 2.4) / 2.4;
+          f.spr.position.set(x, f.y + 1.0 + ph * 0.9, z);
+          f.spr.scale.setScalar(0.3 + ph * 0.55);
+          m.opacity = (1 - ph) * 0.32;
+          break;
+        }
+        case "reg": { // vent pulse, cyan breath
+          const p = 0.5 + 0.5 * Math.sin(t * 2.2 + f.y + f.x);
+          f.spr.position.set(x, f.y + 0.95, z);
+          f.spr.scale.setScalar(0.26 + p * 0.12);
+          m.opacity = 0.25 + p * 0.3;
+          break;
+        }
+        case "turbine": // rotor spins; storms whip it faster
+          f.spr.position.set(x, f.y + 1.05, z);
+          m.rotation += dt * (1.8 + this.stormI * 4.5);
+          break;
+        case "wheel": // wheel turns only while water flows past
+          f.spr.position.set(x, f.y + 0.5, z);
+          if (f.s > 0) m.rotation += dt * 1.6;
+          break;
+      }
+    }
   }
 
   /** Translucent previews of every cell the held item's placement would
@@ -1568,6 +1749,7 @@ export class Renderer {
 
   dispose() {
     this.resetChunkMeshes();
+    this.setMachineFx([]);
     for (const d of this.dynLights) this.scene.remove(d.light);
     this.dynLights.length = 0;
     this.three.dispose();
@@ -1648,8 +1830,12 @@ export class Renderer {
       (this.dust.material as THREE.PointsMaterial).opacity = 0;
     }
     this.torch.intensity = 0.12 + (1 - Math.min(1, kf.sunI)) * 0.85;
-    for (const d of this.dynLights)
+    for (const d of this.dynLights) {
       if (d.flame) d.light.intensity = 0.9 + noise1(worldTime * 5.3 + d.x * 3.1 + d.z, 7) * 0.45;
+      // Lamps and Electric Lamps breathe at night — a soft 6 % pulse, not jitter
+      else if (d.kind === "lamp" || d.kind === "elec")
+        d.light.intensity = d.base * (0.98 + noise1(worldTime * 2.9 + d.x * 1.7 + d.z * 2.9, 5) * 0.04);
+    }
     // baked-light shader: day→moon ambient, current fog, dynamic point lights
     const u = this.skyU;
     u.uAmbient.value.copy(_nightAmb).lerp(_dayAmb, kf.dayT);
@@ -2148,5 +2334,5 @@ export class Renderer {
     return eid;
   }
 
-  render() { this.three.render(this.scene, this.camera); }
+  render() { this.tickFx(); this.three.render(this.scene, this.camera); }
 }
