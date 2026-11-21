@@ -1,7 +1,8 @@
 import { Game } from "./game";
-import { DAY_SECONDS, BLOCKS } from "./blocks";
+import { DAY_SECONDS, BLOCKS, isWater, type BlockDef } from "./blocks";
 import { Audio } from "./audio";
-import { ITEMS } from "./items";
+import { ITEMS, BLOCK_TO_ITEM } from "./items";
+import { MOB_DEFS } from "./mobs";
 import { QUESTS } from "./quests";
 import { LESSONS } from "./chronicle";
 import { RECIPES, SMELT } from "./crafting";
@@ -178,6 +179,68 @@ function commit() {
 
 let catalogTab: "items" | "recipes" = "items";
 
+// The Codex's five shelves, listed alphabetically (the shelf order IS the alphabet here).
+const CAT_SECTIONS = ["Food & Water", "Machines & Power", "Materials & Building", "Oddities", "Tools & Gear"] as const;
+const FOOD_IDS: Record<string, true> = { canister_full: true, canister_empty: true, bucket: true, bucket_full: true,
+  hot_water_pouch: true, prickly_pear: true, dune_melon: true, wheat: true, cooked_wheat: true, rat_raw: true,
+  rat_cooked: true, vulture_raw: true, vulture_cooked: true };
+const TOOL_IDS: Record<string, true> = { wood_pickaxe: true, wood_shovel: true, wood_axe: true, stone_pickaxe: true,
+  stone_shovel: true, stone_axe: true, metal_pickaxe: true, metal_shovel: true, metal_axe: true,
+  metal_disassembler: true, alloy_pickaxe: true, alloy_shovel: true, alloy_axe: true, alloy_disassembler: true,
+  voidbreaker: true, sword: true, stinger_blade: true, reptile_armor: true, tortoise_cuirass: true, wurmsuit: true,
+  backpack1: true, backpack2: true, visor: true, body_regulator: true, head_lantern: true, coolant_cell: true };
+const ODD_IDS: Record<string, true> = { catalyst: true, engine_core: true, beacon: true, surveyor_pin: true, tracker: true };
+const MACHINE_IDS: Record<string, true> = { lamp: true, regulator: true, regulator_broken: true, storm_breaker: true,
+  storm_breaker_broken: true, power_pole: true, power_panel: true, gen_wood: true, water_wheel: true,
+  wind_turbine: true, solar_panel: true, battery: true, elec_lamp: true, inserter: true, planter: true,
+  harvester: true, thruster_nozzle: true, thruster_broken: true, thruster_lit: true, bench: true, armory: true, campfire: true };
+
+function itemSection(id: string): string {
+  if (id in FOOD_IDS) return "Food & Water";
+  if (id in MACHINE_IDS) return "Machines & Power";
+  if (id in ODD_IDS) return "Oddities";
+  if (id in TOOL_IDS) return "Tools & Gear";
+  return "Materials & Building";
+}
+function blockSection(b: BlockDef): string {
+  if (BLOCK_TO_ITEM[b.id]) return itemSection(BLOCK_TO_ITEM[b.id]);
+  if (isWater(b.id)) return "Food & Water";
+  return "Materials & Building";
+}
+
+// Cross-references: who makes this, what eats it, where it lands.
+const craftFrom = new Map<string, typeof RECIPES>();   // output → recipes that make it
+const craftInto = new Map<string, typeof RECIPES>();   // input → recipes that need it
+for (const r of RECIPES) {
+  (craftFrom.get(r.out) ?? craftFrom.set(r.out, []).get(r.out)!).push(r);
+  for (const id of Object.keys(r.needs)) (craftInto.get(id) ?? craftInto.set(id, []).get(id)!).push(r);
+}
+const smeltFrom = new Map<string, typeof SMELT>();
+const smeltInto = new Map<string, typeof SMELT>();
+for (const s of SMELT) {
+  (smeltFrom.get(s.out) ?? smeltFrom.set(s.out, []).get(s.out)!).push(s);
+  (smeltInto.get(s.in) ?? smeltInto.set(s.in, []).get(s.in)!).push(s);
+}
+const droppedByBlock = new Map<string, number[]>(); // item → blocks that break into it
+for (const [bid, iid] of Object.entries(BLOCK_TO_ITEM))
+  (droppedByBlock.get(iid) ?? droppedByBlock.set(iid, []).get(iid)!).push(Number(bid));
+const droppedByMob = new Map<string, string[]>(); // item → critter names
+for (const m of Object.values(MOB_DEFS))
+  for (const d of m.drops) (droppedByMob.get(d.itemId) ?? droppedByMob.set(d.itemId, []).get(d.itemId)!).push(m.name);
+
+const stationName = (r: (typeof RECIPES)[number]) =>
+  r.station === null ? "by hand" : r.station === "armory" ? "Armoury" : "Crafting Bench";
+
+/** Scroll the linked entry into view and blink it. */
+function catGoto(target: string) {
+  const el = document.getElementById(target);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.remove("flash");
+  void el.offsetWidth;
+  el.classList.add("flash");
+}
+
 function renderCatalog() {
   if (game) game.pauseSubmenu = game.paused ? "catalog" : null;
   // the Codex learns what you have carried, worn, crafted or mined
@@ -193,30 +256,99 @@ function renderCatalog() {
   const body = $("catalog-body");
   body.innerHTML = "";
   if (catalogTab === "items") {
-    const grid = document.createElement("div");
-    grid.className = "cat-grid";
-    const push = (art: string, name: string, meta: string, desc: string, known: boolean) => {
-      const card = document.createElement("div");
-      card.className = "cat-card" + (known ? "" : " locked");
+    type Entry = { sort: string; section: string; card: () => HTMLElement };
+    const entries: Entry[] = [];
+    const linkRow = (segs: { lab: string; chips: [string, string][]; plain: string[] }[]) => {
+      const row = document.createElement("div");
+      row.className = "cat-links";
+      for (const seg of segs) {
+        const lab = document.createElement("span");
+        lab.className = "cat-linklab";
+        lab.textContent = seg.lab;
+        row.append(lab);
+        for (const [label, target] of seg.chips) {
+          const c = document.createElement("button");
+          c.className = "cat-chip";
+          c.textContent = label;
+          c.onclick = () => catGoto(target);
+          row.append(c);
+        }
+        for (const p of seg.plain) {
+          const s = document.createElement("span");
+          s.className = "cat-linklab";
+          s.textContent = p;
+          row.append(s);
+        }
+      }
+      return row;
+    };
+    const card = (key: string, art: string, name: string, meta: string, desc: string, known: boolean, links: HTMLElement | null) => {
+      const el = document.createElement("div");
+      el.className = "cat-card" + (known ? "" : " locked");
+      el.id = key;
       const img = document.createElement("img");
       img.src = art; img.alt = "";
       const txt = document.createElement("div");
       txt.innerHTML = `<b>${name}</b><div class="cat-meta">${meta}</div>` +
         (known ? `<div class="cat-desc">${desc}</div>`
           : `<div class="cat-locked">Locked — carry it, craft it, or mine it once: the Codex remembers.</div>`);
-      card.append(img, txt);
-      grid.append(card);
+      el.append(img, txt);
+      if (links) el.append(links);
+      return el;
     };
-    for (const it of Object.values(ITEMS).sort((a, b) => a.name.localeCompare(b.name)))
-      push(itemArtUrl(it.id), it.name, `${it.w}×${it.h} cell · ${it.mass} kg${it.block !== undefined ? " · placeable" : ""}`, it.desc, !learned || learned.has(it.id));
+    for (const it of Object.values(ITEMS)) {
+      const segs: { lab: string; chips: [string, string][]; plain: string[] }[] = [];
+      if (it.block !== undefined)
+        segs.push({ lab: "Places as", chips: [[BLOCKS[it.block].name, "cat-b-" + it.block]], plain: [] });
+      const made = craftFrom.get(it.id);
+      if (made) for (const r of made)
+        segs.push({ lab: `Made (${stationName(r)})`, chips: Object.entries(r.needs).map(([id, n]) => [`${n}× ${ITEMS[id].name}`, "cat-i-" + id] as [string, string]), plain: [] });
+      const smIn = smeltFrom.get(it.id);
+      if (smIn) for (const s of smIn)
+        segs.push({ lab: "Smelted at a Campfire from", chips: [[ITEMS[s.in].name, "cat-i-" + s.in]], plain: [] });
+      const used = craftInto.get(it.id);
+      if (used) segs.push({ lab: "Used in", chips: used.map((r) => [`${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""}`, "cat-i-" + r.out] as [string, string]), plain: [] });
+      const smOut = smeltInto.get(it.id);
+      if (smOut) segs.push({ lab: "Smelts into", chips: smOut.map((s) => [`${ITEMS[s.out].name}${s.n && s.n > 1 ? " ×" + s.n : ""}`, "cat-i-" + s.out] as [string, string]), plain: [] });
+      const byBlk = droppedByBlock.get(it.id);
+      if (byBlk) segs.push({ lab: "Break", chips: byBlk.map((bid) => [BLOCKS[bid].name, "cat-b-" + bid] as [string, string]), plain: [] });
+      const byMob = droppedByMob.get(it.id);
+      if (byMob) segs.push({ lab: "", chips: [], plain: [`Dropped by ${[...new Set(byMob)].join(", ")}`] });
+      entries.push({
+        sort: it.name, section: itemSection(it.id),
+        card: () => card("cat-i-" + it.id, itemArtUrl(it.id), it.name,
+          `${it.w}×${it.h} cell · ${it.mass} kg${it.block !== undefined ? " · placeable" : ""}`, it.desc,
+          !learned || learned.has(it.id), segs.length ? linkRow(segs) : null),
+      });
+    }
     for (const b of BLOCKS) {
       if (b.id === 0 || b.name === "Air") continue;
       const item = Object.values(ITEMS).find((i) => i.block === b.id);
-      const meta = `${b.placeable ? "placeable" : "world only"} · ${b.R > 0 ? `R ${b.R}` : "no insulation"}${b.emissive ? " · light source" : ""}`;
-      push(item ? itemArtUrl(item.id) : blockTileUrl(b.id), b.name, meta, item?.desc ?? "Found in the world; mine it to collect it." + (b.minTier > 0 ? ` Needs a tier-${b.minTier} ${b.tool ?? "tool"}.` : ""),
-        !learned || learned.has("b:" + b.id) || (!!item && learned.has(item.id)));
+      const segs: { lab: string; chips: [string, string][]; plain: string[] }[] = [];
+      if (item) segs.push({ lab: "Carried as", chips: [[item.name, "cat-i-" + item.id]], plain: [] });
+      if (BLOCK_TO_ITEM[b.id]) segs.push({ lab: "Breaks into", chips: [[ITEMS[BLOCK_TO_ITEM[b.id]].name, "cat-i-" + BLOCK_TO_ITEM[b.id]],], plain: [] });
+      entries.push({
+        sort: b.name, section: blockSection(b),
+        card: () => card("cat-b-" + b.id, item ? itemArtUrl(item.id) : blockTileUrl(b.id), b.name,
+          `${b.placeable ? "placeable" : "world only"} · ${b.R > 0 ? `R ${b.R}` : "no insulation"}${b.emissive ? " · light source" : ""}`,
+          item?.desc ?? "Found in the world; mine it to collect it." + (b.minTier > 0 ? ` Needs a tier-${b.minTier} ${b.tool ?? "tool"}.` : ""),
+          !learned || learned.has("b:" + b.id) || (!!item && learned.has(item.id)),
+          segs.length ? linkRow(segs) : null),
+      });
     }
-    body.append(grid);
+    entries.sort((a, b) => a.sort.localeCompare(b.sort));
+    for (const sec of CAT_SECTIONS) {
+      const inSec = entries.filter((e) => e.section === sec);
+      if (!inSec.length) continue;
+      const h = document.createElement("div");
+      h.className = "cat-section";
+      h.textContent = sec;
+      body.append(h);
+      const grid = document.createElement("div");
+      grid.className = "cat-grid";
+      for (const e of inSec) grid.append(e.card());
+      body.append(grid);
+    }
   } else {
     const row = (art: string, left: string, right: string, where: string) => {
       const d = document.createElement("div");
@@ -227,11 +359,24 @@ function renderCatalog() {
       d.append(img, Object.assign(document.createElement("span"), { innerHTML: `${left} <span class="arrow">→</span> <b>${right}</b> <span class="needs">(${where})</span>` }));
       body.append(d);
     };
-    for (const r of RECIPES) {
-      const needs = Object.entries(r.needs).map(([id, n]) => `${n}× ${ITEMS[id].name}`).join(" + ");
-      row(itemArtUrl(r.out), needs, `${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""}`,
-        r.station === null ? "hands" : r.station === "armory" ? "Armoury" : "Crafting Bench");
+    const groups: [string, typeof RECIPES][] = [["By hand", []], ["At a Crafting Bench", []], ["At an Armoury", []]];
+    for (const r of RECIPES) groups[r.station === null ? 0 : r.station === "armory" ? 2 : 1][1].push(r);
+    for (const [title, list] of groups) {
+      if (!list.length) continue;
+      const h = document.createElement("div");
+      h.className = "cat-section";
+      h.textContent = title;
+      body.append(h);
+      for (const r of list) {
+        const needs = Object.entries(r.needs).map(([id, n]) => `${n}× ${ITEMS[id].name}`).join(" + ");
+        row(itemArtUrl(r.out), needs, `${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""}`,
+          r.station === null ? "hands" : r.station === "armory" ? "Armoury" : "Crafting Bench");
+      }
     }
+    const h = document.createElement("div");
+    h.className = "cat-section";
+    h.textContent = "At a Campfire — one fuel charge";
+    body.append(h);
     for (const s of SMELT)
       row(itemArtUrl(s.out), `1× ${ITEMS[s.in].name}`, `${ITEMS[s.out].name}${s.n && s.n > 1 ? " ×" + s.n : ""}`, "Campfire, 1 fuel charge");
   }
@@ -341,6 +486,10 @@ $("btn-instructions").onclick = renderInstructions;
 $("btn-pause-instructions").onclick = renderInstructions;
 $("btn-catalog").onclick = renderCatalog;
 $("btn-catalog-title").onclick = renderCatalog;
+// Catalog also opens from the pack, the Campfire panel and the Bench/Armoury panel
+$("btn-catalog-inv").onclick = renderCatalog;
+$("btn-catalog-fire").onclick = renderCatalog;
+$("btn-catalog-craft").onclick = renderCatalog;
 $("btn-chronicle").onclick = renderChronicle;
 
 for (const btn of document.querySelectorAll<HTMLButtonElement>(".close-btn"))
@@ -416,6 +565,12 @@ $("btn-win-continue").onclick = () => { if (game) { game.paused = false; show("s
 $("btn-win-title").onclick = () => toTitle();
 
 document.addEventListener("keydown", (e) => {
+  if (e.code === "Escape" && game && !game.paused && !$("screen-catalog").classList.contains("hidden")) {
+    // Catalog opened straight from the pack / a station: Esc closes just the book
+    e.stopImmediatePropagation();
+    closeOverlays();
+    return;
+  }
   if (e.code === "Escape" && !$("screen-title").classList.contains("hidden") && document.fullscreenElement) {
     // main menu: Esc drops fullscreen (browsers that deliver Esc to the page at all)
     void document.exitFullscreen().catch(() => {});

@@ -74,7 +74,16 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 #catalog-tabs .tab.active { background: #d8b74f; color: #14161c; border-color: #d8b74f; }
 #catalog-body { max-height: 62vh; overflow: auto; }
 .cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
-.cat-card { display: flex; gap: 10px; align-items: flex-start; background: rgba(255,255,255,0.05);
+.cat-section { margin: 18px 2px 8px; color: #d8b74f; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; }
+.cat-section:first-child { margin-top: 2px; }
+.cat-links { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 6px; }
+.cat-linklab { font-size: 10px; color: #8a8f9a; text-transform: uppercase; letter-spacing: 1px; }
+.cat-chip { background: #22262e; border: 1px solid #4a5262; border-radius: 4px; padding: 1px 7px;
+  font-size: 11px; text-transform: none; letter-spacing: 0; color: #cfd6e0; cursor: pointer; }
+.cat-chip:hover { background: #d8b74f; color: #14161c; border-color: #d8b74f; }
+.cat-card.flash { outline: 2px solid #d8b74f; outline-offset: 2px; animation: catflash 1.2s ease-out; }
+@keyframes catflash { 0% { background: rgba(216,183,79,0.35); } 100% { background: rgba(255,255,255,0.05); } }
+.cat-card { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; background: rgba(255,255,255,0.05);
   border: 1px solid #333a45; border-radius: 6px; padding: 8px; }
 .cat-card img { width: 46px; height: 46px; image-rendering: pixelated; background: #2a2f39;
   border: 1px solid #444b58; border-radius: 3px; object-fit: fill; flex: none; }
