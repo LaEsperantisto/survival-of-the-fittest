@@ -178,6 +178,7 @@ function commit() {
 // ---------- catalog ----------
 
 let catalogTab: "items" | "recipes" = "items";
+let catalogSearch = "";
 
 // The Codex's five shelves, listed alphabetically (the shelf order IS the alphabet here).
 const CAT_SECTIONS = ["Food & Water", "Machines & Power", "Materials & Building", "Oddities", "Tools & Gear"] as const;
@@ -233,7 +234,13 @@ const stationName = (r: (typeof RECIPES)[number]) =>
 
 /** Scroll the linked entry into view and blink it. */
 function catGoto(target: string) {
-  const el = document.getElementById(target);
+  let el = document.getElementById(target);
+  if (!el && catalogSearch) { // the card is hidden behind the current search - clear it and retry
+    catalogSearch = "";
+    ($("catalog-search") as HTMLInputElement).value = "";
+    renderCatalog();
+    el = document.getElementById(target);
+  }
   if (!el) return;
   el.scrollIntoView({ behavior: "smooth", block: "center" });
   el.classList.remove("flash");
@@ -256,7 +263,7 @@ function renderCatalog() {
   const body = $("catalog-body");
   body.innerHTML = "";
   if (catalogTab === "items") {
-    type Entry = { sort: string; section: string; card: () => HTMLElement };
+    type Entry = { sort: string; section: string; q: string; card: () => HTMLElement };
     const entries: Entry[] = [];
     const linkRow = (segs: { lab: string; chips: [string, string][]; plain: string[] }[]) => {
       const row = document.createElement("div");
@@ -294,6 +301,11 @@ function renderCatalog() {
           : `<div class="cat-locked">Locked — carry it, craft it, or mine it once: the Codex remembers.</div>`);
       el.append(img, txt);
       if (links) el.append(links);
+      // every card reads the same size; one click unfolds the whole entry
+      el.onclick = (ev) => {
+        if ((ev.target as HTMLElement).closest(".cat-chip")) return; // chips navigate, they don't unfold
+        el.classList.toggle("open");
+      };
       return el;
     };
     for (const it of Object.values(ITEMS)) {
@@ -315,7 +327,7 @@ function renderCatalog() {
       const byMob = droppedByMob.get(it.id);
       if (byMob) segs.push({ lab: "", chips: [], plain: [`Dropped by ${[...new Set(byMob)].join(", ")}`] });
       entries.push({
-        sort: it.name, section: itemSection(it.id),
+        sort: it.name, section: itemSection(it.id), q: `${it.name} ${it.desc}`,
         card: () => card("cat-i-" + it.id, itemArtUrl(it.id), it.name,
           `${it.w}×${it.h} cell · ${it.mass} kg${it.block !== undefined ? " · placeable" : ""}`, it.desc,
           !learned || learned.has(it.id), segs.length ? linkRow(segs) : null),
@@ -328,7 +340,7 @@ function renderCatalog() {
       if (item) segs.push({ lab: "Carried as", chips: [[item.name, "cat-i-" + item.id]], plain: [] });
       if (BLOCK_TO_ITEM[b.id]) segs.push({ lab: "Breaks into", chips: [[ITEMS[BLOCK_TO_ITEM[b.id]].name, "cat-i-" + BLOCK_TO_ITEM[b.id]],], plain: [] });
       entries.push({
-        sort: b.name, section: blockSection(b),
+        sort: b.name, section: blockSection(b), q: `${b.name} ${item?.desc ?? ""}`,
         card: () => card("cat-b-" + b.id, item ? itemArtUrl(item.id) : blockTileUrl(b.id), b.name,
           `${b.placeable ? "placeable" : "world only"} · ${b.R > 0 ? `R ${b.R}` : "no insulation"}${b.emissive ? " · light source" : ""}`,
           item?.desc ?? "Found in the world; mine it to collect it." + (b.minTier > 0 ? ` Needs a tier-${b.minTier} ${b.tool ?? "tool"}.` : ""),
@@ -337,8 +349,18 @@ function renderCatalog() {
       });
     }
     entries.sort((a, b) => a.sort.localeCompare(b.sort));
+    const q = catalogSearch.trim().toLowerCase();
+    const shown = q
+      ? entries.filter((e) => e.q.toLowerCase().includes(q) || e.section.toLowerCase().includes(q))
+      : entries;
+    if (!shown.length) {
+      const h = document.createElement("div");
+      h.className = "cat-none";
+      h.textContent = `Nothing in the Codex matches "${catalogSearch.trim()}".`;
+      body.append(h);
+    }
     for (const sec of CAT_SECTIONS) {
-      const inSec = entries.filter((e) => e.section === sec);
+      const inSec = shown.filter((e) => e.section === sec);
       if (!inSec.length) continue;
       const h = document.createElement("div");
       h.className = "cat-section";
@@ -359,8 +381,12 @@ function renderCatalog() {
       d.append(img, Object.assign(document.createElement("span"), { innerHTML: `${left} <span class="arrow">→</span> <b>${right}</b> <span class="needs">(${where})</span>` }));
       body.append(d);
     };
+    const rq = catalogSearch.trim().toLowerCase();
+    const rmatch = (out: string, ins: Record<string, number>) =>
+      !rq || ITEMS[out].name.toLowerCase().includes(rq) ||
+      Object.keys(ins).some((id) => ITEMS[id].name.toLowerCase().includes(rq));
     const groups: [string, typeof RECIPES][] = [["By hand", []], ["At a Crafting Bench", []], ["At an Armoury", []]];
-    for (const r of RECIPES) groups[r.station === null ? 0 : r.station === "armory" ? 2 : 1][1].push(r);
+    for (const r of RECIPES) if (rmatch(r.out, r.needs)) groups[r.station === null ? 0 : r.station === "armory" ? 2 : 1][1].push(r);
     for (const [title, list] of groups) {
       if (!list.length) continue;
       const h = document.createElement("div");
@@ -373,16 +399,29 @@ function renderCatalog() {
           r.station === null ? "hands" : r.station === "armory" ? "Armoury" : "Crafting Bench");
       }
     }
-    const h = document.createElement("div");
-    h.className = "cat-section";
-    h.textContent = "At a Campfire — one fuel charge";
-    body.append(h);
-    for (const s of SMELT)
-      row(itemArtUrl(s.out), `1× ${ITEMS[s.in].name}`, `${ITEMS[s.out].name}${s.n && s.n > 1 ? " ×" + s.n : ""}`, "Campfire, 1 fuel charge");
+    let anyRow = groups.some(([, list]) => list.length);
+    const smelts = SMELT.filter((s) => rmatch(s.out, { [s.in]: 1 }));
+    if (smelts.length) {
+      anyRow = true;
+      const h = document.createElement("div");
+      h.className = "cat-section";
+      h.textContent = "At a Campfire — one fuel charge";
+      body.append(h);
+      for (const s of smelts)
+        row(itemArtUrl(s.out), `1× ${ITEMS[s.in].name}`, `${ITEMS[s.out].name}${s.n && s.n > 1 ? " ×" + s.n : ""}`, "Campfire, 1 fuel charge");
+    }
+    if (!anyRow) {
+      const h = document.createElement("div");
+      h.className = "cat-none";
+      h.textContent = `No recipe matches "${catalogSearch.trim()}".`;
+      body.append(h);
+    }
   }
 }
 for (const t of Array.from($("catalog-tabs").querySelectorAll<HTMLButtonElement>(".tab")))
   t.onclick = () => { catalogTab = t.dataset.tab as "items" | "recipes"; renderCatalog(); };
+const catalogSearchBox = $("catalog-search") as HTMLInputElement;
+catalogSearchBox.oninput = () => { catalogSearch = catalogSearchBox.value; renderCatalog(); };
 
 // ---------- chronicle ----------
 

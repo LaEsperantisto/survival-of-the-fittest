@@ -51,7 +51,8 @@ export function deleteWorld(id: string) {
 
 export interface FireSave {
   lit: boolean; drip?: number;
-  fuel: { itemId: string; x: number; y: number; rot?: boolean; charges?: number; stack?: { itemId: string; count: number } }[];
+  charge?: number; // fuel charges banked in the coals
+  fuel?: { itemId: string; x: number; y: number; rot?: boolean; charges?: number; stack?: { itemId: string; count: number } }[]; // legacy: pre-pool fuel items
   input: { itemId: string; x: number; y: number; rot?: boolean; charges?: number; cook?: number; done?: boolean; stack?: { itemId: string; count: number } }[];
   output: { itemId: string; x: number; y: number; rot?: boolean; charges?: number; stack?: { itemId: string; count: number } }[];
 }

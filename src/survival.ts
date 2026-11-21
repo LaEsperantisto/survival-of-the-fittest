@@ -12,6 +12,14 @@ export const CAVE_AMBIENT = 22;              // Deep Air Temperature: near-const
 const AMBIENT_MEAN = 27, AMBIENT_AMP = 25;     // 24-min desert day: ~2 °C night, ~52 °C peak
 export const REGULATOR_ROOM_MAX = 150;         // open cells (sealed) one Heat Regulator can hold at neutral
 
+/** Everything one cell's air depends on: who's asking never matters. */
+export interface AirOpts {
+  biome: number; tSec: number; sunElev: number;
+  sunDir: { x: number; y: number; z: number } | null;
+  terrainH: (x: number, z: number) => number;
+  stormShield?: boolean; stormMul?: number; warmth?: number;
+}
+
 export class Survival {
   health = 100; water = 100; body = 36.6;
   invincible = false;          // cheat: hurt() becomes a no-op; bars still move
@@ -24,7 +32,7 @@ export class Survival {
   regulatedAir = false; // standing in a sealed Space its Regulators hold at neutral
 
   private embedKey = "";
-  private embedAir: { R: number; openSky: boolean; shelter: number; ambEff: number; room: ReturnType<World["roomInfo"]>; deep: boolean } | null = null;
+  private embedAir: ReturnType<Survival["airAt"]> | null = null;
 
   constructor(private weatherSeed: number) {}
 
@@ -51,6 +59,45 @@ export class Survival {
     return s > 0.7 ? Math.min(1, (s - 0.7) / 0.15) : 0;
   }
 
+  /** One cell's full air: Deep Air rule, column shelter, directional Sunlight,
+   *  sealed-room regulators, Sandstorm amplification and campfire warmth.
+   *  What the player breathes is exactly what a crop feels — same method.
+   *  A sealed space's air drifts to the outside temperature — walls alone don't
+   *  save you. Only Heat Regulators, whose capacity (150 cells each) stacks,
+   *  hold a sealed room at body-neutral temperature.
+   *  Underground (ADR-0004): Deep Air Temperature is near-constant mild — two
+   *  or more cells below the terrain surface, the rock swallows the day's swing.
+   *  Caves trade darkness and enemies for thermal refuge; that is the trade. */
+  airAt(world: World, x: number, y: number, z: number, o: AirOpts) {
+    const frac = this.worldTimeToDayFrac(o.tSec);
+    const amb = this.ambient(o.biome, frac, o.tSec);
+    const deep = y <= o.terrainH(x, z) - 2;
+    const amb0 = deep ? CAVE_AMBIENT : amb;
+    const { R, openSky } = world.skyResistance(x, y, z);
+    let shelter = 1 - Math.exp(-R);        // 0 exposed .. ~0.997 sealed
+    let ambEff = amb0;
+    // direct sun is a line to the sun, like the shader's shadow — shade from
+    // rocks, trees and roofs falls where the line is broken, not just overhead
+    if (!deep && o.sunElev > 0 && o.sunDir && world.sunVisible(x, y, z, o.sunDir.x, o.sunDir.y, o.sunDir.z))
+      ambEff += 8 + 10 * o.sunElev; // direct sun beats down
+    const room = world.roomInfo(x, y, z);
+    const regulated = room.sealed && room.regulators * REGULATOR_ROOM_MAX >= room.size;
+    if (room.sealed) {
+      if (regulated) { ambEff = 36.6; shelter = 1; }
+      else { ambEff = amb0; if (!deep) shelter = 0; } // "walls don't insulate" is a Ship rule; underground, the rock itself shelters you
+    }
+    // Sandstorm: a slow regime that amplifies whatever the open air already
+    // is — a scorching noon becomes murderous, a freezing night bites harder.
+    // Walls, caves and sealed shade ride it out untouched.
+    const storm = o.stormShield ? 0 : this.storm * (o.stormMul ?? 1);
+    if (storm > 0.02 && !deep && shelter < 0.6)
+      ambEff = 36.6 + (ambEff - 36.6) * (1 + 0.35 * storm);
+    // a campfire at its back — but a room its Regulators hold at neutral
+    // stays neutral: the fire never pushes regulated air off 37 °C
+    if (o.warmth && !regulated) ambEff += o.warmth;
+    return { R, openSky, shelter, ambEff, amb, room, deep, storm, regulated };
+  }
+
   /** body-temp target from shelter + sun; nothing hardcoded "inside ship". */
   update(dt: number, world: World, pos: THREE.Vector3, opts: {
     sprinting: boolean; biome: number; tSec: number; sunElev: number;
@@ -60,34 +107,11 @@ export class Survival {
   }) {
     if (this.health <= 0) return;
     if (this.surgeCooldown > 0) this.surgeCooldown -= dt;
-    const frac = this.worldTimeToDayFrac(opts.tSec);
-    const amb = this.ambient(opts.biome, frac, opts.tSec);
     const fx = Math.floor(pos.x), fy = Math.floor(pos.y), fz = Math.floor(pos.z);
-
-    // One cell's air: column shelter + directional Sunlight + sealed-room regulators.
-    // A sealed space's air drifts to the outside temperature — walls alone don't
-    // save you. Only Heat Regulators, whose capacity (150 cells each) stacks,
-    // hold a sealed room at body-neutral temperature.
-    // Underground (ADR-0004): Deep Air Temperature is near-constant mild — two
-    // or more cells below the terrain surface, the rock swallows the day's swing.
-    // Caves trade darkness and enemies for thermal refuge; that is the trade.
-    const cellAir = (x: number, y: number, z: number) => {
-      const deep = y <= opts.terrainH(x, z) - 2;
-      const amb0 = deep ? CAVE_AMBIENT : amb;
-      const { R, openSky } = world.skyResistance(x, y, z);
-      let shelter = 1 - Math.exp(-R);        // 0 exposed .. ~0.997 sealed
-      let ambEff = amb0;
-      // direct sun is a line to the sun, like the shader's shadow — shade from
-      // rocks, trees and roofs falls where the line is broken, not just overhead
-      if (!deep && opts.sunElev > 0 && opts.sunDir && world.sunVisible(x, y, z, opts.sunDir.x, opts.sunDir.y, opts.sunDir.z))
-        ambEff += 8 + 10 * opts.sunElev; // direct sun beats down
-      const room = world.roomInfo(x, y, z);
-      if (room.sealed) {
-        if (room.regulators * REGULATOR_ROOM_MAX >= room.size) { ambEff = 36.6; shelter = 1; }
-        else { ambEff = amb0; if (!deep) shelter = 0; } // "walls don't insulate" is a Ship rule; underground, the rock itself shelters you
-      }
-      return { R, openSky, shelter, ambEff, room, deep };
-    };
+    // smooth the raw storm regime first so airAt reads the current value
+    const stormTarget = this.stormAt(opts.tSec);
+    this.storm += (stormTarget - this.storm) * Math.min(1, dt * 0.08);
+    const cellAir = (x: number, y: number, z: number) => this.airAt(world, x, y, z, opts);
 
     let here = cellAir(fx, fy, fz);
     // Standing inside a block (an open door's cell, a wall you're clipped into):
@@ -111,32 +135,20 @@ export class Survival {
     let shelter = here.shelter;
     let ambEff = here.ambEff;
     const room = here.room;
-    // Sandstorm: a slow regime that amplifies whatever the open air already
-    // is — a scorching noon becomes murderous, a freezing night bites harder.
-    // Walls, caves and sealed shade ride it out untouched.
-    const stormTarget = this.stormAt(opts.tSec);
-    this.storm += (stormTarget - this.storm) * Math.min(1, dt * 0.08);
-    // effective storm on the body: a Breaker's calm zeroes every storm term;
-    // Chitin armour quarters what's left. The visible storm (this.storm) is raw.
-    const storm = opts.stormShield ? 0 : this.storm * opts.stormMul;
-    if (storm > 0.02 && !here.deep && here.shelter < 0.6)
-      ambEff = 36.6 + (ambEff - 36.6) * (1 + 0.35 * storm);
+    const storm = here.storm; // effective storm the air model already applied
     this.lastRoom = room;
-    this.regulatedAir = room.sealed && room.regulators * REGULATOR_ROOM_MAX >= room.size;
+    this.regulatedAir = here.regulated;
     if (opts.inWater) {
       // desert water is cold: it pulls hard against midday heat, and is a little
       // kinder than freezing night air — the average of air and water temperature
-      const wt = THREE.MathUtils.clamp(amb, 12, 24) - 3;
+      const wt = THREE.MathUtils.clamp(here.amb, 12, 24) - 3;
       ambEff = (ambEff + wt) / 2;
     }
-    // a campfire at your back — but a room its Regulators hold at neutral
-    // stays neutral: the fire never pushes regulated air off 37 °C
-    if (opts.warmth && !this.regulatedAir) ambEff += opts.warmth;
     // body always regulates toward 36.6; exposure pulls it toward the effective air temp.
     // A worn Body Heat Regulator short-circuits that: while its Coolant Cell lasts,
     // the body just holds at 36.6 no matter the air. It regulates you, never the room.
     const target = opts.regulator ? 36.6 : 36.6 + (ambEff - 36.6) * (1 - shelter);
-    this.lastAmbient = here.deep ? CAVE_AMBIENT : amb; this.lastAmbientEff = ambEff; this.lastShelterR = here.R; this.lastTarget = target;
+    this.lastAmbient = here.deep ? CAVE_AMBIENT : here.amb; this.lastAmbientEff = ambEff; this.lastShelterR = here.R; this.lastTarget = target;
 
     // sealed air moves the body fast — a hot room cooks you in minutes, and so does a cold one
     const k = room.sealed ? 0.022 : 0.0075; // tau ~45 s inside, ~2 min out in the open
@@ -169,19 +181,13 @@ export class Survival {
     this.vision = THREE.MathUtils.clamp((28 - this.water) / 28, 0, 1);
   }
 
-  /** Standalone air temperature at one cell (same model as update's cellAir) — used by crops. */
-  airTempAt(world: World, x: number, y: number, z: number, tSec: number): number {
-    const frac = this.worldTimeToDayFrac(tSec);
-    const amb = this.ambient(0, frac, tSec);
-    let ambEff = amb;
-    const a = (frac - 0.25) * Math.PI * 2, elev = Math.sin(a); // same sun arc the renderer draws
-    if (elev > 0) {
-      const inv = 1 / Math.hypot(Math.cos(a), elev, 0.4);
-      if (world.sunVisible(x, y, z, Math.cos(a) * inv, elev * inv, 0.4 * inv)) ambEff += 8 + 10 * elev;
-    }
-    const room = world.roomInfo(x, y, z);
-    if (room.sealed) ambEff = room.regulators * REGULATOR_ROOM_MAX >= room.size ? 36.6 : amb;
-    return ambEff;
+  /** The air temperature a crop feels in one cell — the full model: biome
+   *  curve, Deep Air, roof shelter, direct sun, Sandstorm, sealed-room
+   *  regulators, campfire warmth. Reported as the temperature that cell's air
+   *  actually holds: the same exposure formula the body answers to. */
+  airTempAt(world: World, x: number, y: number, z: number, tSec: number, o: Omit<AirOpts, "tSec">): number {
+    const a = this.airAt(world, x, y, z, { ...o, tSec });
+    return 36.6 + (a.ambEff - 36.6) * (1 - a.shelter);
   }
 
   hurt(amount: number, cause: string) {

@@ -215,11 +215,11 @@
       </div>
     </div>
     <div id="fire-grids">
-      <div class="fire-col"><div class="fire-lab">Fuel Slot</div><div id="fire-fuel-grid"></div><button class="sort-btn fire-sort" data-grid="fuel">Sort</button></div>
+      <div class="fire-col"><div class="fire-lab">Coals</div><div id="fire-coals">No fuel banked — drop fuel here</div></div>
       <div class="fire-col"><div class="fire-lab">Input Slot</div><div id="fire-input-grid"></div><button class="sort-btn fire-sort" data-grid="input">Sort</button></div>
       <div class="fire-col"><div class="fire-lab">Output Slot</div><div id="fire-output-grid"></div><button class="sort-btn fire-sort" data-grid="output">Sort</button></div>
     </div>
-    <div class="fire-hint">Drag fuel into the Fuel Slot, cookables into the Input Slot; finished cooking lands in the Output Slot. Each cooking job costs one fuel charge; a lit fire also burns one charge every 10 minutes.</div>
+    <div class="fire-hint">Drag fuel onto the Coals box — it burns away on the way in and its charges stay banked in the fire; cookables go to the Input Slot, finished cooking lands in the Output Slot. Each cooking job costs one fuel charge; a lit fire also burns one charge every 10 minutes.</div>
   </div>
   <div id="inv-craft-bar"><button id="btn-inv-craft">Craft by hand</button></div>
   <div id="inv-craft" class="hidden"></div>
@@ -252,6 +252,7 @@
     <button class="tab active" data-tab="items">Items &amp; Blocks</button>
     <button class="tab" data-tab="recipes">Recipes</button>
   </div>
+  <input id="catalog-search" type="text" placeholder="Search names and descriptions…" autocomplete="off" spellcheck="false">
   <div id="catalog-body"></div>
 </div>
 

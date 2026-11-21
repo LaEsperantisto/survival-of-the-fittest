@@ -79,7 +79,7 @@ export const LESSONS: Lesson[] = [
   {
     id: "inserter", title: "The Inserter",
     hint: "front pulls, behind pushes — aim with R",
-    text: "The universal atom of factory automation: a powered Inserter takes one item per second out of the block in front of it and pushes it into the block behind — Chest to Chest, or fuel straight into a Campfire's Fuel Slot. No filters, no reach: the whole data flow is visible in world space. Aim it with R before you place.",
+    text: "The universal atom of factory automation: a powered Inserter takes one item per second out of the block in front of it and pushes it into the block behind — Chest to Chest, or fuel straight into a Campfire's coals. No filters, no reach: the whole data flow is visible in world space. Aim it with R before you place.",
   },
   {
     id: "planter", title: "The Planter",

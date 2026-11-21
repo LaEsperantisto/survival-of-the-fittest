@@ -210,7 +210,7 @@ A full Water Canister heated at a lit Campfire — it costs the fire one fuel ch
 _Avoid_: canteen, thermos, heat pack (the wearable is the Hot Pad idea, dead)
 
 **Campfire**:
-a heat source and cooking station. Its Fuel Slot holds real fuel items — a Wood Log carries 2 charges, a Deadwood 3, Kindling half — and charges burn down slot by slot (the art shows the charred remainder); with no charges left the fire is cold charcoal — no light, no glow, no cooking. A lit fire glows, warms whoever stands close, and cooks: an Input Slot job costs one fuel charge up front and takes six seconds, finished cooking lands in the Output Slot. Pressing <b>E</b> at a Campfire opens its panel inside the Inventory. A powered Inserter can also push fuel straight into the Fuel Slot. Charges are spent by use — warming and cooking — never by decay.
+a heat source and cooking station. Fuel is consumed going in: drop a Wood Log, Deadwood or Kindling into the Coals box — or have a powered Inserter push it in — and the item burns away on the spot, its charges banked in the fire (a Log carries 2 charges, a Deadwood 3, Kindling half); the fire keeps the charges and no fuel item sits inside it. A lit fire burns one charge every 10 in-game minutes; with no charges left it goes out — cold charcoal, no light, no glow, no cooking. A lit fire glows, warms whoever stands close, and cooks: an Input Slot job costs one fuel charge up front and takes six seconds, finished cooking lands in the Output Slot. Pressing <b>E</b> at a Campfire opens its panel inside the Inventory — a gauge of the charges burning or waiting, plus the Coals drop box.
 _Avoid_: bonfire, furnace
 
 **Water Bucket**:
@@ -452,8 +452,9 @@ a powered block that sits under Farm Land, takes seed from the block beneath it,
 **Harvester**:
 a powered block that reaps the ripe crop directly beneath it and spills the yield into the block directly above.
 
-**Fuel Slot**:
-the Campfire's open door for fuel — hand or Inserter alike can feed a fire.
+**Coals**:
+the Campfire's banked fuel charges — fuel burns away going in, by hand or Inserter alike, and only the heat stays.
+_Avoid_: Fuel Slot (the old grid of burning items is gone)
 
 ### Map and lessons
 

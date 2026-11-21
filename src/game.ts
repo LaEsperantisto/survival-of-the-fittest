@@ -27,12 +27,12 @@ const isDoorHalf = (i: number) => { const g = DOOR_GROUP.get(i); return g !== un
 // orientation indexing (0=+X, 1=+Z, 2=-X, 3=-Z)
 const ROT_DIRS: ReadonlyArray<readonly [number, number]> = [[1, 0], [0, 1], [-1, 0], [0, -1]];
 
-/** One Campfire's whole station: staging grids (fuel 2×2, input/output 1×3 each),
- *  the lit flag, and the idle-burn accumulator. */
+/** One Campfire's whole station: staging grids (input/output 1×3 each),
+ *  the charge bank in the coals, the lit flag, and the idle-burn accumulator. */
 export interface FireState {
-  fuel: Inventory;
   input: Inventory;
   output: Inventory;
+  charge: number; // fuel charges banked in the coals — fuel items burn away on the way in
   lit: boolean;
   drip: number; // seconds banked toward the next idle charge
 }
@@ -79,7 +79,7 @@ export class Game {
   caches: DeathCache[] = [];
   chests = new Map<string, Slot[]>();   // linked-chest cluster key -> grid slots
   chestInv: Inventory | null = null;    // live view of the open chest's cluster
-  private gridFocus: "inv" | "chest" | "fire-in" | "fire-fuel" | "fire-out" = "inv";
+  private gridFocus: "inv" | "chest" | "fire-in" | "fire-out" = "inv";
   /** Campfire cooking stations keyed by "x,y,z" — the staging grids are live Inventory instances. */
   fires = new Map<string, FireState>();
   /** The renderer's fire gauges: 0 = cold charcoal tile, >0 = flame (a lit fire only). */
@@ -154,6 +154,9 @@ export class Game {
   private breakers = new Set<string>();
   private breakerTick = -1;
   stormShieldOn = false;
+  // this frame's Sun, shared by the survival model and crop queries
+  private sunElev = 0;
+  private sunDir: { x: number; y: number; z: number } | null = null;
   // ---- Atmosphere (Base): inside a sealed Space with an anchor, the world turns cosy ----
   private cozyTickId = -1;
   private cozy = 0;          // inside-a-Base crossfade 0..1
@@ -526,13 +529,15 @@ export class Game {
     for (const [k, v] of Object.entries(run.campfires ?? {})) {
       const f = Game.newFire();
       if (typeof v === "number") {
-        // old saves model the coals as a raw charge pool: reshape it into Log instances
-        for (const s of Game.legacyFuel(v)) f.fuel.addSlot(s);
+        // old saves already model the coals as a raw charge pool
+        f.charge = v;
         f.lit = v > 0;
       } else {
         f.lit = !!v.lit;
         f.drip = v.drip ?? 0;
-        for (const s of v.fuel ?? []) f.fuel.addSlot({ ...s });
+        // pre-pool saves banked charges on fuel items themselves: melt them into the coals
+        f.charge = v.charge ?? (v.fuel ?? []).reduce((t, s) =>
+          t + (s.charges ?? (FIRE_FUEL[s.itemId] ?? 0) * (s.stack?.count ?? 1)), 0);
         for (const s of v.input ?? []) f.input.addSlot({ ...s });
         for (const s of v.output ?? []) f.output.addSlot({ ...s });
       }
@@ -605,8 +610,7 @@ export class Game {
       caches: this.caches.map((c) => ({ x: c.x, y: c.y, z: c.z, kind: c.kind, items: c.items.map((i) => ({ ...i })) })),
       chests: [...this.chests].map(([cells, slots]) => ({ cells, slots: slots.map((s) => ({ ...s })) })),
       campfires: Object.fromEntries([...this.fires].map(([k, f]) => [k, {
-        lit: f.lit, drip: Math.floor(f.drip),
-        fuel: f.fuel.slots.map((s) => ({ ...s })),
+        lit: f.lit, drip: Math.floor(f.drip), charge: f.charge,
         input: f.input.slots.map((s) => ({ ...s })),
         output: f.output.slots.map((s) => ({ ...s })),
       } satisfies FireSave])),
@@ -1561,7 +1565,7 @@ export class Game {
       b.onclick = () => {
         const f = this.fire;
         if (!f) return;
-        f[b.dataset.grid as "fuel" | "input" | "output"].sort();
+        f[b.dataset.grid as "input" | "output"].sort();
         this.audio.place(); this.renderFire();
       };
   }
@@ -1589,6 +1593,15 @@ export class Game {
   private overBin(cx: number, cy: number): boolean {
     const r = document.getElementById("inv-bin")!.getBoundingClientRect();
     return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
+  }
+
+  /** The Campfire panel's Coals box, under the cursor? (fuel dropped there burns away) */
+  private overCoals(ev: MouseEvent): boolean {
+    if (!this.fire) return false;
+    const el = document.getElementById("fire-coals");
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    return ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
   }
 
   // Pause-menu submenus (Settings, Catalog): closing them returns to the pause
@@ -1663,6 +1676,12 @@ export class Game {
 
     const kf = this.renderer.updateSky(this.timeSec, this.player.pos);
     const biome = biomeAt(Math.floor(this.player.pos.x), Math.floor(this.player.pos.z), this.seed);
+    const fr = (this.timeSec % DAY_SECONDS) / DAY_SECONDS;
+    const sa = (fr - 0.25) * Math.PI * 2;
+    this.sunElev = kf.sunElev;
+    this.sunDir = kf.sunElev > 0
+      ? (() => { const inv = 1 / Math.hypot(Math.cos(sa), kf.sunElev, 0.4); return { x: Math.cos(sa) * inv, y: kf.sunElev * inv, z: 0.4 * inv }; })()
+      : null;
 
     if (!this.ui && !this.cine) {
       let mx = this.stick.x, mz = -this.stick.y;
@@ -1686,16 +1705,11 @@ export class Game {
           if (this.survival.health > 0 && dmg >= 10) hud.toast("You hit the ground hard.");
         }
       }
-      const fr = (this.timeSec % DAY_SECONDS) / DAY_SECONDS;
-      const sa = (fr - 0.25) * Math.PI * 2;
-      const sunDir = kf.sunElev > 0
-        ? (() => { const inv = 1 / Math.hypot(Math.cos(sa), kf.sunElev, 0.4); return { x: Math.cos(sa) * inv, y: kf.sunElev * inv, z: 0.4 * inv }; })()
-        : null;
       this.stormShieldTick();
       this.cozyTick(dt);
       this.survival.update(dt, this.world, this.player.pos, {
         sprinting: this.player.sprinting && (mx !== 0 || mz !== 0),
-        biome, tSec: this.timeSec, sunElev: kf.sunElev, sunDir, inWater: this.player.inWater,
+        biome, tSec: this.timeSec, sunElev: this.sunElev, sunDir: this.sunDir, inWater: this.player.inWater,
         warmth: this.fireWarmth(this.player.pos),
         regulator: (this.equip.regulator?.charges ?? 0) > 0,
         terrainH: (x, z) => heightAt(this.seed, x, z),
@@ -2093,7 +2107,8 @@ export class Game {
       const key = `${x},${y},${z}`;
       const f = this.fires.get(key);
       if (f) {
-        for (const g of [f.fuel, f.input, f.output])
+        // the staged goods scatter; the fuel already spent into the coals is heat, not items
+        for (const g of [f.input, f.output])
           for (const s of g.slots) this.dropEntity(s.itemId, 1, 2, s.charges);
         this.fires.delete(key);
         if (this.fire === f) this.closeUI();
@@ -3024,7 +3039,7 @@ export class Game {
   private cropPause(x: number, y: number, z: number, reach: number, band: [number, number] | null, species: string): string {
     if (!this.waterNear(x, y, z, reach)) return `paused: no Water within ${reach} blocks`;
     if (band) {
-      const temp = this.survival.airTempAt(this.world, x, y, z, this.timeSec);
+      const temp = this.cropAir(x, y, z);
       if (temp > band[1]) return `paused: too hot (${Math.round(temp)} °C, ${species} wants ${band[0]}–${band[1]} °C)`;
       if (temp < band[0]) return `paused: too cold (${Math.round(temp)} °C, ${species} wants ${band[0]}–${band[1]} °C)`;
     }
@@ -3035,6 +3050,28 @@ export class Game {
     for (let dx = -reach; dx <= reach; dx++) for (let dz = -reach; dz <= reach; dz++) for (let dy = -3; dy <= 1; dy++)
       if (isWater(this.world.get(x + dx, y + dy, z + dz))) return true;
     return false;
+  }
+
+  /** A lit Sandstorm Breaker's calm reaches this cell, so the storm term drops out. */
+  private breakerCalmAt(x: number, y: number, z: number): boolean {
+    for (const key of this.breakers) {
+      const [bx, by, bz] = key.split(",").map(Number);
+      if (Math.hypot(x - bx, y - by, z - bz) <= STORM_BREAKER_R) return true;
+    }
+    return false;
+  }
+
+  /** Air temperature over a crop: the whole survival model — biome, Deep Air,
+   *  roof shelter, Sun line, Sandstorm (Breaker calm included), Regulator
+   *  rooms, campfire warmth — exactly the air the player would breathe there. */
+  private cropAir(x: number, y: number, z: number): number {
+    return this.survival.airTempAt(this.world, x, y, z, this.timeSec, {
+      biome: biomeAt(x, z, this.seed),
+      sunElev: this.sunElev, sunDir: this.sunDir,
+      terrainH: (bx, bz) => heightAt(this.seed, bx, bz),
+      stormShield: this.breakerCalmAt(x, y, z),
+      warmth: this.fireWarmth(new THREE.Vector3(x + 0.5, y, z + 0.5)),
+    });
   }
 
   /** The half-chance a reaping throws off an extra seed. Salted per crop and
@@ -3057,7 +3094,7 @@ export class Game {
       if (id === MELON_2 || id === WHEAT_2) continue; // ripe, waiting
       const melon = id === MELON_1;
       const wet = this.waterNear(x, y, z, melon ? 10 : 6);
-      const temp = this.survival.airTempAt(this.world, x, y, z, this.timeSec);
+      const temp = this.cropAir(x, y, z);
       const band = melon ? temp >= 22 && temp <= 45 : temp >= 2 && temp <= 42;
       if (wet && band) {
         const np = p + dtc;
@@ -3340,15 +3377,18 @@ export class Game {
     if (!src || !src.length) return false;
     const bx = x - dx, bz = z - dz, bid = this.world.get(bx, y, bz);
     if (bid === CAMPFIRE) {
-      // route by kind: a fuel item joins the fire's fuel zone, anything else its input grid
+      // route by kind: a fuel item's charges go straight into the coals, anything else its input grid
       const f = this.fireAt(bx, y, bz);
       const key = `${bx},${y},${bz}`;
       for (let i = 0; i < src.length; i++) {
         const s = src[i];
-        const dest = FIRE_FUEL[s.itemId] !== undefined ? f.fuel : f.input;
-        src.splice(i, 1);
-        if (!Game.placeSlotFree(dest, s)) { src.splice(i, 0, s); continue; }
-        if (dest === f.fuel && s.charges === undefined) s.charges = FIRE_FUEL[s.itemId];
+        if (FIRE_FUEL[s.itemId] !== undefined) {
+          src.splice(i, 1);
+          f.charge += s.charges ?? (FIRE_FUEL[s.itemId] ?? 0) * (s.stack?.count ?? 1);
+          this.syncFire(key);
+          return true;
+        }
+        if (!Game.placeSlotFree(f.input, s)) continue;
         this.syncFire(key);
         return true;
       }
@@ -3554,22 +3594,10 @@ export class Game {
   // ---------------- Campfire cooking stations ----------------
 
   private static newFire(): FireState {
-    const f: FireState = { fuel: new Inventory(), input: new Inventory(), output: new Inventory(), lit: false, drip: 0 };
-    f.fuel.w = 2; f.fuel.h = 2;
+    const f: FireState = { input: new Inventory(), output: new Inventory(), charge: 0, lit: false, drip: 0 };
     f.input.w = 3; f.input.h = 1;
     f.output.w = 3; f.output.h = 1;
     return f;
-  }
-
-  /** Old saves store the coals as a charge number: reshape it into Log instances
-   *  (2 charges each; the odd charge is a half-burnt Log; below one, a Kindling). */
-  private static legacyFuel(n: number): Slot[] {
-    const out: Slot[] = [];
-    if (n <= 0) return out;
-    if (n < 1) { out.push({ itemId: "kindling", x: 0, y: 0, charges: n }); return out; }
-    for (let i = 0; i < Math.floor(n / 2); i++) out.push({ itemId: "wood_log", x: 0, y: 0, charges: 2 });
-    if (n % 2) out.push({ itemId: "wood_log", x: 0, y: 0, charges: 1 });
-    return out;
   }
 
   private fireAt(x: number, y: number, z: number): FireState {
@@ -3579,10 +3607,14 @@ export class Game {
     return f;
   }
 
+  /** Fuel goes INTO a fire by burning away: the item is gone, what's left is
+   *  heat — its charges bank in the coals and outlive it. */
+  private feedFire(f: FireState, s: Slot): void {
+    f.charge += s.charges ?? (FIRE_FUEL[s.itemId] ?? 0) * (s.stack?.count ?? 1);
+  }
+
   private static fireFuel(f: FireState): number {
-    let t = 0;
-    for (const s of f.fuel.slots) t += s.charges ?? 0;
-    return t;
+    return f.charge;
   }
 
   /** A fire warms, glows and cooks only when lit and still holding fuel. */
@@ -3591,24 +3623,10 @@ export class Game {
     return !!f && f.lit && Game.fireFuel(f) > 0;
   }
 
-  /** Give every fuel slot its charge value (a half-burnt Log keeps what's left). */
-  private static fuelSanity(f: FireState) {
-    for (const s of f.fuel.slots) if (s.charges === undefined) s.charges = FIRE_FUEL[s.itemId] ?? 0;
-    for (let i = f.fuel.slots.length - 1; i >= 0; i--) if ((f.fuel.slots[i].charges ?? 0) <= 0) f.fuel.slots.splice(i, 1);
-  }
-
-  /** Drain `amt` charges from the front of the fuel zone; a Log can burn down halfway. */
+  /** Drain `amt` charges from the coals. */
   private spendFuel(f: FireState, amt: number): boolean {
-    if (Game.fireFuel(f) < amt) return false;
-    for (const s of f.fuel.slots) {
-      if (amt <= 0) break;
-      const c = s.charges ?? 0;
-      if (c <= 0) continue;
-      const use = Math.min(c, amt);
-      s.charges = c - use;
-      amt -= use;
-    }
-    for (let i = f.fuel.slots.length - 1; i >= 0; i--) if ((f.fuel.slots[i].charges ?? 0) <= 0) f.fuel.slots.splice(i, 1);
+    if (f.charge < amt) return false;
+    f.charge -= amt;
     return true;
   }
 
@@ -3628,7 +3646,6 @@ export class Game {
   /** Burn charges, run cooking jobs, keep gauges honest — panel open or not. */
   private tickFires(dt: number) {
     for (const [key, f] of this.fires) {
-      Game.fuelSanity(f);
       if (f.lit && Game.fireFuel(f) <= 0) {
         f.lit = false;
         this.syncFire(key);
@@ -3642,6 +3659,9 @@ export class Game {
         this.spendFuel(f, 1);
       }
       this.syncFire(key);
+      // paint before the not-lit skip: a fire that just burned out must
+      // rewrite the gauge, or the panel keeps showing stale "burning" text
+      if (this.fire === f) this.paintFireStatus();
       if (!f.lit) continue;
       for (const s of f.input.slots.slice()) {
         const rec = SMELT.find((r) => r.in === s.itemId);
@@ -3705,6 +3725,9 @@ export class Game {
     document.getElementById("fire-gauge")!.textContent = f.lit
       ? `lit — ${total} fuel charge${total === 1 ? "" : "s"} burning`
       : `${total} fuel charge${total === 1 ? "" : "s"} waiting`;
+    document.getElementById("fire-coals")!.textContent = total > 0
+      ? `${total} fuel charge${total === 1 ? "" : "s"} banked`
+      : "No fuel banked — drop fuel here";
     const el = document.getElementById("fire-input-grid")!;
     for (let y = 0; y < f.input.h; y++) for (let x = 0; x < f.input.w; x++) {
       const cell = el.children[y * f.input.w + x] as HTMLElement | undefined;
@@ -4363,7 +4386,6 @@ export class Game {
       };
     } else lw.classList.add("hidden");
     this.renderGrid(f.input, document.getElementById("fire-input-grid")!);
-    this.renderGrid(f.fuel, document.getElementById("fire-fuel-grid")!);
     this.renderGrid(f.output, document.getElementById("fire-output-grid")!);
     this.paintFireStatus();
   }
@@ -4379,7 +4401,6 @@ export class Game {
     if (this.gridFocus === "chest" && this.chestInv) return this.chestInv;
     if (this.fire) {
       if (this.gridFocus === "fire-in") return this.fire.input;
-      if (this.gridFocus === "fire-fuel") return this.fire.fuel;
       if (this.gridFocus === "fire-out") return this.fire.output;
     }
     return this.inv;
@@ -4389,7 +4410,6 @@ export class Game {
     if (inv === this.chestInv) return "chest";
     if (this.fire) {
       if (inv === this.fire.input) return "fire-in";
-      if (inv === this.fire.fuel) return "fire-fuel";
       if (inv === this.fire.output) return "fire-out";
     }
     return "";
@@ -4562,7 +4582,7 @@ export class Game {
   private openGrids(): Inventory[] {
     const g: Inventory[] = [this.inv];
     if (this.chestInv) g.push(this.chestInv);
-    if (this.fire) g.push(this.fire.input, this.fire.fuel, this.fire.output);
+    if (this.fire) g.push(this.fire.input, this.fire.output);
     return g;
   }
 
@@ -4611,13 +4631,21 @@ export class Game {
       ghost.style.left = ev.clientX - D.gx + "px";
       ghost.style.top = ev.clientY - D.gy + "px";
       document.getElementById("inv-bin")!.classList.toggle("hot", this.overBin(ev.clientX, ev.clientY));
+      document.getElementById("fire-coals")?.classList.toggle("hot", FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev));
     };
     const up = (ev: MouseEvent) => {
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
       ghost.remove();
       document.getElementById("inv-bin")!.classList.remove("hot");
+      document.getElementById("fire-coals")?.classList.remove("hot");
       if (this.overBin(ev.clientX, ev.clientY)) { this.binDiscard(); return; } // the item is already in temp
+      if (FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev)) { // onto the Coals box: burned away, charges banked
+        this.feedFire(this.fire!, s); this.temp = null;
+        this.syncFire(this.openFire!.join(",")); this.audio.place();
+        this.renderInv(); this.renderHeld();
+        return;
+      }
       const dd = slotDims(s);
       let target: Inventory | null = null, ax = 0, ay = 0;
       for (const [el, inv] of this.gridsEls()) {
@@ -4647,12 +4675,12 @@ export class Game {
   }
 
   /** Quick-move destination for shift-click: to the chest/fire when coming from
-   *  the pack (fuel items land in the fire's Fuel Slot, the rest in its Input
-   *  Slot), and back to the pack from anywhere else. */
+   *  the pack (fuel quick-moved to a fire burns straight into its Coals — see
+   *  shiftMove — the rest into its Input Slot), and back to the pack from anywhere else. */
   private quickTarget(s: Slot, src: Inventory): Inventory | null {
     if (src !== this.inv) return this.inv;
     if (this.chestInv) return this.chestInv;
-    if (this.fire) return FIRE_FUEL[s.itemId] !== undefined ? this.fire.fuel : this.fire.input;
+    if (this.fire) return this.fire.input;
     return null;
   }
 
@@ -4660,6 +4688,16 @@ export class Game {
    *  lift the item into temporary storage (a lifted item swaps into the vacated cell). */
   private shiftMove(s: Slot, src: Inventory) {
     const target = this.quickTarget(s, src);
+    // fuel headed for an open Campfire is consumed on the way: charges bank, item is gone
+    if (target === this.fire?.input && FIRE_FUEL[s.itemId] !== undefined) {
+      src.slots.splice(src.slots.indexOf(s), 1);
+      this.feedFire(this.fire!, s);
+      this.syncFire(this.openFire!.join(","));
+      this.audio.place();
+      this.renderInv();
+      this.renderHeld();
+      return;
+    }
     if (target) {
       // a matching open Sack in the target grid swallows the whole item (ADR-0008)
       if (ITEMS[s.itemId].sack === undefined && s.charges === undefined && target.fillSack(s.itemId, 1) > 0) {
@@ -4707,7 +4745,6 @@ export class Game {
     if (this.chestInv) els.push([document.getElementById("chest-grid")!, this.chestInv]);
     if (this.fire) els.push(
       [document.getElementById("fire-input-grid")!, this.fire.input],
-      [document.getElementById("fire-fuel-grid")!, this.fire.fuel],
       [document.getElementById("fire-output-grid")!, this.fire.output],
     );
     return els;
@@ -4732,13 +4769,21 @@ export class Game {
       ghost.style.left = ev.clientX - d.w * STEP / 2 + "px";
       ghost.style.top = ev.clientY - d.h * STEP / 2 + "px";
       document.getElementById("inv-bin")!.classList.toggle("hot", this.overBin(ev.clientX, ev.clientY));
+      document.getElementById("fire-coals")?.classList.toggle("hot", FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev));
     };
     const up = (ev: MouseEvent) => {
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
       ghost.remove();
       document.getElementById("inv-bin")!.classList.remove("hot");
+      document.getElementById("fire-coals")?.classList.remove("hot");
       if (this.overBin(ev.clientX, ev.clientY)) { this.binDiscard(); return; } // the item is already in temp
+      if (FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev)) { // onto the Coals box: burned away, charges banked
+        this.feedFire(this.fire!, s); this.temp = null;
+        this.syncFire(this.openFire!.join(",")); this.audio.place();
+        this.renderInv(); this.renderHeld();
+        return;
+      }
       let target: Inventory | null = null, ax = 0, ay = 0;
       for (const [el, inv] of this.gridsEls()) {
         const r = el.getBoundingClientRect();
