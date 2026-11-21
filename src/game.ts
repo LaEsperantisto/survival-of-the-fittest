@@ -2074,6 +2074,12 @@ export class Game {
       this.audio.blockBreak();
       return;
     }
+    if (id === WOOD && this.trees.has(`${x},${y},${z}`)) {
+      // felling the trunk ends this tree: a seed replanted into the cell
+      // must start from scratch, never inherit the felled one's progress
+      this.trees.delete(`${x},${y},${z}`);
+      this.treePlanCache.delete(`${x},${y},${z}`);
+    }
     if (id === MELON_2 || id === MELON_1 || id === WHEAT_2 || id === WHEAT_1) {
       // breaking a crop by hand or tool yields its harvest too — rougher than
       // picking it (E) but never a wasted plant
@@ -3485,6 +3491,7 @@ export class Game {
       const [x, y, z] = key.split(",").map(Number);
       const id = this.world.get(x, y, z);
       if (id !== SAPLING && id !== WOOD) { this.trees.delete(key); continue; } // chopped or buried: done
+      if (p >= 480) continue; // full grown is final: a mature tree never re-grows chopped branches or canopy
       if (!this.waterNear(x, y, z, 10)) continue;
       const np = Math.min(480, p + dtc); // ~8 real minutes root to canopy
       this.trees.set(key, np);

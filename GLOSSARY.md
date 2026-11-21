@@ -89,7 +89,7 @@ A green tree with trunk, branches and a Leaf canopy, found at Oases and in Towns
 _Avoid_: plant, bush
 
 **Wood Farm**:
-A player's own grove of Living Trees, grown from Tree Seeds in Dirt and kept growing by keeping moisture close.
+A player's own grove of Living Trees, grown from Tree Seeds in Dirt and kept growing by keeping moisture close. A young tree re-grows parts you break off; once full grown it stands final — chopped branches and canopy stay chopped, so harvest the canopy and re-plant seeds to keep the grove young.
 
 **Tree Seed**:
 Found in Town Supply Chests; planted in Dirt it grows a Living Tree stage by stage while moisture stays near.
