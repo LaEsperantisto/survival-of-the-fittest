@@ -1,31 +1,52 @@
-# Feature Plan (2026-11-20)
+# Feature Plan (2026-11-21)
 
-Supersedes the 2026-11-19 plan (all of it shipped). Everything from the earlier micro-fix list (waypoint height, quest panel, breakbar, surge cooldown 5 s, favicon, door prompts, multi-block display names, rod consolidation) verified already in place — only these remain. Four batches; each: edit → `npx tsc --noEmit` → live verify in a browser tab → `npm run build` → commit/push both repos (root + `dist/`), per AGENTS.md.
+Decisions from the grilling session; the model lives in `GLOSSARY.md` (new **Sack**, new **Catalog**, revised **Farming**) and `docs/adr/0008-sacks-are-opaque-machines-may-fill-but-never-read.md`. README already describes the target behaviour (Batch 0) — code must catch up to it.
 
-## Batch 1 — Inventory UI truth
-1. **Icon tiling bug** (styles.css `.invcell`): cell `background-image` is a 16 px tile in a 64 px cell with default `repeat`/`auto` size — the texture renders "copied 16 times". Add `background-size: 100% 100%; background-repeat: no-repeat; image-rendering: pixelated;` to `.invcell`, `#inv-temp`, `.eqslot`.
-2. **Prickly Pear art** (icons.ts `drawArt`): no case → magenta color blob. Draw a real fruit: magenta pear on a green pad with spines.
-3. **Chest grids grow wide, not tall** (game.ts `chestDims`): width-first growth to a max of 18 (n≤6 → [3n, 3]; then height grows, width capped at 18: `h = max(3, ceil(9n/18))`, `w = min(18, ceil(9n/h/3)*3)`). GLOSSARY Linked-Chests entry follows.
-4. **Auto-shrink the grids when they'd force a scroll** (game.ts `renderGrid` + styles.css): cell size becomes a per-grid value `--cell` (CSS `var`), default 64 px, clamped so a grid that overflows the panel shrinks it down to at most 4× (16 px floor); slot COUNT never changes, only appearance. Drag math (`startInvDrag`/`startTempDrag` STEP, ghost size) reads the effective cell size, not `Game.CELL`.
-5. **Temporary storage never traps you** (game.ts `closeUI`, drag/shift paths): closing the UI with an item lifted no longer refuses — the item goes back to the grid it came from (`placeSlotFree`), else onto the ground in front of the player. Lifting any item out of a grid into temp must always succeed (the swap-into-vacated-cell leg never fails). Physical movement never clears temp (verify in browser).
+Batch workflow (AGENTS.md): edit → `npx tsc --noEmit` → live verify in browser → `npm run build` → commit+push **root** and **dist/** repos.
 
-## Batch 2 — Survival & death behaviour
-6. **Sleep cooldown: 6 real minutes, not a whole day** (game.ts `sleep`, `napReady` at 1770/3658): gate on `SLEEP_COOLDOWN = 360` s; toast math unchanged ("comes in X min"); comments/tut text follow.
-7. **Kill the heaviness feature** (items.ts, survival.ts, player.ts, game.ts, hud.ts, GLOSSARY, README): delete the Overencumbered state end to end — `weight()/weightLimit()/baseLimit/bonusLimit`, the `slow` multiplier in `player.update`, the +0.05 water drain, the kg/lim HUD line and the "Weight X / Y kg" side-text, `bag.kg`. Weight is no longer a game mechanic at all; backpacks expand the grid only. Delete GLOSSARY entries **Weight Limit** and **Overencumbered**; trim the Backpack entry and README's "carry-weight budget" clause.
-8. **Death restores the pack honestly** (game.ts `die`): after clearing gear, reset the grid to base 5×4 (`setBackpack(5, 4)`-equivalent) — dying with a Backpack equipped must not leave a 7×6 grid.
-9. **"Keep inventory on death" cheat** (index.html `#cheats` + main.ts wiring + game.ts `keepInventory` flag): toggle button beside Immortality, session-only like the other cheats; with it on, `die()` creates no Death Cache and loses nothing.
+## Batch 0 — docs (done this pass)
+- `PLAN.md` (this file), `GLOSSARY.md` (Sack, Catalog, Farming radii + reaping), `docs/adr/0008-…`, README: radii 6/10/10, seed economics, **Sacks** bullet, merged-cell + Catalog-button copy, machine↔Sack rule, oasis sprouts.
 
-## Batch 3 — World, water, machines
-10. **Harvesting must not stack Farmland** (game.ts `harvest` WHEAT_2 branch and `harvesterAct` WHEAT_2 branch): the wheat cell goes to AIR — the Farmland it stood on stays tilled below. (Breaking already does this; the user's "harvester replaces crop with a dirt block" is the stacked-tile look.)
-11. **Water falls slower** (world.ts `processWater`): generation counter; the vertical step applies every other pass (0.4 s lateral spread, 0.8 s fall) — cascades crawl down instead of teleporting.
-12. **Electric Lamps honour real power** (game.ts `updatePower`): `g.powered` is true only while supply+batteries actually meet the draw — a Panel + Lamp grid with dead generators stays dark and does NOT complete "Lights On"; trip logic unchanged otherwise.
-13. **Soil darkens near water** (renderer.ts mesher): DIRT and GRASS cells with any Water within 3 (Chebyshev, ±2 y) get ~0.7× face shade — mud reads damp.
-14. **Plating mines 4× faster** (blocks.ts): HULL 6→1.5, CURVED_HULL 6→1.5, HULL_SLOPE likewise, METAL_PLATING 4→1.
+## Batch 1 — Grids: merged cells + rotation everywhere
+Rotation already exists (`Slot.rot`, `itemArtUrl(itemId, rot, …)` in `icons.ts`); extend, don't reinvent.
+- `icons.ts`: add whole-art variant — one canvas for the full w×h footprint (cached per `id:rot:charges`), so a multi-cell item draws ONE image instead of per-cell tiles.
+- Merged cell: pack grid, chest grid, Campfire Fuel/Input/Output, Temporary Storage, Bin, harvest/drop popups, Catalog cards — the footprint renders as one bordered cell, whole art, single click target; `Slot.rot` semantics unchanged (quarter turn, footprint swap as today).
+- R-while-selected (context-sensitive: grid open → rotate held/selected item) covers every 2D surface; Drop button stays pure drop.
+- Verify in browser: rotate a 1×2 canister in pack + chest + Campfire input; 2×2 Reptile Armour in a grid shows one merged tile; popup after a kill rotates.
 
-## Batch 4 — Beacons, caches, far markers
-15. **Death beams always, and taller** (game.ts cache loop + renderer defaults): Death Cache beams render regardless of the Visor (they already do — keep), height 14→40; Reward Cache beams unchanged (Visor-only).
-16. **Save Beacons beam too** (game.ts `guideFrame`): maintain a beaconBeam set diffed from `beaconMarks` each guide tick — every standing Save Beacon throws a tall cyan beam; breaking/saving updates it (marks already maintain; beams follow).
-17. **Too far → colour-coded edge arrow** (game.ts + hud.ts + index.html + styles.css): for every always-beam marker (Death Caches red, Reward Caches gold, Save Beacons cyan), when the marker is beyond ~96 m, hide the 3D beam and show a HUD arrow pinned to the screen edge pointing at it (bearing vs. player yaw), tinted in the marker's colour, with distance. Near → beam, far → arrow, never both.
+## Batch 2 — Catalog
+Anchor: `renderCatalog`/`CAT_TAB` in `main.ts` (~161-236).
+- Sections, alphabetical (Tools & Gear / Food & Water / Materials & Building / Machines & Power / Oddities); items alphabetical inside; locked entries greyed IN section.
+- Recipes tab grouped by station: Hand / Crafting Bench / Armoury / Campfire cook / Disassembler; locked recipes stay in their station group.
+- Cross-links on every entry as clickable chips: recipes that make it · recipes that consume it · the block it places (`BLOCK_TO_ITEM` inverse) · what drops it (break/harvest/mob/town-loot tables). Chip click jumps to that entry.
+- Open-Catalog button: Inventory (besides Sort), Crafting Bench, Armoury, Campfire panel, Disassembler — from Inventory with a selection scrolls to that entry.
 
-## Verification protocol
-Dev server + headless tab (`globalThis.game`): icon cell shows ONE texture (screenshot); prickly pear art; open 4-chest cluster → 12×3 grid, 8 chests → 18×4; tall chest grid shrinks cells, never slot count; lift item, press Esc → item back in pack; sleep twice → second toast says ~X min; no kg line anywhere, heavy pack no longer slows (walk 200+ kg); keep-inventory cheat → death keeps slots; wheat harvest (E and Harvester) → crop cell AIR, Farmland below intact; pour water atop a cliff → visibly crawls; Panel+Lamp with no supply → lamp dark, `grid` quest not bumped; DIRT tile by a pool darker; hull break ~1.5 s; cache beam tall without visor; walk past a beacon → cyan beam; teleport far → edge arrow appears with colour+distance.
+## Batch 3 — Sacks (I / II / III)
+- `items.ts`: `sack1/2/3` — "Sack I/II/III", 1×1, cap 10/20/30 footprint-units; desc names cap + opacity rule. `crafting.ts` RECIPES (bench): 4 dead wood / 6 dead wood + 2 iron rods / 4 wood logs + 4 cobalt rods.
+- Slot model (`game.ts`, `save.ts` slot serial types ~54-86): optional `stack?: { itemId: string; count: number }`; save/load round-trip; whole-Sack drop/transfer keeps contents; tooltip "Sack II — Rock ×17 (17/20)".
+- ONE insert helper used by every grid insertion (pickup `giveOrDrop`→pack, Shift-click both directions, Harvester/Inserter/Planter output, cache reward): fill the matching open Sack with the **least remaining capacity** first; reject sack-in-sack at any tier; item only fits if `w*h*count` ≤ free units.
+- Read-opaque guards (ADR-0008): Wood Generator fuel pull, Inserter take-from, Campfire Fuel Slot acceptance (scan and auto-feed), Planter seed pull, Trader barter counting, Sort (moves the Sack whole, never opens it). Machines may WRITE to Sacks (via insert helper) but never READ contents.
+- UI: selected Sack shows **Open Sack** in the side button row (Equip/Move to pack/Drop/Catalog); toggles to **Close Sack**; panel like Temporary Storage with two slots — in-slot (only matching non-Sack item that fits units; adding decrements nothing, it merges) and out-slot (one item; take → selected grid / pack).
+- Codex learns sacks on craft; death/reward caches may contain empty Sacks (townLoot small chance).
+- Verify: craft Sack I, mine 12 rock → auto-fill stops at 10, next goes to grid; open panel in/out; generator beside chest with Sack of logs burns the loose logs first then refuses; whole-Sack Campfire drag feeds nothing; save→reload keeps counts.
+
+## Batch 4 — Crops: radii, readout, seed economy
+Anchors in `game.ts`: `updateCrops` (~2999, ±4 scan), farm-aim wetness scan (~2971-2975), tree tick (~3344-3356, ±6), `cropDisplayName` (~2990), toasts 2749/3427; `items.ts` seed descs 94/95/102; `townLoot` 366-367; `gen.ts` oasis melons 748/804/1028; wheat yield paths 2059/2935/hand-harvest; melon pick ~3270s.
+- Water reach per species: Wheat 6, Melon 10, Tree 10 (scans and the wetness-scan thresholds follow).
+- Readout: `<Name> — <pct>% — growing` / `— paused: no Water within 6 blocks` (species-correct radius) / `— paused: too hot (47 °C, Wheat wants 2–42 °C)` / `— paused: too cold (…)`; trees get the same wording ("Living Tree — 40 % — paused: …"); ripe keeps existing "— ripe"; Farm Land bare name unchanged.
+- Reaping: wheat yields 1 seed + 50 % second on ALL THREE paths (break 2059, break 2935, hand-harvest).
+- Melon: pick ripe → fruit + 50 % `seed_melon`; `townLoot` melon seed 0.4 → 0.7 (parity with wheat); `gen.ts` adds 1-2 `MELON_1` sprouts beside each oasis ripe-vine cluster; first-pick one-time hint toast ("Break an oasis sprout, or pick with luck, for Melon Seeds"); seed descs to new radii.
+- Verify: plant a melon from sprout-broken seed; readout shows each pause reason; ~50 % seed rolls over repeated harvests.
+
+## Batch 5 — Rat art
+- `icons.ts`: hand-drawn pixel `rat_raw` + `rat_cooked` replacing flat block-color art; rotation-aware via existing pipeline; Codex shows them. Verify: hunt a rat, both art states in pack + Catalog.
+
+## Batch 6 — Block animations (renderer overlay pass)
+Near-player set (budget ~400 blocks), updated per frame in `renderer.ts`:
+- Campfire: flame billboard flicker + light flicker while lit; lit Thruster: jet flicker.
+- Save Beacon slow pulse; Sandstorm Breaker red hum pulse (harder during a storm); Power Panel steady blink live / hard-red blink tripped; Wood Generator smoke wisp while burning; Heat Regulator vent pulse.
+- Wind Turbine blades rotate (storm = faster); Water Wheel rotates while water flows past; Lamp/Electric Lamp gentle night glow flicker.
+- Verify: test world with every animated block placed and powered; storm toggled from console.
+
+## Out of scope (recorded, not built)
+Unpacker block (future), Sack-in-Sack nesting (late-game tier only), new mob/block content beyond above.

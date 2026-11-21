@@ -1,0 +1,3 @@
+# Sacks are opaque: machines may fill them but never read them
+
+Sacks (I/II/III) bundle up to 10/20/30 footprint-units of one identical item into a single grid cell, so mining and haulage stop micromanaging loose stacks. Decided: every insertion — player pickup, Shift-click, Harvester or Inserter output — auto-fills the least-empty matching open Sack, but no machine, Campfire or Trader may ever take items out of one; a Sack moved or traded carries its contents unseen. The deliberate asymmetry keeps storage a puzzle worth designing around; the planned (unbuilt) Unpacker block becomes the in-world answer to bulk-emptying. Sack-in-Sack nesting was considered and rejected — it collapses the storage limit entirely — and may only return as a late-game tier.

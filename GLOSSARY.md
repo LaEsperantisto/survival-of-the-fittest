@@ -218,7 +218,7 @@ A carrying vessel for Water itself: it scoops from a Source and pours back as a 
 _Avoid_: pail, canteen
 
 **Farming**:
-Growing crops on Farmland where Air Temperature suits the species and Water is within reach. Growth follows Air Temperature, not sun or shade: the reason outdoor farming is dangerous is that the danger that costs you health is the same danger that costs you time. Aiming at a Crop (or the Farmland under it) names it with its growth percentage toward Ripe.
+Growing crops on Farmland where Air Temperature suits the species and Water is within that species' reach — Desert Wheat 6 blocks, Dune Melon 10, a Living Tree 10. Growth follows Air Temperature, not sun or shade: the reason outdoor farming is dangerous is that the danger that costs you health is the same danger that costs you time. Aiming at a Crop (or the Farmland under it, or a young Living Tree) names it with its growth percentage toward Ripe and says why it stands still when it does. Ripe Wheat yields its sheaf and seeds; a picked Melon usually leaves a seed too, and re-ripens on the vine.
 _Avoid_: greenhouse (crops are not tied to glass), gardening
 
 **Farmland**:
@@ -239,6 +239,10 @@ The harder crop, discovered in Town loot: it tolerates cold but not the midday, 
 **Inventory Grid**:
 A rectangular grid of slots; items occupy footprints (Water Canister 1×2). Expandable via Backpacks. Every item instance claims its own cells — duplicates never share a slot, so more of something means more space taken. A Sort button on every Grid (pack, Supply Chests, each Campfire slot) arranges items alphabetically, identical items adjacent.
 _Avoid_: stacking, merging slots
+
+**Sack** (Sack I, Sack II, Sack III):
+A bound bundle of identical goods. A Sack holds exactly one kind of item up to its tier's capacity — 10, 20 or 30 units, counted in footprint area (a 2×2 item costs 4) — and stands as one cell wherever it sits; moving the Sack moves the whole bundle. Any insertion, by hand or machine, fills a matching open Sack first; only hands empty one, one item at a time. A Sack never holds another Sack, and is opaque to machines and Traders: they may fill it but never read inside it.
+_Avoid_: bag, bundle, stack (items still never stack)
 
 **Armour Slot**:
 One of five dedicated equipment places above the Inventory Grid: Backpack, Head, Body, Regulator, Light. Gear in an Armour Slot works passively, takes no room in the Grid, and comes off by clicking the filled slot.
@@ -470,6 +474,10 @@ _Avoid_: compass (the Map's arrow is something else)
 **Chronicle**:
 the running lessons of the world — guided side goals and first-time discoveries that teach how its systems work. The current step rides under the main Quest in the HUD; the full log lives in the pause menu.
 _Avoid_: tutorial (the guided first minutes), achievement
+
+**Catalog**:
+The handbook of every item and block, organised in alphabetical sections, its Recipes grouped by Crafting Station. Each entry cross-links every place it appears — recipes that make it, recipes that consume it, the block it places, what drops it — and the Catalog opens from the Inventory as well as from every Crafting Station.
+_Avoid_: catalogue (the repo spelling is Catalog), wiki (see Codex)
 
 **Codex**:
 knowledge earned by holding a thing: the first time you carry or craft an item or block, its Catalog entry teaches itself. Unlearned entries stay locked.
