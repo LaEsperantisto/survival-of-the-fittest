@@ -18,7 +18,7 @@ import { QUESTS, currentQuest, loadQuestState, questEvent, recordDeed, reconcile
 import { LESSON_BY_ID, LESSONS, loadIdSet } from "./chronicle";
 import { Tutorial, INTRO_CINE, type CineSeg } from "./tutorial";
 import { WorldMeta, RunSave, FireSave, saveRun, exportRun, bestScore, submitBest, Settings } from "./save";
-import { itemTiles, itemArtUrl } from "./icons";
+import { itemArtUrl } from "./icons";
 import * as hud from "./hud";
 
 const isDoorHalf = (i: number) => { const g = DOOR_GROUP.get(i); return g !== undefined && i !== g.open; };
@@ -4001,7 +4001,8 @@ export class Game {
       const d = ITEMS[this.temp.itemId];
       tempEl.classList.add("filled");
       tempEl.style.backgroundColor = d.color;
-      tempEl.style.backgroundImage = `url(${itemTiles(this.temp.itemId, this.temp.charges)[0] ?? ""})`;
+      tempEl.style.backgroundSize = "100% 100%";
+      tempEl.style.backgroundImage = `url(${itemArtUrl(this.temp.itemId, this.temp.rot ? 1 : 0, this.temp.charges)})`;
       tempEl.onmousedown = (e) => {
         if (Date.now() - this.lastTouchTs < 700) { this.tapTemp(); return; }
         if (this.temp) this.startTempDrag(e);
@@ -4034,7 +4035,8 @@ export class Game {
         const d = ITEMS[it.itemId];
         el.classList.add("filled");
         el.style.backgroundColor = d.color;
-        el.style.backgroundImage = `url(${itemTiles(it.itemId, it.charges)[0] ?? ""})`;
+        el.style.backgroundSize = "100% 100%";
+        el.style.backgroundImage = `url(${itemArtUrl(it.itemId, it.rot ? 1 : 0, it.charges)})`;
         const ch = it.charges;
         el.textContent = ch !== undefined && ch > 0 ? String(ch) : "";
         el.title = ch !== undefined
@@ -4209,22 +4211,27 @@ export class Game {
     grid.style.removeProperty("--cell");
     grid.style.gridTemplateColumns = `repeat(${inv.w}, ${Game.CELL}px)`;
     inv.cellPx = Game.CELL;
-    const at = (x: number, y: number) => inv.slots.find((s) => {
-      const d = slotDims(s);
-      return x >= s.x && x < s.x + d.w && y >= s.y && y < s.y + d.h;
-    });
     for (let y = 0; y < inv.h; y++) for (let x = 0; x < inv.w; x++) {
+      const s = inv.slots.find((sl) => {
+        const d = slotDims(sl);
+        return x >= sl.x && x < sl.x + d.w && y >= sl.y && y < sl.y + d.h;
+      });
+      if (s && (s.x !== x || s.y !== y)) continue; // merged: the anchor tile spans the whole footprint
       const cell = document.createElement("div");
       cell.className = "invcell";
-      const s = at(x, y);
+      cell.style.gridColumnStart = String(x + 1);
+      cell.style.gridRowStart = String(y + 1);
       if (s) {
-        const d = ITEMS[s.itemId];
-        const dx = x - s.x, dy = y - s.y;
-        // the art is one picture across the whole footprint: pick this cell's slice
-        const tiles = itemTiles(s.itemId, s.charges);
-        const idx = s.rot ? (d.h - 1 - dx) * d.w + dy : dy * d.w + dx;
-        cell.style.backgroundColor = d.color;
-        cell.style.backgroundImage = `url(${tiles[Math.min(idx, tiles.length - 1)] ?? ""})`;
+        const d = slotDims(s);
+        if (d.w > 1 || d.h > 1) {
+          cell.classList.add("span");
+          cell.style.gridColumn = `${x + 1} / span ${d.w}`;
+          cell.style.gridRow = `${y + 1} / span ${d.h}`;
+          cell.style.aspectRatio = `${d.w} / ${d.h}`;
+        }
+        cell.style.backgroundColor = ITEMS[s.itemId].color;
+        // whole art, one picture, turned with the slot
+        cell.style.backgroundImage = `url(${itemArtUrl(s.itemId, s.rot ? 1 : 0, s.charges)})`;
         const si = inv.slots.indexOf(s);
         if (si === inv.selected) cell.classList.add("active");
         // hover preview must only rewrite the description line, and never on
@@ -4233,7 +4240,7 @@ export class Game {
         cell.onmouseenter = () => {
           if (Date.now() - this.lastTouchTs < 700) return;
           const t = document.getElementById("side-text");
-          if (t) t.textContent = `${d.name} — ${d.desc}`;
+          if (t) t.textContent = `${ITEMS[s.itemId].name} — ${ITEMS[s.itemId].desc}`;
         };
         cell.onmousedown = (e) => {
           this.focusInv(inv);
