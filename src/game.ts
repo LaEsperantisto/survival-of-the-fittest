@@ -5,7 +5,7 @@ import { Survival, REGULATOR_ROOM_MAX, SAFE_HI } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, sackUnits, sackFree, type ItemDef, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, DOOR_GROUP, ALAB_GATE, ALAB_GATE_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, INSERTER, PLANTER, HARVESTER, POLE_LINK, DEVICE_REACH, isPowerBlock, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable } from "./blocks";
+import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, DOOR_GROUP, ALAB_GATE, ALAB_GATE_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, CHEST_INTERFACE, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, INSERTER, PLANTER, HARVESTER, POLE_LINK, DEVICE_REACH, isPowerBlock, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable } from "./blocks";
 
 /** One Battery stores this many Grid-units. */
 const POWER_BATT_CAP = 120;
@@ -79,6 +79,10 @@ export class Game {
   caches: DeathCache[] = [];
   chests = new Map<string, Slot[]>();   // linked-chest cluster key -> grid slots
   chestInv: Inventory | null = null;    // live view of the open chest's cluster
+  // the Chest Interface panel (ADR-0009): list view instead of the raw grid,
+  // plus its search filter
+  ifcMode = false;
+  ifcQuery = "";
   private gridFocus: "inv" | "chest" | "fire-in" | "fire-out" = "inv";
   /** Campfire cooking stations keyed by "x,y,z" — the staging grids are live Inventory instances. */
   fires = new Map<string, FireState>();
@@ -268,7 +272,7 @@ export class Game {
   }
 
   private spawnStarterChest() {
-    // the cockpit's Supply Chest is a real chest block, stocked with three full canisters
+    // the cockpit's Chest is a real chest block, stocked with three full canisters
     const [x, y, z] = [3, 31, 0];
     if (this.world.get(x, y, z) !== AIR) return;
     this.world.set(x, y, z, CHEST);
@@ -279,7 +283,7 @@ export class Game {
     ]);
   }
 
-  // ---------- Supply Chest blocks ----------
+  // ---------- Chest blocks ----------
   // A chest block owns an Inventory Grid. Chests touching orthogonally form one
   // cluster sharing a single grid: 3×3 each, width grows to 9 (three chests),
   // then height grows one row per chest. Capacity is always 9 per chest.
@@ -297,7 +301,7 @@ export class Game {
         const nx = c[0] + dx, ny = c[1] + dy, nz = c[2] + dz;
         const k = `${nx},${ny},${nz}`;
         const nb = this.world.get(nx, ny, nz);
-        if (seen.has(k) || (nb !== CHEST && nb !== CHEST_CONNECTOR)) continue;
+        if (seen.has(k) || (nb !== CHEST && nb !== CHEST_CONNECTOR && nb !== CHEST_INTERFACE)) continue;
         seen.add(k);
         walk.push([nx, ny, nz]);
       }
@@ -366,7 +370,7 @@ export class Game {
     return false;
   }
 
-  /** A town Supply Chest's stores, rolled deterministically from its position. */
+  /** A town Chest's stores, rolled deterministically from its position. */
   private townLoot(cx: number, cz: number): { itemId: string; count: number }[] {
     const r = (salt: number) => hash2(cx, cz, this.seed + salt);
     const items: { itemId: string; count: number }[] = [{ itemId: "canister_empty", count: 2 }];
@@ -382,14 +386,19 @@ export class Game {
     return items;
   }
 
-  private openChest(x: number, y: number, z: number) {
+  private openChest(x: number, y: number, z: number, ifc = false) {
     const cells = this.chestCluster(x, y, z);
+    if (!cells.length) {
+      hud.toast("The Chest Interface isn't touching any Chest.");
+      this.audio.error();
+      return;
+    }
     const key = Game.chestKey(cells);
     const known = this.chests.has(key);
     if (!this.chests.has(key)) this.chests.set(key, []);
     const ci = this.emptyChestGrid(cells.length);
     ci.slots = this.chests.get(key)!;
-    // world-placed Supply Chests hold stores exactly once: a cluster never
+    // world-placed Chests hold stores exactly once: a cluster never
     // opened before rolls its loot now, and every later opening is bare
     if (!known && cells.some(([cx, , cz]) => this.inTown(cx, cz))) {
       for (const it of this.townLoot(cells[0][0], cells[0][2])) {
@@ -414,6 +423,8 @@ export class Game {
       this.questBump("supplies");
     }
     this.chestInv = ci;
+    this.ifcMode = ifc;
+    this.ifcQuery = "";
     this.gridFocus = "chest";
     this.tut?.notify("chest");
     this.ui = "inv";
@@ -434,7 +445,7 @@ export class Game {
     if (cells.length > 1) hud.toast(`Chests linked — one ${ci.w}×${ci.h} inventory.`);
   }
 
-  /** A pre-grid Supply Chest cache becomes a chest-block grid — one representation, never double-lootable. */
+  /** A pre-grid Chest cache becomes a chest-block grid — one representation, never double-lootable. */
   private adoptLegacyChest(c: { x: number; y: number; z: number; items: { itemId: string; count: number }[] }) {
     if (this.world.get(c.x, c.y, c.z) !== CHEST) {
       if (isSolid(this.world.get(c.x, c.y, c.z))) {
@@ -519,7 +530,7 @@ export class Game {
     const legacyChests: { x: number; y: number; z: number; items: { itemId: string; count: number }[] }[] = [];
     for (const c of run.caches) {
       const kind = c.kind ?? "death";
-      // old saves model Supply Chests as caches; they now live on as chest-block grids
+      // old saves model Chests as caches; they now live on as chest-block grids
       if (kind === "chest") { legacyChests.push(c); continue; }
       const cache: DeathCache = { id: this.entitySeq++, x: c.x, y: c.y, z: c.z, kind, items: c.items.map((i) => ({ ...i })) };
       this.caches.push(cache); // crate, ring and beam get (re)built by the marker loop
@@ -839,7 +850,7 @@ export class Game {
   // The HUD guides the active quest: a compass heading + distance (hud.updateWaypoint)
   // and a waypoint beam at the target. With a Surveyor's Visor equipped in the
   // Head slot, every Cache and chest cluster also gets a marker beam (items.ts:
-  // "equipped in the Head slot the HUD marks every Death Cache, Reward Cache and Supply Chest").
+  // "equipped in the Head slot the HUD marks every Death Cache, Reward Cache and Chest").
   private guideFrame(dt: number) {
     this.guideAcc += dt;
     if (this.guideAcc < 0.4) return;
@@ -1561,6 +1572,12 @@ export class Game {
     // Sort buttons: every grid (pack, chest, Campfire slots) alphabetizes itself.
     document.getElementById("btn-sort-inv")!.onclick = () => { this.inv.sort(); this.audio.place(); this.renderInv(); };
     document.getElementById("btn-sort-chest")!.onclick = () => { this.chestInv?.sort(); this.audio.place(); this.renderInv(); };
+    // Chest Interface panel: search filters the list, Stow moves the selected pack item in
+    document.getElementById("ifc-search")!.oninput = (e) => {
+      this.ifcQuery = (e.target as HTMLInputElement).value;
+      this.renderIfcList();
+    };
+    document.getElementById("btn-ifc-stow")!.onclick = () => this.ifcStow();
     for (const b of document.querySelectorAll<HTMLButtonElement>(".fire-sort"))
       b.onclick = () => {
         const f = this.fire;
@@ -1926,7 +1943,8 @@ export class Game {
   private promptFor(t: Raycast | null): string | null {
     if (this.nearestTrader()) return "E: Trade with the Trader";
     if (!t) return null;
-    if (t.hit && this.world.get(t.hit.x, t.hit.y, t.hit.z) === CHEST) return "E: Open Supply Chest";
+    if (t.hit && this.world.get(t.hit.x, t.hit.y, t.hit.z) === CHEST) return "E: Open Chest";
+    if (t.hit && this.world.get(t.hit.x, t.hit.y, t.hit.z) === CHEST_INTERFACE) return "E: Open Chest Interface";
     const near = this.nearestCache();
     if (near) return near.kind === "reward" ? "E: Claim Reward Cache" : "E: Open death cache";
     if (t.hit) {
@@ -2145,6 +2163,31 @@ export class Game {
       this.audio.blockBreak();
       if (spilled) hud.toast("The remaining chests were full — some contents fell to the sand.");
       return;
+    }
+    if (id === CHEST_CONNECTOR || id === CHEST_INTERFACE) {
+      // breaking a link between Chests splits the cluster: the contents are
+      // rekeyed into the groups that stay connected; only what no group has
+      // room for spills onto the sand
+      const cells = this.chestCluster(x, y, z);
+      if (cells.length) {
+        const old = this.chests.get(Game.chestKey(cells)) ?? [];
+        this.chests.delete(Game.chestKey(cells));
+        this.world.set(x, y, z, AIR);
+        const groups: [string, Inventory][] = [];
+        for (const c of cells) {
+          const g = this.chestCluster(c[0], c[1], c[2]);
+          const k = Game.chestKey(g);
+          if (groups.some(([gk]) => gk === k)) continue;
+          groups.push([k, this.emptyChestGrid(g.length)]);
+        }
+        let spilled = false;
+        for (const sl of old) {
+          if (!groups.some(([, gi]) => Game.placeSlotFree(gi, sl))) { this.dropEntity(sl.itemId, 1, 2, sl.charges); spilled = true; }
+        }
+        for (const [k, gi] of groups) if (gi.slots.length) this.chests.set(k, gi.slots);
+        if (spilled) hud.toast("The link broke — some contents fell to the sand.");
+      }
+      // fall through: the rail / interface itself drops as an item
     }
     if (id === ENGINECORE) {
       this.world.set(x, y, z, AIR);
@@ -2710,12 +2753,15 @@ export class Game {
       const p = this.player.pos;
       if (bx + 1 > p.x - 0.3 && bx < p.x + 0.3 && bz + 1 > p.z - 0.3 && bz < p.z + 0.3 && by + 1 > p.y && by < p.y + 1.8) return;
     }
-    // a chest placed against existing chests merges the inventories up front
+    // a chest placed against existing chests merges the inventories up front;
+    // a Chest Interface does the same when it bridges two clusters — its own
+    // cell never joins the chest set, so a lone cluster keeps its key untouched
     let chestOld: Slot[] = [];
-    if (def.block === CHEST) {
+    if (def.block === CHEST || def.block === CHEST_INTERFACE) {
       const done = new Set<string>();
       for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const) {
-        if (this.world.get(bx + dx, by + dy, bz + dz) !== CHEST) continue;
+        const nb = this.world.get(bx + dx, by + dy, bz + dz);
+        if (nb !== CHEST && nb !== CHEST_CONNECTOR && nb !== CHEST_INTERFACE) continue;
         const k = Game.chestKey(this.chestCluster(bx + dx, by + dy, bz + dz));
         if (done.has(k)) continue;
         done.add(k);
@@ -2800,7 +2846,7 @@ export class Game {
       else if (def.block === PLANTER) this.lesson("planter");
       else if (def.block === HARVESTER) this.lesson("harvester");
     }
-    if (def.block === CHEST) this.linkChests(bx, by, bz, chestOld);
+    if (def.block === CHEST || def.block === CHEST_INTERFACE) this.linkChests(bx, by, bz, chestOld);
     this.inv.slots.splice(this.inv.selected, 1);
     this.inv.selected = Math.min(this.inv.selected, Math.max(0, this.inv.slots.length - 1));
     this.renderHeld();
@@ -2819,6 +2865,7 @@ export class Game {
     const trader = this.nearestTrader();
     if (trader) { this.openTrade(trader); return; }
     if (t?.hit && this.world.get(t.hit.x, t.hit.y, t.hit.z) === CHEST) { this.openChest(t.hit.x, t.hit.y, t.hit.z); return; }
+    if (t?.hit && this.world.get(t.hit.x, t.hit.y, t.hit.z) === CHEST_INTERFACE) { this.openChest(t.hit.x, t.hit.y, t.hit.z, true); return; }
     const cache = this.nearestCache();
     if (cache) { this.openCacheId = cache.id; this.ui = "cache"; this.unlockPointer(); this.renderCache(); document.getElementById("ui-cache")!.classList.remove("hidden"); return; }
     // a Surveyor's Pin is planted at your feet — no raycast needed
@@ -3176,12 +3223,11 @@ export class Game {
   }
 
   /** A hungry Wood Generator eats one Log (30 s) or Dead Wood stick (6 s)
-   *  out of a Supply Chest standing right beside it — adjacency, no vacuum. */
+   *  out of a Chest standing right beside it — adjacency, no vacuum. */
   private refuelGen(k: string) {
     const [x, y, z] = k.split(",").map(Number);
     for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const) {
-      if (this.world.get(x + dx, y + dy, z + dz) !== CHEST) continue;
-      const slots = this.chests.get(Game.chestKey(this.chestCluster(x + dx, y + dy, z + dz)));
+      const slots = this.chestSlotsAt(x + dx, y + dy, z + dz);
       if (!slots?.length) continue;
       let i = slots.findIndex((s) => s.itemId === "wood_log");
       let burn = 30;
@@ -3355,17 +3401,24 @@ export class Game {
     }
   }
 
-  /** The live slot array of the Chest cluster at this cell (null: no Chest). */
+  /** The live slot array of the Chest cluster at this cell. A Chest, a Chest
+   *  Connector rail or a Chest Interface all reach the same cluster
+   *  (null: no Chest anywhere behind it). */
   private chestSlotsAt(x: number, y: number, z: number): Slot[] | null {
-    if (this.world.get(x, y, z) !== CHEST) return null;
-    const key = Game.chestKey(this.chestCluster(x, y, z));
+    const id = this.world.get(x, y, z);
+    if (id !== CHEST && id !== CHEST_CONNECTOR && id !== CHEST_INTERFACE) return null;
+    const cells = this.chestCluster(x, y, z);
+    if (!cells.length) return null;
+    const key = Game.chestKey(cells);
     return this.chests.get(key) ?? [];
   }
 
-  /** Put one item into the Chest at this cell (chest stores never stack). */
+  /** Put one item into the Chest cluster at this cell (chest stores never stack). */
   private putInChest(cx: number, cy: number, cz: number, itemId: string): boolean {
-    if (this.world.get(cx, cy, cz) !== CHEST) return false;
+    const cid = this.world.get(cx, cy, cz);
+    if (cid !== CHEST && cid !== CHEST_CONNECTOR && cid !== CHEST_INTERFACE) return false;
     const cells = this.chestCluster(cx, cy, cz);
+    if (!cells.length) return false;
     const key = Game.chestKey(cells);
     const slots = this.chests.get(key) ?? [];
     const ci = this.emptyChestGrid(cells.length);
@@ -3400,7 +3453,7 @@ export class Game {
       }
       return false;
     }
-    if (bid !== CHEST) return false;
+    if (bid !== CHEST && bid !== CHEST_CONNECTOR && bid !== CHEST_INTERFACE) return false;
     if (!this.putInChest(bx, y, bz, src[0].itemId)) return false; // destination full: nothing moves
     src.splice(0, 1);
     return true;
@@ -4055,7 +4108,7 @@ export class Game {
       this.tempOrigin = null;
     }
     this.ui = null; this.openStation = null; this.openCacheId = null;
-    this.chestInv = null; this.fire = null; this.openFire = null; this.gridFocus = "inv";
+    this.chestInv = null; this.ifcMode = false; this.fire = null; this.openFire = null; this.gridFocus = "inv";
     for (const id of ["ui-inventory", "ui-craft", "ui-cache", "ui-trade"]) document.getElementById(id)!.classList.add("hidden");
     // closing any in-game menu also drops the pause menu, if one was open
     if (this.paused) {
@@ -4116,11 +4169,19 @@ export class Game {
   renderInv() {
     this.renderGrid(this.inv, document.getElementById("inv-grid")!);
     const cs = document.getElementById("chest-section")!;
-    if (this.chestInv) {
+    if (this.chestInv && !this.ifcMode) {
       cs.classList.remove("hidden");
       document.getElementById("chest-info")!.textContent = `(${this.chestInv.w}×${this.chestInv.h})`;
       this.renderGrid(this.chestInv, document.getElementById("chest-grid")!);
     } else cs.classList.add("hidden");
+    const is = document.getElementById("ifc-section")!;
+    if (this.chestInv && this.ifcMode) {
+      is.classList.remove("hidden");
+      const n = (this.chestInv.w * this.chestInv.h) / 9;
+      document.getElementById("ifc-info")!.textContent =
+        `(${n} linked Chest${n === 1 ? "" : "s"} — ${this.chestInv.w}×${this.chestInv.h})`;
+      this.renderIfcList();
+    } else is.classList.add("hidden");
     this.renderFire();
 
     // temporary storage: the slot an item sits in while being moved
@@ -4422,6 +4483,107 @@ export class Game {
     return "";
   }
 
+  /** The Chest Interface list (ADR-0009): every item the open cluster holds,
+   *  one row per kind — a Sack row is the whole Sack, contents and all.
+   *  Rows are alphabetical, filtered by the search box. */
+  private renderIfcList() {
+    const el = document.getElementById("ifc-list")!;
+    el.innerHTML = "";
+    const ci = this.chestInv;
+    if (!ci) return;
+    const q = this.ifcQuery.trim().toLowerCase();
+    const groups = new Map<string, Slot[]>();
+    for (const s of ci.slots) {
+      const label = s.stack
+        ? `${ITEMS[s.itemId].name} (${ITEMS[s.stack.itemId].name} ×${s.stack.count})`
+        : ITEMS[s.itemId].name;
+      if (q && !label.toLowerCase().includes(q)) continue;
+      let arr = groups.get(label);
+      if (!arr) { arr = []; groups.set(label, arr); }
+      arr.push(s);
+    }
+    const labels = [...groups.keys()].sort();
+    if (!labels.length) {
+      const p = document.createElement("div");
+      p.className = "ifc-empty";
+      p.textContent = ci.slots.length ? "Nothing here matches your search." : "The cluster is empty.";
+      el.appendChild(p);
+      return;
+    }
+    for (const label of labels) {
+      const sl = groups.get(label)!;
+      const row = document.createElement("div");
+      row.className = "ifc-row";
+      const ic = document.createElement("div");
+      ic.className = "ifc-ic";
+      ic.style.backgroundColor = ITEMS[sl[0].itemId].color;
+      ic.style.backgroundImage = `url(${itemArtUrl(sl[0].itemId, 0, sl[0].charges)})`;
+      row.appendChild(ic);
+      const lab = document.createElement("span");
+      lab.className = "ifc-name";
+      lab.textContent = sl.length > 1 ? `${label} ×${sl.length}` : label;
+      row.appendChild(lab);
+      const b1 = document.createElement("button");
+      b1.textContent = "Take";
+      b1.onclick = () => this.ifcTake([sl[0]]);
+      const b2 = document.createElement("button");
+      b2.textContent = "Take all";
+      b2.onclick = () => this.ifcTake(sl);
+      row.appendChild(b1);
+      row.appendChild(b2);
+      el.appendChild(row);
+    }
+  }
+
+  /** Take these slots out of the open cluster into the pack. A Sack and
+   *  anything carrying charges comes back whole, exactly as stored. */
+  private ifcTake(sl: Slot[]) {
+    const ci = this.chestInv;
+    if (!ci) return;
+    let any = false;
+    for (const s of sl) {
+      const ok = s.stack
+        ? this.inv.addSlot({ itemId: s.itemId, x: 0, y: 0, stack: { ...s.stack } })
+        : s.charges !== undefined
+          ? this.inv.addSlot({ itemId: s.itemId, x: 0, y: 0, charges: s.charges })
+          : this.inv.addItem(s.itemId, 1) === 0;
+      if (!ok) { hud.toast("No room in your pack."); this.audio.error(); break; }
+      ci.slots.splice(ci.slots.indexOf(s), 1);
+      any = true;
+    }
+    if (any) { this.audio.place(); this.renderInv(); this.renderHeld(); this.renderIfcList(); }
+  }
+
+  /** Stow a detached slot into the open cluster: an open Sack drinks it
+   *  first (ADR-0008), otherwise the grid takes it. False: no room. */
+  private tryStow(s: Slot): boolean {
+    const ci = this.chestInv!;
+    if (ITEMS[s.itemId].sack === undefined && s.charges === undefined && ci.fillSack(s.itemId, 1) > 0) return true;
+    if (Game.placeSlotFree(ci, s)) return true;
+    hud.toast("No room in the Chest.");
+    this.audio.error();
+    return false;
+  }
+
+  /** "Stow selected": the item selected in the pack, through the Interface. */
+  private ifcStow() {
+    if (!this.chestInv) return;
+    const s = this.inv.selectedSlot();
+    if (!s) { hud.toast("Select an item in your pack first."); this.audio.error(); return; }
+    const i = this.inv.slots.indexOf(s);
+    this.inv.slots.splice(i, 1);
+    if (!this.tryStow(s)) this.inv.slots.splice(i, 0, s);
+    else { this.audio.place(); this.renderInv(); this.renderHeld(); }
+  }
+
+  /** The Chest Interface list area, under the cursor? (items dropped there are stowed) */
+  private overIfcList(ev: MouseEvent): boolean {
+    const el = document.getElementById("ifc-list");
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    return ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+  }
+
   private renderGrid(inv: Inventory, grid: HTMLElement) {
     grid.innerHTML = "";
     grid.style.removeProperty("--cell");
@@ -4639,6 +4801,7 @@ export class Game {
       ghost.style.top = ev.clientY - D.gy + "px";
       document.getElementById("inv-bin")!.classList.toggle("hot", this.overBin(ev.clientX, ev.clientY));
       document.getElementById("fire-coals")?.classList.toggle("hot", FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev));
+      document.getElementById("ifc-list")?.classList.toggle("hot", !!this.chestInv && this.ifcMode && this.overIfcList(ev));
     };
     const up = (ev: MouseEvent) => {
       window.removeEventListener("mousemove", move);
@@ -4646,10 +4809,16 @@ export class Game {
       ghost.remove();
       document.getElementById("inv-bin")!.classList.remove("hot");
       document.getElementById("fire-coals")?.classList.remove("hot");
+      document.getElementById("ifc-list")?.classList.remove("hot");
       if (this.overBin(ev.clientX, ev.clientY)) { this.binDiscard(); return; } // the item is already in temp
       if (FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev)) { // onto the Coals box: burned away, charges banked
         this.feedFire(this.fire!, s); this.temp = null;
         this.syncFire(this.openFire!.join(",")); this.audio.place();
+        this.renderInv(); this.renderHeld();
+        return;
+      }
+      if (this.chestInv && this.ifcMode && this.overIfcList(ev)) { // onto the Interface list: stowed into the cluster
+        if (this.tryStow(s)) { this.temp = null; this.audio.place(); }
         this.renderInv(); this.renderHeld();
         return;
       }
@@ -4749,7 +4918,8 @@ export class Game {
 
   private gridsEls(): [HTMLElement, Inventory][] {
     const els: [HTMLElement, Inventory][] = [[document.getElementById("inv-grid")!, this.inv]];
-    if (this.chestInv) els.push([document.getElementById("chest-grid")!, this.chestInv]);
+    // in Interface mode the chest grid is hidden — the list is the drop zone
+    if (this.chestInv && !this.ifcMode) els.push([document.getElementById("chest-grid")!, this.chestInv]);
     if (this.fire) els.push(
       [document.getElementById("fire-input-grid")!, this.fire.input],
       [document.getElementById("fire-output-grid")!, this.fire.output],
@@ -4777,6 +4947,7 @@ export class Game {
       ghost.style.top = ev.clientY - d.h * STEP / 2 + "px";
       document.getElementById("inv-bin")!.classList.toggle("hot", this.overBin(ev.clientX, ev.clientY));
       document.getElementById("fire-coals")?.classList.toggle("hot", FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev));
+      document.getElementById("ifc-list")?.classList.toggle("hot", !!this.chestInv && this.ifcMode && this.overIfcList(ev));
     };
     const up = (ev: MouseEvent) => {
       window.removeEventListener("mousemove", move);
@@ -4784,10 +4955,16 @@ export class Game {
       ghost.remove();
       document.getElementById("inv-bin")!.classList.remove("hot");
       document.getElementById("fire-coals")?.classList.remove("hot");
+      document.getElementById("ifc-list")?.classList.remove("hot");
       if (this.overBin(ev.clientX, ev.clientY)) { this.binDiscard(); return; } // the item is already in temp
       if (FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev)) { // onto the Coals box: burned away, charges banked
         this.feedFire(this.fire!, s); this.temp = null;
         this.syncFire(this.openFire!.join(",")); this.audio.place();
+        this.renderInv(); this.renderHeld();
+        return;
+      }
+      if (this.chestInv && this.ifcMode && this.overIfcList(ev)) { // onto the Interface list: stowed into the cluster
+        if (this.tryStow(s)) { this.temp = null; this.audio.place(); }
         this.renderInv(); this.renderHeld();
         return;
       }

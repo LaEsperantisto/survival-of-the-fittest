@@ -42,7 +42,7 @@ export const QUESTS: QuestDef[] = [
   },
   {
     id: "supplies", kind: "supplies", title: "The Dwellers' Leftovers",
-    desc: "The desert was lived in before you. Reach a Town and open a Supply Chest — the first chest of a cluster holds the loot.", goal: 1,
+    desc: "The desert was lived in before you. Reach a Town and open a Chest — the first chest of a cluster holds the loot.", goal: 1,
     reward: { item: "canister_full", n: 1 },
   },
   {

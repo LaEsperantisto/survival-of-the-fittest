@@ -1,7 +1,7 @@
 import {
   SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, GLASS, INSGLASS, HULL,
   DOOR_CLOSED, DOOR_UPPER, LAMP, BEACON, BENCH, CAMPFIRE, ADOBE, ENGINECORE, REGULATOR, CHEST, CACTUS,
-  FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
+  FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, CHEST_INTERFACE, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, BED, BED_EXT, GRASS, LEAVES, WOOD, SAPLING,
   CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, STORM_BREAKER, THRUSTER, THRUSTER_LIT, ARMORY,
   REGULATOR_HUSK, STORM_BREAKER_HUSK,
@@ -65,12 +65,12 @@ const ITEM_LIST: ItemDef[] = [
   // frame, and a Bench repair (about half the normal recipe) makes it live again.
   I({ id: "regulator_broken", name: "Broken Heat Regulator", desc: "The gutted shell of a Heat Regulator. Repair it at a Crafting Bench — 2 Iron Rods, 1 Glass, 1 Salt — and it breathes neutral air again.", w: 1, h: 1, mass: 2.0, color: "#78868a" }),
   I({ id: "adobe", name: "Adobe Brick", desc: "Baked town mud. Warm, solid.", w: 1, h: 1, mass: 0.9, block: ADOBE, color: "#b3956b" }),
-  I({ id: "chest", name: "Supply Chest", desc: "Stores gear in its own grid. Chests placed touching (orthogonally) merge into one bigger grid — 3×3 each, up to 3 wide, then taller.", w: 1, h: 1, mass: 5.0, block: CHEST, color: "#8a6d3b" }),
+  I({ id: "chest", name: "Chest", desc: "Stores gear in its own grid. Chests placed touching (orthogonally) merge into one bigger grid — 3×3 each, up to 3 wide, then taller.", w: 1, h: 1, mass: 5.0, block: CHEST, color: "#8a6d3b" }),
   I({ id: "canister_full", name: "Water Canister (full)", desc: "Drink to restore 25% Water. Refill at oases or the ship's water station.", w: 1, h: 2, mass: 1.0, color: "#3f8fe0" }),
   I({ id: "canister_empty", name: "Water Canister (empty)", desc: "Lighter until you find water.", w: 1, h: 1, mass: 0.3, color: "#7fa8cc" }),
   I({ id: "catalyst", name: "Catalyst", desc: "Rare alien chemistry. Found in Towns and the second wreck. Needed for Insulating Glass (M2 craft chain).", w: 1, h: 1, mass: 0.3, color: "#c07fe0" }),
   I({ id: "engine_core", name: "Engine Core", desc: "The heart of the second wreck. Quest-exclusive — place it within reach of a Save Beacon to finish the Main Quest.", w: 1, h: 1, mass: 6.0, block: ENGINECORE, color: "#c468e8" }),
-  I({ id: "visor", name: "Surveyor's Visor", desc: "A Visor upgrade. Equipped in the Head slot, the HUD marks every Death Cache, Reward Cache and Supply Chest through walls with a beam.", w: 1, h: 1, mass: 0.8, equip: "head", color: "#66e5f0" }),
+  I({ id: "visor", name: "Surveyor's Visor", desc: "A Visor upgrade. Equipped in the Head slot, the HUD marks every Death Cache, Reward Cache and Chest through walls with a beam.", w: 1, h: 1, mass: 0.8, equip: "head", color: "#66e5f0" }),
   toolItem("pickaxe", 1, "wood", "#a8834f"), toolItem("pickaxe", 2, "stone", "#8d8680"), toolItem("pickaxe", 3, "metal", "#9aa0aa"),
   toolItem("shovel", 1, "wood", "#a8834f"), toolItem("shovel", 2, "stone", "#8d8680"), toolItem("shovel", 3, "metal", "#9aa0aa"),
   toolItem("axe", 1, "wood", "#a8834f"), toolItem("axe", 2, "stone", "#8d8680"), toolItem("axe", 3, "metal", "#9aa0aa"),
@@ -105,7 +105,8 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "bucket", name: "Bucket", desc: "Scoop a water Source with it, pour it back anywhere: moves water instead of drinking it.", w: 1, h: 1, mass: 1.0, color: "#9aa0aa" }),
   I({ id: "bucket_full", name: "Bucket (full)", desc: "Water to pour. Right-click ground to place it as a new Source.", w: 1, h: 1, mass: 3.0, color: "#3f8fe0" }),
   // ---- building ----
-  I({ id: "chest_connector", name: "Chest Connector", desc: "Steel rail between Supply Chests: links their grids into one bigger Inventory Grid. Stores nothing itself.", w: 1, h: 1, mass: 1, block: CHEST_CONNECTOR, color: "#8a744a" }),
+  I({ id: "chest_connector", name: "Chest Connector", desc: "Steel rail between Chests: links their grids into one bigger Inventory Grid. Stores nothing itself.", w: 1, h: 1, mass: 1, block: CHEST_CONNECTOR, color: "#8a744a" }),
+  I({ id: "chest_interface", name: "Chest Interface", desc: "A door onto a Chest cluster: it links the Chests like a Connector rail, but adds no grid space of its own and stores nothing. Stand at it and press E for a list of everything the cluster holds — take items one by one, or stow what you hold. Inserters and generators can work through it.", w: 1, h: 1, mass: 2, block: CHEST_INTERFACE, color: "#6f7f95" }),
   I({ id: "metal_plating", name: "Metal Plating", desc: "The ship's plated floor and skin. Same plate, same tools - disassemble it back.", w: 1, h: 1, mass: 1.2, block: METAL_PLATING, color: "#9aa0ac" }),
   I({ id: "storm_breaker", name: "Sandstorm Breaker", desc: "A humming red pylon. Stand within 8 blocks of one and the Sandstorm loses all teeth — no scorching, no wind-thirst, no sand blast.", w: 1, h: 1, mass: 4.0, block: STORM_BREAKER, color: "#c04838" }),
   I({ id: "storm_breaker_broken", name: "Broken Sandstorm Breaker", desc: "The dead pylon's frame. Repair it at a Crafting Bench — 1 Iron Rod, 1 Glass — and the calm hums again.", w: 1, h: 1, mass: 3.0, color: "#8a6158" }),
@@ -148,7 +149,7 @@ const ITEM_LIST: ItemDef[] = [
   // ---- Grid power: Poles carry it, the Panel guards it (ADR-0007) ----
   I({ id: "power_pole", name: "Power Pole", desc: "Carries the Grid: links to other Poles within 16 blocks and feeds anything powered within 10.", w: 1, h: 1, mass: 2.0, block: POWER_POLE, color: "#8a7455" }),
   I({ id: "power_panel", name: "Power Panel", desc: "The heart of a Grid — exactly one per Pole network. When draw outruns supply it trips and the whole Grid goes dark until you press E to reset it.", w: 1, h: 1, mass: 4.0, block: POWER_PANEL, color: "#586270" }),
-  I({ id: "gen_wood", name: "Wood Generator", desc: "Burns Wood Logs and Dead Wood fed from a Supply Chest right beside it. Steady 4 units, day and night, until the wood runs out.", w: 1, h: 1, mass: 6.0, block: GEN_WOOD, color: "#755540" }),
+  I({ id: "gen_wood", name: "Wood Generator", desc: "Burns Wood Logs and Dead Wood fed from a Chest right beside it. Steady 4 units, day and night, until the wood runs out.", w: 1, h: 1, mass: 6.0, block: GEN_WOOD, color: "#755540" }),
   I({ id: "water_wheel", name: "Water Wheel", desc: "3 units while water runs past any side of it. Oasis-current or your own channel — it never sleeps.", w: 1, h: 1, mass: 5.0, block: WATER_WHEEL, color: "#70664d" }),
   I({ id: "wind_turbine", name: "Wind Turbine", desc: "Up to 8 units, scaling with the Sandstorm — the storm that punishes you powers the base. Needs open sky above.", w: 1, h: 1, mass: 5.0, block: WIND_TURBINE, color: "#b3b3bc" }),
   I({ id: "solar_panel", name: "Solar Panel", desc: "Up to 4 units in direct sun; roofs and Sandstorms cut it hard. Dead silent at night.", w: 1, h: 1, mass: 4.0, block: SOLAR_PANEL, color: "#33405f" }),

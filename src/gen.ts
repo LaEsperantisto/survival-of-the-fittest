@@ -32,7 +32,7 @@ export const CAMP_L = 380;
 
 /** Grid Relics sit on the sparsest lattice of all: a derelict adobe outstation
  *  of the Dwellers' power age — Panel, Battery, Solar Panel, a line of Poles
- *  running to a mast lamp, and a Supply Chest of old-world parts. Centers
+ *  running to a mast lamp, and a Chest of old-world parts. Centers
  *  jitter up to ±24 from the cell. */
 export const OUTPOST_L = 520;
 
@@ -780,7 +780,7 @@ function paintTown(set: (x: number, y: number, z: number, id: number) => void, t
         set(t.x + bx + x, y, t.z + bz + z, ADOBE);
       }
     }
-    // every hut left behind a Supply Chest and a Bed; the good loot is decided
+    // every hut left behind a Chest and a Bed; the good loot is decided
     // when the chest is first opened (seeded, game.ts)
     set(t.x + bx + 1, h, t.z + bz + 1, CHEST);
     set(t.x + bx + 2, h, t.z + bz + 1, BED);
@@ -1105,7 +1105,7 @@ function paintOutpost(set: (x: number, y: number, z: number, id: number) => void
     }
   }
   set(c.x - 1, f + 1, c.z - 2, DOOR_CLOSED); set(c.x - 1, f + 2, c.z - 2, DOOR_UPPER);
-  // inside: the Grid's heart on the north wall, a Battery, and a Supply Chest
+  // inside: the Grid's heart on the north wall, a Battery, and a Chest
   set(c.x + 2, f + 1, c.z, POWER_PANEL);
   set(c.x + 1, f + 1, c.z + 1, BATTERY);
   set(c.x - 2, f + 1, c.z, CHEST);

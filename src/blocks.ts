@@ -16,7 +16,8 @@ export const AIR = 0, SAND = 1, SANDSTONE = 2, ROCK = 3, GRAVEL = 4, DIRT = 5, S
   INSERTER = 70, PLANTER = 71, HARVESTER = 72,
   ALAB_BRICK = 73, ALAB_POLISHED = 74, ALAB_CHISELLED = 75, ALAB_PILLAR = 76,
   ALAB_FENCE = 77, ALAB_GATE = 78, ALAB_GATE_OPEN = 79,
-  ALAB_DOOR = 80, ALAB_DOOR_UPPER = 81, ALAB_DOOR_OPEN = 82;
+  ALAB_DOOR = 80, ALAB_DOOR_UPPER = 81, ALAB_DOOR_OPEN = 82,
+  CHEST_INTERFACE = 83;
 
 export type ToolType = "pickaxe" | "shovel" | "axe" | "disassembler";
 
@@ -109,8 +110,8 @@ export const BLOCKS: BlockDef[] = [
   // of capacity each, capacity stacks; see world.roomInfo. A bolted appliance: only
   // a Metal Disassembler takes it down.
   def({ id: REGULATOR, name: "Heat Regulator", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: "disassembler", minTier: 1, placeable: true, color: [0.35, 0.75, 0.8] }),
-  // Supply Chest: a real container block. Orthogonally linked chests merge inventories.
-  def({ id: CHEST, name: "Supply Chest", solid: true, opaque: true, transparent: false, emissive: false, R: 0.9, breakTime: 1.5, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.54, 0.43, 0.27] }),
+  // Chest: a real container block. Orthogonally linked chests merge inventories.
+  def({ id: CHEST, name: "Chest", solid: true, opaque: true, transparent: false, emissive: false, R: 0.9, breakTime: 1.5, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.54, 0.43, 0.27] }),
   // The Crafting Bench stands two blocks wide: BENCH is the working top, this the
   // drawer-and-legs frame. Placed and broken as a pair with BENCH.
   def({ id: BENCH_EXT, name: "Crafting Bench (frame)", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.0, tool: null, minTier: 0, placeable: false, color: [0.45, 0.36, 0.27] }),
@@ -143,7 +144,7 @@ export const BLOCKS: BlockDef[] = [
   // Fruit-topped cactus column block: harvest it for a Prickly Pear, the column
   // stays and regrows the fruit on its own.
   def({ id: CACTUS_FRUIT, name: "Fruiting Cactus", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 0.9, tool: null, fastTool: "axe", minTier: 0, placeable: false, color: [0.3, 0.5, 0.34] }),
-  // Chest Connector: a steel rail that links two Supply Chest clusters so they
+  // Chest Connector: a steel rail that links two Chest clusters so they
   // share one Inventory Grid. It stores nothing itself.
   def({ id: CHEST_CONNECTOR, name: "Chest Connector", solid: true, opaque: true, transparent: false, emissive: false, R: 0.9, breakTime: 1.2, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.48, 0.4, 0.26] }),
   // Metal Plating: the ship's inner floor-and-skin plating — same properties as a
@@ -220,7 +221,11 @@ export const BLOCKS: BlockDef[] = [
   def({ id: ALAB_GATE_OPEN, name: "Alabaster Fence Gate (open)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: "pickaxe", minTier: 0, placeable: false, color: [0.85, 0.82, 0.74] }),
   def({ id: ALAB_DOOR, name: "Alabaster Door (closed)", solid: true, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 1.5, tool: "disassembler", minTier: 0, placeable: true, color: [0.86, 0.83, 0.75] }),
   def({ id: ALAB_DOOR_UPPER, name: "Alabaster Door (closed top)", solid: true, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 1.5, tool: "disassembler", minTier: 0, placeable: true, color: [0.86, 0.83, 0.75] }),
-  def({ id: ALAB_DOOR_OPEN, name: "Alabaster Door (open)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: "disassembler", minTier: 0, placeable: false, color: [0.86, 0.83, 0.75] }),
+  def({ id: ALAB_DOOR_OPEN, name: "Alabaster Door (open)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: "disassembler", minTier: 0, placeable: false, color: [0.85, 0.82, 0.74] }),
+  // Chest Interface: a door onto a Chest cluster. It routes the link like a
+  // Chest Connector rail — but it is not a cell of the grid, it adds no space,
+  // and it stores nothing. E on it lists everything the cluster holds.
+  def({ id: CHEST_INTERFACE, name: "Chest Interface", solid: true, opaque: true, transparent: false, emissive: false, R: 0.9, breakTime: 1.5, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.42, 0.5, 0.62] }),
 ];
 
 /** Everything that lives on the Grid: Panel..Harvester (ADR-0007). */

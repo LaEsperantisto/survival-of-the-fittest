@@ -18,8 +18,8 @@ export const LESSONS: Lesson[] = [
   },
   {
     id: "town", title: "First Town",
-    hint: "Supply Chests in the shells hold loot",
-    text: "The desert was lived in before you. Towns are adobe shells with Supply Chests — the first chest of a cluster holds the loot. Take what you need; the dwellers are not coming back.",
+    hint: "Chests in the shells hold loot",
+    text: "The desert was lived in before you. Towns are adobe shells with Chests — the first chest of a cluster holds the loot. Take what you need; the dwellers are not coming back.",
   },
   {
     id: "camp", title: "First Trader Camp",

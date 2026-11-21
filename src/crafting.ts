@@ -67,6 +67,7 @@ export const RECIPES: Recipe[] = [
   // Farm Land is never crafted — a shovel opens a furrow in real soil, that's it
   { out: "deadwood", count: 2, needs: { wood_log: 1 }, station: null },
   { out: "chest_connector", count: 1, needs: { deadwood: 2, metal: 1 }, station: null },
+  { out: "chest_interface", count: 1, needs: { metal: 2, glass: 1 }, station: "bench" },
   { out: "metal_plating", count: 1, needs: { metal: 1 }, station: null },
   { out: "door_inner", count: 1, needs: { metal: 1 }, station: "bench" },
   // Alabaster masonry: everything cut from the Cave's raw stone — no catalyst.

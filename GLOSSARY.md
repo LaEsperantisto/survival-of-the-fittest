@@ -79,7 +79,7 @@ A recurring Landmark of the deep desert — open water ringed by green trees and
 _Avoid_: watering hole, spring
 
 **Town**:
-A settlement out in the world: huts, Supply Chests with rare loot, Beds, and the only source of Desert Wheat Seed. No living soul is home — yet.
+A settlement out in the world: huts, Chests with rare loot, Beds, and the only source of Desert Wheat Seed. No living soul is home — yet.
 
 **Dead Tree**:
 A leafless tree scattered through the desert.
@@ -92,7 +92,7 @@ _Avoid_: plant, bush
 A player's own grove of Living Trees, grown from Tree Seeds in Dirt and kept growing by keeping moisture close. A young tree re-grows parts you break off; once full grown it stands final — chopped branches and canopy stay chopped, so harvest the canopy and re-plant seeds to keep the grove young.
 
 **Tree Seed**:
-Found in Town Supply Chests; planted in Dirt it grows a Living Tree stage by stage while moisture stays near.
+Found in Town Chests; planted in Dirt it grows a Living Tree stage by stage while moisture stays near.
 
 **Leaf**:
 The canopy part of a Living Tree: walk-blocking but not insulating, partly shading the sky above. Broken Leaf crumbles into Kindling.
@@ -143,15 +143,20 @@ _Avoid_: grave marker, beacon (reserved for the Save Beacon)
 **Reward Cache**:
 the Crash Pod form a quest reward takes: a warning, a marker where it will land, then a container holding exactly that reward. It empties when claimed and is marked like every Cache.
 
-**Supply Chest**:
+**Chest**:
 A craftable container block owning an Inventory Grid of its own — 3×3 each. Chests placed face-to-face are Linked Chests and share one Grid. The wreck's cockpit holds one, stocked with the first drinkable Water. Unlike a Death Cache, it accepts and keeps the player's goods.
-_Avoid_: crate, locker
+_Avoid_: crate, locker, supply chest
 
 **Linked Chests**:
 Chests touching face-to-face form one cluster with a single Grid: 3×3 per chest, growing sideways up to three wide, then taller — one extra row per further chest. Capacity is always 9 per chest. Breaking one chest shrinks the cluster; contents that no longer fit fall to the ground. The link is pure adjacency — break the chain and the grids split immediately, contents split with them (spilling when necessary).
 
-**Chest Rail**:
-A cheap connector that carries a chest link through itself: a Chest sits against a Rail links to the Chest on the Rail's far side, though the Rail itself stores nothing and is never opened.
+**Chest Connector**:
+A cheap steel rail that carries a chest link through itself: a Chest sits against a Connector links to the Chest on the Connector's far side, though the Connector itself stores nothing and is never opened.
+_Avoid_: chest rail, pipe
+
+**Chest Interface**:
+A door onto a Chest cluster that is not itself storage: it carries the chest link through itself exactly like a Chest Connector — joining clusters, extending them, and letting Inserters and Planters reach through — while holding nothing and claiming no Grid cell. Opened, it lists everything in the cluster by kind: goods put in find their own cells (a matching open Sack fills first), goods taken come back out; a Sack is taken whole, never opened from the panel. An Interface touching no cluster does nothing.
+_Avoid_: terminal, hub, remote chest
 
 **Alabaster Masonry**:
 The decorative building family cut from Alabaster: Bricks, Polished, Chiselled and the Pillar, plus the slim Fence and the swingable Fence Gate (opened with E, like a door). An Alabaster Door is the pale twin of the hatchway Door — same two-cell pair, same open/close rules. The Gate keeps its quarter-turn when it swings.
@@ -237,7 +242,7 @@ The first crop found — wild at Oases. Eaten raw: a big drink with a little hea
 The harder crop, discovered in Town loot: it tolerates cold but not the midday, and its cooked food heals more than anything else on the farm.
 
 **Inventory Grid**:
-A rectangular grid of slots; items occupy footprints (Water Canister 1×2). Expandable via Backpacks. Every item instance claims its own cells — duplicates never share a slot, so more of something means more space taken. A Sort button on every Grid (pack, Supply Chests, each Campfire slot) arranges items alphabetically, identical items adjacent.
+A rectangular grid of slots; items occupy footprints (Water Canister 1×2). Expandable via Backpacks. Every item instance claims its own cells — duplicates never share a slot, so more of something means more space taken. A Sort button on every Grid (pack, Chests, each Campfire slot) arranges items alphabetically, identical items adjacent.
 _Avoid_: stacking, merging slots
 
 **Sack** (Sack I, Sack II, Sack III):
@@ -261,11 +266,11 @@ An item thrown out of the pack (the R key, a botched drag, death). Loose items r
 _Avoid_: ground item, loose loot
 
 **Visor**:
-Head-slot gear powering the player's HUD. While equipped it draws the Map, beams Caches, Supply Chests, and Pins through walls, and marks known Landmarks — the marked points being the Ship and the player's Base. Upgradeable to show more: heat fluctuations. Upgrades count only while equipped.
+Head-slot gear powering the player's HUD. While equipped it draws the Map, beams Caches, Chests, and Pins through walls, and marks known Landmarks — the marked points being the Ship and the player's Base. Upgradeable to show more: heat fluctuations. Upgrades count only while equipped.
 _Avoid_: goggles, HUD (the thing it powers, not it)
 
 **Waypoint**:
-The HUD's guide to the active quest: a compass heading, a distance, and a marker at the target. A Surveyor's Visor equipped in the Head slot — a craftable Visor upgrade — additionally marks every Cache and Supply Chest through walls.
+The HUD's guide to the active quest: a compass heading, a distance, and a marker at the target. A Surveyor's Visor equipped in the Head slot — a craftable Visor upgrade — additionally marks every Cache and Chest through walls.
 
 **Air Temperature**:
 The temperature of the air in a given cell — what Crops and Living Trees grow by, and what the body drifts toward. Inside a Sealed Space the Air Temperature still tracks the outside until Heat Regulators hold it neutral.
@@ -440,7 +445,7 @@ _Avoid_: breaker (reserved for the Sandstorm Breaker), fuse box, supervisor
 carries power to whatever stands within its reach, and links to Poles within twice that; higher tiers reach farther.
 
 **Grid Relic**:
-a derelict outstation of the Dwellers' power age, on the world's rarest lattice — an adobe shed with its Panel, Battery and Supply Chest intact, a Solar Panel still on the roof, and a line of Poles running to a mast whose Electric Lamp has been burning for years. One of the few Grids in the desert still working; the Towns' own Grids are dead husks — cold lamps on street Poles, a Panel still in the market shell's wall.
+a derelict outstation of the Dwellers' power age, on the world's rarest lattice — an adobe shed with its Panel, Battery and Chest intact, a Solar Panel still on the roof, and a line of Poles running to a mast whose Electric Lamp has been burning for years. One of the few Grids in the desert still working; the Towns' own Grids are dead husks — cold lamps on street Poles, a Panel still in the market shell's wall.
 
 **Inserter**:
 a powered block that takes one item from the block in front of it and puts it into the block behind. The universal atom of automation — no filters, no reach.

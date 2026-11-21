@@ -233,6 +233,19 @@ padding: 6px 10px; }
   border: 1px solid #444b58; border-radius: 3px; flex: none; }
 .craft-row button:disabled { opacity: 0.4; }
 .cache-item { padding: 4px 2px; }
+/* Chest Interface contents list (ADR-0009): one row per item the cluster holds */
+#ifc-section { margin-bottom: 10px; }
+#ifc-search { width: 100%; max-width: 420px; margin: 8px 2px 2px; }
+#ifc-list { max-height: 200px; overflow-y: auto; border: 1px solid #4a5262; border-radius: 6px;
+padding: 4px; margin: 4px 2px; }
+#ifc-list.hot { border-color: #d8b74f; background: rgba(216, 183, 79, 0.12); }
+.ifc-row { display: flex; align-items: center; gap: 8px; padding: 3px 4px; }
+.ifc-row + .ifc-row { border-top: 1px solid #333a46; }
+.ifc-ic { width: 22px; height: 22px; flex: 0 0 22px; background-size: 100% 100%;
+image-rendering: pixelated; border: 1px solid #4a5262; border-radius: 3px; }
+.ifc-name { flex: 1; min-width: 0; font-size: 14px; }
+.ifc-empty { color: #9aa3b2; font-size: 14px; padding: 6px; }
+.ifc-row button { padding: 3px 10px; font-size: 12px; }
 .trade-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px;
   border-bottom: 1px solid #333a45; flex-wrap: wrap; }
 .trade-row .trade-side { display: flex; gap: 6px; flex-wrap: wrap; }

@@ -176,9 +176,15 @@
 <div id="ui-inventory" class="panel hidden">
   <button class="close-btn close-x" aria-label="Close">✕</button>
   <div id="chest-section" class="hidden">
-    <h3>Supply Chest <span id="chest-info"></span></h3>
+    <h3>Chest <span id="chest-info"></span></h3>
     <button id="btn-sort-chest" class="sort-btn">Sort</button>
     <div id="chest-grid"></div>
+  </div>
+  <div id="ifc-section" class="hidden">
+    <h3>Chest Interface <span id="ifc-info"></span></h3>
+    <input id="ifc-search" type="text" placeholder="Search the cluster…" autocomplete="off" spellcheck="false">
+    <button id="btn-ifc-stow" class="sort-btn">Stow selected</button>
+    <div id="ifc-list"></div>
   </div>
   <h3>Inventory</h3>
   <button id="btn-sort-inv" class="sort-btn">Sort</button>

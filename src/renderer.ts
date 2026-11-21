@@ -10,7 +10,7 @@ import {
   POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
   INSERTER, PLANTER, HARVESTER,
   ALAB_BRICK, ALAB_POLISHED, ALAB_CHISELLED, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_GATE_OPEN,
-  ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN,
+  ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN, CHEST_INTERFACE,
   isSolid, isWater, waterStrength,
 } from "./blocks";
 import { World, ckey, faceVisible } from "./world";
@@ -226,7 +226,7 @@ export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, G
   POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
   INSERTER, PLANTER, HARVESTER,
   ALAB_BRICK, ALAB_POLISHED, ALAB_CHISELLED, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_GATE_OPEN,
-  ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN];
+  ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN, CHEST_INTERFACE];
 
 // extra face tiles, appended after the base tiles; each recipe is shaded with
 // the named block's base colour
@@ -714,6 +714,21 @@ export function getAtlasCanvas(): HTMLCanvasElement {
     for (let x = 0; x < 16; x++) { px(x, 0, col(-0.26)); px(x, 15, col(-0.26)); px(x, 7, "rgba(150,156,168,1)"); px(x, 8, "rgba(110,116,128,1)"); }
     for (const [rx, ry] of [[2, 3], [13, 3], [2, 12], [13, 12]] as const) { px(rx, ry, "rgba(200,205,215,1)"); px(rx + 1, ry, "rgba(150,156,168,1)"); }
     for (let y = 2; y <= 5; y++) { px(0, y, col(0.14)); px(15, y, col(0.14)); }
+  });
+  R(String(CHEST_INTERFACE), () => {
+    // a portholed hatch bolted to a crate end: the chest door that stores nothing
+    fbmFill((x, y, n) => n * 0.03 - 0.1);
+    for (let x = 0; x < 16; x++) { px(x, 0, col(-0.28)); px(x, 15, col(-0.28)); px(x, 0 + 15, col(-0.28)); }
+    for (let y = 0; y < 16; y++) { px(0, y, col(-0.24)); px(15, y, col(-0.24)); }
+    // round window in the middle, lit from inside
+    for (let dx = -3; dx <= 3; dx++) for (let dy = -3; dy <= 3; dy++)
+      if (dx * dx + dy * dy <= 8) px(8 + dx, 8 + dy, "rgba(30,36,46,1)");
+    for (let dx = -3; dx <= 3; dx++) for (let dy = -3; dy <= 3; dy++)
+      if (dx * dx + dy * dy > 8 && dx * dx + dy * dy <= 12) px(8 + dx, 8 + dy, "rgba(190,200,215,1)");
+    px(6, 6, "rgba(120,150,190,1)"); px(7, 6, "rgba(90,120,160,1)"); // glass glint
+    // crate corner straps show at the edges — it hangs on the chest, not the wall
+    for (const [rx, ry] of [[2, 2], [13, 2], [2, 13], [13, 13]] as const) { px(rx, ry, "rgba(210,214,222,1)"); px(rx + 1, ry, "rgba(150,156,168,1)"); }
+    for (let x = 2; x <= 13; x++) px(x, 14, "rgba(96,104,118,1)"); // nameplate rail
   });
   R(String(METAL_PLATING), () => {
     // shipboard plate: brushed metal, rivet seams
