@@ -51,9 +51,9 @@ export function deleteWorld(id: string) {
 
 export interface FireSave {
   lit: boolean; drip?: number;
-  fuel: { itemId: string; x: number; y: number; rot?: boolean; charges?: number }[];
-  input: { itemId: string; x: number; y: number; rot?: boolean; charges?: number; cook?: number; done?: boolean }[];
-  output: { itemId: string; x: number; y: number; rot?: boolean; charges?: number }[];
+  fuel: { itemId: string; x: number; y: number; rot?: boolean; charges?: number; stack?: { itemId: string; count: number } }[];
+  input: { itemId: string; x: number; y: number; rot?: boolean; charges?: number; cook?: number; done?: boolean; stack?: { itemId: string; count: number } }[];
+  output: { itemId: string; x: number; y: number; rot?: boolean; charges?: number; stack?: { itemId: string; count: number } }[];
 }
 
 export interface RunSave {
@@ -65,16 +65,16 @@ export interface RunSave {
   player: { x: number; y: number; z: number; yaw: number; pitch: number };
   survival: { health: number; water: number; body: number };
   quest?: { i: number; p: number[]; e?: Record<string, number> };
-  inventory: { slots: { itemId: string; count?: number; x: number; y: number; rot?: boolean; blockRot?: number; charges?: number }[]; selected: number; w: number; h: number }; // count: legacy only — items never stack now
+  inventory: { slots: { itemId: string; count?: number; x: number; y: number; rot?: boolean; blockRot?: number; charges?: number; stack?: { itemId: string; count: number } }[]; selected: number; w: number; h: number }; // count: legacy only - items never stack now
   equip?: { backpack?: string; head?: string; body?: string; regulator?: string; light?: string;
             charges?: { regulator?: number; light?: number } };
   beaconMarks: { x: number; y: number; z: number }[];
   collected: string[];
-  entities: { x: number; y: number; z: number; itemId: string; count?: number; charges?: number; age?: number }[];
+  entities: { x: number; y: number; z: number; itemId: string; count?: number; charges?: number; age?: number; stack?: { itemId: string; count: number } }[];
   pods?: { x: number; z: number; t: number; itemId: string; n: number; ringEid?: number; beamEid?: number }[];
   won?: boolean;
-  caches: { x: number; y: number; z: number; kind?: "death" | "chest" | "reward"; items: { itemId: string; count: number; charges?: number }[] }[];
-  chests?: { cells: string; slots: { itemId: string; count?: number; x: number; y: number; rot?: boolean; blockRot?: number; charges?: number }[] }[];
+  caches: { x: number; y: number; z: number; kind?: "death" | "chest" | "reward"; items: { itemId: string; count: number; charges?: number; stack?: { itemId: string; count: number } }[] }[];
+  chests?: { cells: string; slots: { itemId: string; count?: number; x: number; y: number; rot?: boolean; blockRot?: number; charges?: number; stack?: { itemId: string; count: number } }[] }[];
   campfires: Record<string, number | FireSave>;
   battery?: [string, number][];      // Battery cell -> stored Grid units
   genFuel?: [string, number][];      // Wood Generator cell -> burn seconds left

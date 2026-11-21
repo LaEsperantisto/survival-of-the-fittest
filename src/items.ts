@@ -26,6 +26,7 @@ export interface ItemDef {
   armor?: number; // Body-slot gear: fraction of every damage shrugged off
   stormResist?: boolean; // Body-slot gear wearing Chitin: Sandstorm terms bite at a quarter
   fuel?: number;             // max fuel charges (Head Lantern)
+  sack?: number;             // Sack: capacity in footprint units; one item type inside (ADR-0008)
   instaBreak?: boolean;      // Voidbreaker: every block shatters on the first swing frame
   color: string;             // icon color
 }
@@ -165,6 +166,9 @@ const ITEM_LIST: ItemDef[] = [
   // ---- the Map kit (needs the Surveyor's Visor worn to see any of it) ----
   I({ id: "surveyor_pin", name: "Surveyor's Pin", desc: "Press E to plant one where you stand: a named mark on the Map, forever. Rename it from the maximised Map. A Pin named \"Base\" is the point your Surveyor's Visor beams you back to.", w: 1, h: 1, mass: 0.2, color: "#66e5f0" }),
   I({ id: "tracker", name: "Hidden Landmark Tracker", desc: "Use it (Q): wakes the nearest Landmark you have never found — a Town, Trader camp, cave mouth, oasis or buried canister site — and marks it on the Map. One use, then it is gone; it can never find the one-of-a-kind second wreck.", w: 1, h: 1, mass: 0.4, color: "#c08a3c" }),
+  I({ id: "sack1", name: "Sack I", desc: "A 1×1 pocket holding up to 10 footprint-units of ONE item type. Loose items fall into an open Sack on their own; machines and Sort never look inside — stuff and empty it from the Open Sack panel.", w: 1, h: 1, mass: 0.3, sack: 10, color: "#a8834a" }),
+  I({ id: "sack2", name: "Sack II", desc: "A stitched double layer: up to 20 footprint-units of ONE item type in a single 1×1 cell. Machines never read Sacks — they only ever write into them.", w: 1, h: 1, mass: 0.5, sack: 20, color: "#8f6a3a" }),
+  I({ id: "sack3", name: "Sack III", desc: "Cobalt-rimmed canvas: up to 30 footprint-units of ONE item type. A Sack in a Sack never fits, at any tier.", w: 1, h: 1, mass: 0.8, sack: 30, color: "#6d4f2e" }),
 ];
 
 export const ITEMS: Record<string, ItemDef> = Object.fromEntries(ITEM_LIST.map((d) => [d.id, d]));
@@ -191,14 +195,23 @@ BLOCK_TO_ITEM[STORM_BREAKER_HUSK] = "storm_breaker_broken";
 // ---------------- Inventory Grid ----------------
 
 /** One slot holds exactly one item — items never stack, anywhere.
- *  `charges`: fuel burnt left in a Campfire fuel slot; `cook`/`done`: Campfire cooking job progress. */
-export interface Slot { itemId: string; x: number; y: number; rot?: boolean; charges?: number; blockRot?: number; cook?: number; done?: boolean; }
+ *  `charges`: fuel burnt left in a Campfire fuel slot; `cook`/`done`: Campfire cooking job progress;
+ *  `stack`: contents of a Sack — one item type, ADR-0008: nobody but the player may read it. */
+export interface Slot { itemId: string; x: number; y: number; rot?: boolean; charges?: number; blockRot?: number; cook?: number; done?: boolean; stack?: { itemId: string; count: number }; }
 
 /** Effective footprint of a placed item (rot swaps w/h). */
 export function slotDims(s: Slot): { w: number; h: number } {
   const d = ITEMS[s.itemId];
   return s.rot ? { w: d.h, h: d.w } : { w: d.w, h: d.h };
 }
+
+// ---- Sacks (ADR-0008): one item type per Sack, contents priced in footprint units ----
+/** Units one instance of an item takes inside a Sack (native footprint; rotation is irrelevant). */
+export function sackUnits(itemId: string): number { const d = ITEMS[itemId]; return d.w * d.h; }
+/** Units currently used inside a Sack slot (0 for empty Sacks and non-Sacks). */
+export function sackUsed(s: Slot): number { return s.stack ? sackUnits(s.stack.itemId) * s.stack.count : 0; }
+/** Free capacity of a Sack slot in units (-1 for non-Sacks). */
+export function sackFree(s: Slot): number { const cap = ITEMS[s.itemId].sack; return cap === undefined ? -1 : cap - sackUsed(s); }
 
 export class Inventory {
   slots: Slot[] = [];
@@ -274,6 +287,28 @@ export class Inventory {
     return false;
   }
 
+  /** Pour items into open Sacks in this grid — smallest remaining capacity first,
+   *  one item type per Sack; Sacks themselves never go inside. Returns count used. */
+  fillSack(itemId: string, count = 1): number {
+    if (ITEMS[itemId].sack !== undefined) return 0; // a Sack in a Sack never fits
+    const units = sackUnits(itemId);
+    let used = 0;
+    while (used < count) {
+      let best: Slot | null = null, bestFree = Infinity;
+      for (const s of this.slots) {
+        if (ITEMS[s.itemId].sack === undefined) continue;
+        if (s.stack && s.stack.itemId !== itemId) continue; // the pocket already holds another kind
+        const free = sackFree(s);
+        if (free >= units && free < bestFree) { best = s; bestFree = free; }
+      }
+      if (!best) break;
+      if (best.stack) best.stack.count++; else best.stack = { itemId, count: 1 };
+      this.learn(itemId);
+      used++;
+    }
+    return used;
+  }
+
   /** Add items; every instance claims its own footprint. Returns count that did NOT fit. */
   addItem(itemId: string, count = 1): number {
     const def = ITEMS[itemId];
@@ -282,6 +317,8 @@ export class Inventory {
       def.w === def.h ? [[def.w, def.h, false]] : [[def.w, def.h, false], [def.h, def.w, true]];
     for (let i = 0; i < count; i++) {
       let placed = false;
+      // an open Sack in this grid swallows the item before it claims any cells
+      if (this.fillSack(itemId, 1) > 0) continue;
       for (const [w, h, rot] of variants) {
         for (let y = 0; y <= this.h - h && !placed; y++) {
           for (let x = 0; x <= this.w - w && !placed; x++) {

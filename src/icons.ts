@@ -126,6 +126,17 @@ function drawArt(id: string, w: number, h: number, color: string, tier = ""): HT
       g.fillRect(8, 26, 1, 5);
       return cv;
     }
+    case "sack1": case "sack2": case "sack3": { // bound bundle: gathered neck, drawstring, tier band
+      rect(g, 5, 2, 6, 3, color);
+      rect(g, 4, 1, 8, 2, "#c8b58c");                // gathered cuff
+      rect(g, 4, 4, 8, 1, "#4a3926");                // drawstring tie
+      rect(g, 3, 5, 10, 9, color);                   // bulging belly
+      outline(g, 3, 5, 10, 9, "#241a10");
+      if (id === "sack2") rect(g, 3, 9, 10, 1, "#e0cfa8");   // double-layer seam
+      if (id === "sack3") { rect(g, 3, 8, 10, 1, "#8fb3d9"); rect(g, 3, 9, 10, 1, "#3a5a8c"); } // cobalt rim
+      g.fillStyle = "#00000033"; g.fillRect(10, 6, 2, 7);     // right-side shade
+      return cv;
+    }
     case "sword": // forged blade: steel edge, crossguard, wrapped grip
       rect(g, 8, 0, 1, 1, "#eef3f8"); rect(g, 7, 1, 3, 17, "#c9d2dc");
       rect(g, 8, 1, 1, 17, "#eef3f8");

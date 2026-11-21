@@ -85,6 +85,10 @@ export const RECIPES: Recipe[] = [
   // ---- the Map kit ----
   { out: "surveyor_pin", count: 4, needs: { metal: 1, glass: 1 }, station: "bench" },
   { out: "tracker", count: 1, needs: { metal: 2, copperrod: 1, glass: 1 }, station: "bench" },
+  // ---- Sacks (ADR-0008): canvas and cord only until the cobalt rim ----
+  { out: "sack1", count: 1, needs: { deadwood: 4 }, station: "bench" },
+  { out: "sack2", count: 1, needs: { deadwood: 6, metal: 2 }, station: "bench" },
+  { out: "sack3", count: 1, needs: { wood_log: 4, cobaltrod: 4 }, station: "bench" },
 ];
 
 /** Campfire smelting: consumes one fuel charge per item. */
