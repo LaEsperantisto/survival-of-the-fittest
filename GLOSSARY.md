@@ -75,7 +75,7 @@ Chosen or randomly generated at world creation. The same Seed yields the same wo
 Terrain regions: Dunes, Rocky Desert, Badlands/mountains, Salt Flats, dry canyons.
 
 **Oasis**:
-A recurring Landmark of the deep desert — open water ringed by green trees and plants that can be farmed. Widely spaced, never scarce per world; the danger is the walk, not the shortage.
+A recurring Landmark of the deep desert — open water ringed by green trees and plants that can be farmed. Ripe Dune Melon vines hang at the water's edge and young sprouts just beyond them: break a sprout for Melon Seeds, so the oasis seeds itself. Widely spaced, never scarce per world; the danger is the walk, not the shortage.
 _Avoid_: watering hole, spring
 
 **Town**:

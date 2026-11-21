@@ -92,15 +92,15 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "rat_cooked", name: "Cooked Rat", desc: "Roasted meat. Eat it: +25 Health.", w: 1, h: 1, mass: 0.7, eat: { health: 25 }, color: "#c07a3a" }),
   // ---- farming ----
   I({ id: "farmland", name: "Farm Land", desc: "Tilled ground. Melon and Wheat seeds must be planted on it; Cactus accepts sand too.", w: 1, h: 1, mass: 1, block: FARMLAND, color: "#573d23" }),
-  I({ id: "seed_melon", name: "Melon Seed", desc: "Plant on Farm Land within 4 blocks of water. Loves heat (22-45 C air); stalls in the cold.", w: 1, h: 1, mass: 0.1, block: MELON_1, color: "#c8b060" }),
-  I({ id: "seed_wheat", name: "Wheat Seed", desc: "Plant on Farm Land within 4 blocks of water. Grows in the cool band (2-22 C) too.", w: 1, h: 1, mass: 0.1, block: WHEAT_1, color: "#d8c878" }),
+  I({ id: "seed_melon", name: "Melon Seed", desc: "Plant on Farm Land within 10 blocks of water. Loves heat (22-45 C air); stalls in the cold.", w: 1, h: 1, mass: 0.1, block: MELON_1, color: "#c8b060" }),
+  I({ id: "seed_wheat", name: "Wheat Seed", desc: "Plant on Farm Land within 6 blocks of water. Comfortable across 2-42 C — the one crop that does not mind the heat.", w: 1, h: 1, mass: 0.1, block: WHEAT_1, color: "#d8c878" }),
   I({ id: "dune_melon", name: "Dune Melon", desc: "Harvested from a ripe Melon. Eat it: +30 Water, +5 Health.", w: 2, h: 1, mass: 2, eat: { water: 30, health: 5 }, color: "#7a9a3a" }),
   I({ id: "wheat", name: "Desert Wheat", desc: "Cut from ripe Wheat. Too tough raw - smelt it at a Campfire into Cooked Wheat.", w: 1, h: 1, mass: 0.2, color: "#d8b048" }),
   I({ id: "cooked_wheat", name: "Cooked Wheat", desc: "Plain but dense. Eat it: +35 Health.", w: 1, h: 1, mass: 0.2, eat: { health: 35 }, color: "#b8853a" }),
   // ---- trees ----
   I({ id: "wood_log", name: "Wood Log", desc: "Trunk of a Living Tree - the renewable counterpart of Dead Wood. Fuel and crafting.", w: 1, h: 1, mass: 0.5, block: WOOD, color: "#7a5c3a" }),
   I({ id: "kindling", name: "Kindling", desc: "Leaf scraps. Campfire fuel that burns fast and small.", w: 1, h: 1, mass: 0.1, color: "#9a8a5a" }),
-  I({ id: "seed_tree", name: "Tree Seed", desc: "Plant in Dirt. Grows a Living Tree stage by stage over ~8 minutes while water stays within 6 blocks. Found in Town chests and from broken Leaves.", w: 1, h: 1, mass: 0.1, block: SAPLING, color: "#7fae54" }),
+  I({ id: "seed_tree", name: "Tree Seed", desc: "Plant in Dirt. Grows a Living Tree stage by stage over ~8 minutes while water stays within 10 blocks. Found in Town chests and from broken Leaves.", w: 1, h: 1, mass: 0.1, block: SAPLING, color: "#7fae54" }),
   // ---- water carrying ----
   I({ id: "bucket", name: "Bucket", desc: "Scoop a water Source with it, pour it back anywhere: moves water instead of drinking it.", w: 1, h: 1, mass: 1.0, color: "#9aa0aa" }),
   I({ id: "bucket_full", name: "Bucket (full)", desc: "Water to pour. Right-click ground to place it as a new Source.", w: 1, h: 1, mass: 3.0, color: "#3f8fe0" }),

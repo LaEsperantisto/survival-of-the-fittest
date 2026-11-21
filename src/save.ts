@@ -89,6 +89,7 @@ export interface RunSave {
   pins?: { id: number; x: number; z: number; name: string }[];   // Surveyor's Pins
   visited?: string[];                     // explored chunk keys "cx,cz"
   revealed?: string[];                    // landmark keys the Tracker/quests marked
+  melonHint?: boolean;                  // one-time Melon Seed hint already shown
   chronicle?: string[];                   // lesson ids seen (chronicle.ts)
   codex?: string[];                       // item ids (and "b:<blockId>") first carried/crafted/mined
 }

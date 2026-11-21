@@ -130,6 +130,8 @@ export class Game {
   crops = new Map<string, number>();
   private cropAcc = 0;
   private treeAcc = 0;
+  /** One-time Codex-free nudge about where Melon Seeds come from. */
+  melonHintShown = false;
   /** Living Trees planted by the player: "x,y,z" of the planted cell → growth seconds. */
   private trees = new Map<string, number>();
   private treePlanCache = new Map<string, TreePart[]>();
@@ -365,7 +367,7 @@ export class Game {
     const r = (salt: number) => hash2(cx, cz, this.seed + salt);
     const items: { itemId: string; count: number }[] = [{ itemId: "canister_empty", count: 2 }];
     if (r(11) < 0.7) items.push({ itemId: "seed_wheat", count: 1 + (r(12) < 0.5 ? 1 : 0) });
-    if (r(13) < 0.4) items.push({ itemId: "seed_melon", count: 1 + (r(14) < 0.4 ? 1 : 0) });
+    if (r(13) < 0.7) items.push({ itemId: "seed_melon", count: 1 + (r(14) < 0.4 ? 1 : 0) });
     if (r(15) < 0.6) items.push({ itemId: "cooked_wheat", count: 1 + (r(16) < 0.35 ? 1 : 0) });
     if (r(17) < 0.5) items.push({ itemId: "metal", count: 1 + Math.floor(r(18) * 3) });
     if (r(19) < 0.45) items.push({ itemId: "chest_connector", count: 1 + Math.floor(r(20) * 2) });
@@ -543,6 +545,7 @@ export class Game {
     this.world.loadRots(run.rots ?? {});
     this.crops = new Map(run.crops ?? []);
     if (run.lastSleep) this.lastSleep = run.lastSleep;
+    if (run.melonHint) this.melonHintShown = true;
     for (const c of legacyChests) this.adoptLegacyChest(c);
     this.pods = (run.pods ?? []).map((p) => ({
       ...p,
@@ -612,6 +615,7 @@ export class Game {
       crops: [...this.crops],
       trees: [...this.trees],
       lastSleep: this.lastSleep > 0 ? this.lastSleep : undefined,
+      melonHint: this.melonHintShown || undefined,
       deltas: this.world.serializeDeltas(),
       rots: this.world.serializeRots(),
       worldMode: this.worldMode,
@@ -2057,8 +2061,8 @@ export class Game {
       // picking it (E) but never a wasted plant
       this.world.set(x, y, z, AIR); // wheat sits ON farmland: breaking it must not stack a second tilled block
       this.crops.delete(`${x},${y},${z}`);
-      if (id === MELON_2) this.giveOrDrop("dune_melon", 1);
-      if (id === WHEAT_2) { this.giveOrDrop("wheat", 1); this.giveOrDrop("seed_wheat", 1); }
+      if (id === MELON_2) { this.giveOrDrop("dune_melon", 1); if (this.seedLuck(x, z, 97)) this.giveOrDrop("seed_melon", 1); }
+      if (id === WHEAT_2) { this.giveOrDrop("wheat", 1); this.giveOrDrop("seed_wheat", 1); if (this.seedLuck(x, z, 83)) this.giveOrDrop("seed_wheat", 1); }
       if (id === MELON_1) this.giveOrDrop("seed_melon", 1);
       if (id === WHEAT_1) this.giveOrDrop("seed_wheat", 1); // unripe wheat: just the seed
       this.audio.blockBreak();
@@ -2748,7 +2752,7 @@ export class Game {
       if (slot.blockRot) this.world.setRot(bedPeer[0], bedPeer[1], bedPeer[2], slot.blockRot);
     }
     if (def.block === MELON_1 || def.block === WHEAT_1) { this.crops.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); }
-    if (def.block === SAPLING) { this.trees.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); hud.toast("Seed in the soil. Keep water within 6 blocks and it climbs, stage by stage."); }
+    if (def.block === SAPLING) { this.trees.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); hud.toast("Seed in the soil. Keep water within 10 blocks and it climbs, stage by stage."); }
     if (def.block === ENGINECORE) {
       // the Core beside a beacon wakes the wreck's power — the Ship still needs its wings
       if (this.beaconAdjacent(bx, by, bz)) {
@@ -2927,14 +2931,17 @@ export class Game {
       this.world.set(x, y, z, MELON_1);
       this.crops.set(`${x},${y},${z}`, 30); // the vine keeps growing from partway
       this.giveOrDrop("dune_melon", 1 + (hash2(x, z, this.seed + 71) < 0.4 ? 1 : 0));
+      if (this.seedLuck(x, z, 97)) this.giveOrDrop("seed_melon", 1);
       this.questBump("farm");
       this.audio.pickup();
-      hud.toast("Dune Melon picked — the plant keeps growing.");
+      if (!this.melonHintShown) { this.melonHintShown = true; hud.toast("Dune Melon picked — the plant keeps growing. Break an oasis sprout, or pick with luck, for Melon Seeds."); }
+      else hud.toast("Dune Melon picked — the plant keeps growing.");
     } else if (id === WHEAT_2) {
       this.world.set(x, y, z, AIR); // the tilled Farmland under the cut stays put
       this.crops.delete(`${x},${y},${z}`);
       this.giveOrDrop("wheat", 2);
       this.giveOrDrop("seed_wheat", 1);
+      if (this.seedLuck(x, z, 83)) this.giveOrDrop("seed_wheat", 1);
       this.questBump("farm");
       this.audio.pickup();
       hud.toast("Desert Wheat cut — the Farmland stays tilled.");
@@ -2979,9 +2986,9 @@ export class Game {
     return best;
   }
 
-  /** Aimed-block label: crop name plus its growth percent, so the plot tells
-   *  you how far the season has come. Looking at the Farmland reads the crop
-   *  standing on it; a ripe crop says so outright. */
+  /** Aimed-block label: crop name plus its growth percent and, when stalled,
+   *  WHY - no water in reach or air outside the species band. Looking at the
+   *  Farmland reads the crop standing on it; a ripe crop says so outright. */
   private aimLabel(world: World, x: number, y: number, z: number): string {
     let id = world.get(x, y, z);
     let cy = y;
@@ -2989,16 +2996,51 @@ export class Game {
       const up = world.get(x, y + 1, z);
       if (up === MELON_1 || up === MELON_2 || up === WHEAT_1 || up === WHEAT_2) { id = up; cy = y + 1; }
     }
+    // a planted Living Tree reads like a crop: percent + pause reason
+    if (id === SAPLING || (id === WOOD && this.trees.has(`${x},${y},${z}`))) {
+      const p = this.trees.get(`${x},${y},${z}`);
+      if (p === undefined) return blockDisplayName(id);
+      const pct = Math.floor((p / 480) * 100);
+      if (p >= 480) return "Living Tree — full grown";
+      return `Living Tree — ${pct}% — ${this.cropPause(x, y, z, 10, null, "")}`;
+    }
     if (id !== MELON_1 && id !== MELON_2 && id !== WHEAT_1 && id !== WHEAT_2) return blockDisplayName(id);
     const name = blockDisplayName(id);
     if (id === MELON_2 || id === WHEAT_2) return `${name} — ripe`;
     const p = this.crops.get(`${x},${cy},${z}`);
     if (p === undefined) return name;
-    const pct = Math.floor((p / (id === MELON_1 ? 60 : 90)) * 100);
-    return `${name} — ${Math.min(99, pct)}%`;
+    const melon = id === MELON_1;
+    const pct = Math.min(99, Math.floor((p / (melon ? 60 : 90)) * 100));
+    const why = this.cropPause(x, cy, z, melon ? 10 : 6, melon ? [22, 45] : [2, 42], melon ? "Melon" : "Wheat");
+    return `${name} — ${pct}% — ${why}`;
   }
 
-  /** Crops advance only while their cell has water within 4 blocks and air in its temperature band. */
+  /** Why a crop or tree is NOT growing right now: water reach first, then the
+   *  air-temperature band (null band = a tree, which only thirsts). */
+  private cropPause(x: number, y: number, z: number, reach: number, band: [number, number] | null, species: string): string {
+    if (!this.waterNear(x, y, z, reach)) return `paused: no Water within ${reach} blocks`;
+    if (band) {
+      const temp = this.survival.airTempAt(this.world, x, y, z, this.timeSec);
+      if (temp > band[1]) return `paused: too hot (${Math.round(temp)} °C, ${species} wants ${band[0]}–${band[1]} °C)`;
+      if (temp < band[0]) return `paused: too cold (${Math.round(temp)} °C, ${species} wants ${band[0]}–${band[1]} °C)`;
+    }
+    return "growing";
+  }
+
+  private waterNear(x: number, y: number, z: number, reach: number): boolean {
+    for (let dx = -reach; dx <= reach; dx++) for (let dz = -reach; dz <= reach; dz++) for (let dy = -3; dy <= 1; dy++)
+      if (isWater(this.world.get(x + dx, y + dy, z + dz))) return true;
+    return false;
+  }
+
+  /** The half-chance a reaping throws off an extra seed. Salted per crop and
+   *  keyed to the clock, so the same plant rerolls on every harvest. */
+  private seedLuck(x: number, z: number, salt: number): boolean {
+    return hash2(x, z, this.seed + salt + Math.floor(this.timeSec)) < 0.5;
+  }
+
+  /** Crops advance only while their cell has water in the species reach (Wheat 6,
+   *  Melon 10 blocks) and air in its temperature band. */
   private updateCrops(dt: number) {
     this.cropAcc += dt;
     if (this.cropAcc < 2) return;
@@ -3010,10 +3052,7 @@ export class Game {
       if (id !== MELON_1 && id !== MELON_2 && id !== WHEAT_1 && id !== WHEAT_2) { this.crops.delete(key); continue; }
       if (id === MELON_2 || id === WHEAT_2) continue; // ripe, waiting
       const melon = id === MELON_1;
-      let wet = false;
-      outer: for (let dx = -4; dx <= 4; dx++) for (let dz = -4; dz <= 4; dz++) for (let dy = -2; dy <= 1; dy++) {
-        if (isWater(this.world.get(x + dx, y + dy, z + dz))) { wet = true; break outer; }
-      }
+      const wet = this.waterNear(x, y, z, melon ? 10 : 6);
       const temp = this.survival.airTempAt(this.world, x, y, z, this.timeSec);
       const band = melon ? temp >= 22 && temp <= 45 : temp >= 2 && temp <= 42;
       if (wet && band) {
@@ -3294,6 +3333,7 @@ export class Game {
     if (cid === MELON_2) {
       if (!this.putInChest(x, y + 1, z, "dune_melon")) return false;
       if (hash2(x, z, this.seed + 71) < 0.4) this.putInChest(x, y + 1, z, "dune_melon"); // bonus fits if the grid has room
+      if (this.seedLuck(x, z, 97)) this.putInChest(x, y + 1, z, "seed_melon"); // seed fits if the grid has room
       this.world.set(x, y - 1, z, MELON_1);
       this.crops.set(ck, 30); // the vine keeps growing from partway
     } else if (cid === WHEAT_2) {
@@ -3305,6 +3345,7 @@ export class Game {
         if (slots && slots[slots.length - 1]?.itemId === "wheat") slots.pop();
         return false;
       }
+      if (this.seedLuck(x, z, 83)) this.putInChest(x, y + 1, z, "seed_wheat"); // bonus seed fits if the grid has room
       this.world.set(x, y - 1, z, AIR); // the Farmland under the cut stays put
       this.crops.delete(ck);
     } else if (cid === CACTUS_FRUIT) {
@@ -3345,7 +3386,7 @@ export class Game {
     this.renderHeld();
   }
 
-  /** Living Trees: deterministic staged growth from the planted cell, water within 6 to keep climbing. */
+  /** Living Trees: deterministic staged growth from the planted cell, water within 10 to keep climbing. */
   private updateTrees(dt: number) {
     if (!this.trees.size) return;
     this.treeAcc += dt;
@@ -3356,11 +3397,7 @@ export class Game {
       const [x, y, z] = key.split(",").map(Number);
       const id = this.world.get(x, y, z);
       if (id !== SAPLING && id !== WOOD) { this.trees.delete(key); continue; } // chopped or buried: done
-      let wet = false;
-      trees: for (let dx = -6; dx <= 6; dx++) for (let dz = -6; dz <= 6; dz++) for (let dy = -3; dy <= 3; dy++) {
-        if (isWater(this.world.get(x + dx, y + dy, z + dz))) { wet = true; break trees; }
-      }
-      if (!wet) continue;
+      if (!this.waterNear(x, y, z, 10)) continue;
       const np = Math.min(480, p + dtc); // ~8 real minutes root to canopy
       this.trees.set(key, np);
       const upto = np >= 480 ? 3 : np >= 270 ? 2 : np >= 120 ? 1 : 0;
@@ -3428,7 +3465,7 @@ export class Game {
         if (t.face.y === 1 && (id === DIRT || id === GRASS)) {
           this.world.set(x, y, z, FARMLAND);
           this.audio.place();
-          hud.toast("Tilled into Farm Land — plant seeds here, keep water within 4 blocks.");
+          hud.toast("Tilled into Farm Land — plant seeds here, keep water within 6 blocks.");
           return;
         }
         if (t.face.y === 1 && (id === SAND || id === SANDSTONE || id === SALT)) {

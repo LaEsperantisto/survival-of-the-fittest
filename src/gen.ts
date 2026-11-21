@@ -1,7 +1,7 @@
 import {
   AIR, SAND, SANDSTONE, ROCK, GRAVEL, SALT, DEADWOOD, DIRT, HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL_PLATING, BEACON, CAMPFIRE,
   WATER, ADOBE, INSGLASS, ENGINECORE, CS, CH, REGULATOR, REGULATOR_HUSK, CACTUS, CACTUS_FRUIT,
-  DOOR_INNER, DOOR_INNER_UPPER, CHEST, BED, BED_EXT, MELON_2, WHEAT_1, WHEAT_2, FARMLAND, GRASS, WOOD, LEAVES,
+  DOOR_INNER, DOOR_INNER_UPPER, CHEST, BED, BED_EXT, MELON_1, MELON_2, WHEAT_1, WHEAT_2, FARMLAND, GRASS, WOOD, LEAVES,
   STORM_BREAKER, STORM_BREAKER_HUSK,
   POWER_PANEL, POWER_POLE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
   CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, THRUSTER,
@@ -742,10 +742,24 @@ function paintOasis(set: (x: number, y: number, z: number, id: number) => void, 
   for (let i = 0; i < 5; i++) {
     if (hash2(o.x, o.z, seed + 61 + i) < 0.35) continue;
     const a = i * 1.27 + hash2(o.z, o.x, seed + 67 + i) * 0.8;
-    const rr = o.r + 0.5;
-    const tx = o.x + Math.round(Math.cos(a) * rr), tz = o.z + Math.round(Math.sin(a) * rr);
+    // walk the vine outward until it stands clear of the pool and its rim —
+    // a ring only half a block out mostly rounds back inside the guard
+    let rr = o.r + 1.5;
+    let tx = o.x + Math.round(Math.cos(a) * rr), tz = o.z + Math.round(Math.sin(a) * rr);
+    for (let t = 0; t < 3 && Math.hypot(tx - o.x, tz - o.z) < o.r + 1; t++) {
+      rr += 1;
+      tx = o.x + Math.round(Math.cos(a) * rr); tz = o.z + Math.round(Math.sin(a) * rr);
+    }
     if (Math.hypot(tx - o.x, tz - o.z) < o.r + 1) continue; // never in the pool or its sand rim
     set(tx, Math.max(Math.round(heightAt(seed, tx, tz)), hb) + 1, tz, MELON_2);
+    // a young sprout just outside each vine: break it for Melon Seeds — the
+    // oasis seeds itself, so farming melons never needs a town trip
+    if (hash2(tx, tz, seed + 79 + i) < 0.55) {
+      const sa = a + 0.9 + hash2(o.x, o.z, seed + 83 + i) * 0.7;
+      const sr = rr + 1.8 + hash2(tz, tx, seed + 89 + i);
+      const sx = o.x + Math.round(Math.cos(sa) * sr), sz = o.z + Math.round(Math.sin(sa) * sr);
+      set(sx, Math.max(Math.round(heightAt(seed, sx, sz)), hb) + 1, sz, MELON_1);
+    }
   }
 }
 

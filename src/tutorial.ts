@@ -80,7 +80,7 @@ const STEPS: TutStep[] = [
     cap: "Select the shovel on the bottom hotbar — click it, scroll, or press its number — then hold <b>Left-click</b> on sand until it breaks. Rock outcrops need a pickaxe; you will craft one soon enough.",
     goal: "mine", hold: 45 },
   { t: "Farming",
-    cap: "A shovel has a second use: press <b>Q</b> while aiming at <b>dirt or grass</b> to till it into <b>Farm Land</b> — sand refuses the blade. The wreck keeps its soil where the tank sinks: <b>Dirt</b> lines the water compartment. Dig it out, till it, plant seeds in the furrow. Crops ripen only while water sits within 4 blocks and the air stays in their band — melons love the heat, wheat does not. Dirt is precious out here; oasis rims and town fields still hold it.",
+    cap: "A shovel has a second use: press <b>Q</b> while aiming at <b>dirt or grass</b> to till it into <b>Farm Land</b> — sand refuses the blade. The wreck keeps its soil where the tank sinks: <b>Dirt</b> lines the water compartment. Dig it out, till it, plant seeds in the furrow. Crops ripen only while water sits within reach — 6 blocks for wheat, 10 for melons — and the air stays in their band — melons love the heat, wheat does not. Dirt is precious out here; oasis rims and town fields still hold it.",
     guide: { name: "Dirt", x: -3, y: 30, z: 3 }, goal: "plant", hold: 60,
     enter: (g) => {
       g.giveOrDrop("seed_wheat", 2);
