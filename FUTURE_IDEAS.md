@@ -20,8 +20,10 @@ saviour"; P3 "safe on the home planet, not in space".
 ### The Ship is an entity
 
 - Real entity: position, **yaw**, velocity — not the scripted `liftoffFrame` animation.
-  **Yaw-only in P1**: continuous heading (~25°/s at the controls); pitch/roll deferred
-  to P2 (a cosmetic render bank may come then; block geometry never rotates).
+  **Yaw-only, permanently** (amended at implementation, 2026-11-22): continuous heading
+  (~25°/s at the controls) plus vertical climb — pitch and roll were cut from P2 as well;
+  block geometry never rotates. Landings snap the heading to the nearest right angle so
+  the Ship lands exactly on grid.
 - The player walks inside, places / breaks / interacts with blocks even in the air.
   In-flight placement targets **Ship-local cells** (new blocks align to heading, not
   world axes); nothing can be placed outside the Ship Frame while airborne.
@@ -34,7 +36,9 @@ saviour"; P3 "safe on the home planet, not in space".
 - Piloting at the **Flight Controls**: W/S drive along heading, climb/descend keys,
   A/D yaw. Interacting shows a 3rd-person view of the Ship, scroll = zoom.
   Player aboard but off-panel = **hover** (holds altitude, drifts to a stop).
-  **Nobody aboard = slow sinking** (falling out is forgiving).
+  **Amended at implementation (2026-11-22): a fed ship hovers wherever it is —
+  crewed or unattended** (home travels with the Ship; sinking is reserved for
+  failure: dry tanks / no lit thrusters / no yoke, then it settles on the ground).
 - Flight envelope P1: ~10 m/s horizontal, ~4 m/s climb, ceiling the world height (96).
   Speed = base × **fuel-grade multiplier** (Rocket Fuel upgrades plug in here).
 - Collisions with terrain, buildings, other Ships: **soft stop**, no damage, no
@@ -405,7 +409,7 @@ Break coal ore; scoop Oil at a seep; refine a Canister; place/remove a Frame Cor
 blocks takeoff with a printed reason; trip at altitude = graceful descent; dock a
 grounded ship to a ground Panel and watch the Battery charge; take off, walk inside,
 mine + place blocks mid-flight (aligned to heading), over-load by building, watch
-the sink; step off (fall); unmanned ship sinks; die aboard → respawn aboard;
+the sink; step off (fall); fed unattended ship hovers, unfed ship sinks; die aboard → respawn aboard;
 fly into a cliff → soft stop; second Frame assembly overlaps the first → both
 refused.
 
@@ -422,3 +426,8 @@ Round 1 + amendment (corner-vs-contact, thruster freedom) → Round 2 (phases, e
 mass, oil, forgiving rules) → Round 3 (yaw, pre-framing, ship-space, grid sealing,
 quest spine) → Round 4 (Refinery, Score deletion, flight HUD). Frontier empty
 2026-11-22; implementation brief added same day.
+Implemented 2026-11-22 (same day, two sessions): full brief landed — oil chain (Oil
+Sands, Oil Seeps, Bucket oil, Refinery recipe), coal surface outcrops, Frame Corner +
+live `computeFrame` checks + F-outline, pre-framed wreck, `src/ship.ts` entity, takeoff
+/ Flight Controls panel / hover / Ctrl-land with right-angle snap, yaw + climb flight
+(no pitch, ever — see amendment above), crew riding, in-flight building, quest spine.

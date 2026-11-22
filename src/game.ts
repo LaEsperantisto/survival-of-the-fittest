@@ -5,8 +5,12 @@ import { Survival, REGULATOR_ROOM_MAX, SAFE_HI } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, sackUnits, sackFree, type ItemDef, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, DOOR_GROUP, ALAB_GATE, ALAB_GATE_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, CHEST_INTERFACE, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, INSERTER, PLANTER, HARVESTER, REFINERY, POLE_LINK, DEVICE_REACH, isPowerBlock, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable,
-  COOKPOT, WATER_CAGE, WATER_CAGE_FULL, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING, APPLE_FRUIT } from "./blocks";
+import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_GROUP, ALAB_GATE, ALAB_GATE_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, CHEST_INTERFACE, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, INSERTER, PLANTER, HARVESTER, REFINERY, POLE_LINK, DEVICE_REACH, isPowerBlock, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable,
+  COOKPOT, WATER_CAGE, WATER_CAGE_FULL, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING, APPLE_FRUIT,
+  FRAME_CORNER, FLIGHT_CONTROLS, OIL, isFluid } from "./blocks";
+import { Ship, SHIP, massOf } from "./ship";
+import { computeFrame, type Box3, type FrameResult } from "./shipframe";
+import { meshShipCells } from "./renderer";
 
 /** One Battery stores this many Grid-units. */
 const POWER_BATT_CAP = 120;
@@ -27,6 +31,12 @@ const isDoorHalf = (i: number) => { const g = DOOR_GROUP.get(i); return g !== un
 // quarter-turn index -> partner-cell offset, matching the renderer's bench
 // orientation indexing (0=+X, 1=+Z, 2=-X, 3=-Z)
 const ROT_DIRS: ReadonlyArray<readonly [number, number]> = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+
+/** A not-yet-launched Ship Frame: its Corner Blocks are still world cells. */
+interface PendingFrame {
+  corners: string[];
+  frame: FrameResult;
+}
 
 /** One Campfire's whole station: staging grids (input/output 1×3 each),
  *  the charge bank in the coals, the lit flag, and the idle-burn accumulator. */
@@ -145,7 +155,7 @@ export class Game {
   private prevHp = 100;
   private lastHitFlash = -10;
   private lastDmgAt = -10;
-  ui: null | "inv" | "bench" | "cache" | "liftoff" | "trade" = null;
+  ui: null | "inv" | "bench" | "cache" | "flycheck" | "trade" = null;
   openCacheId: number | null = null;
   openStation: [number, number, number] | null = null;
   private breaking: { x: number; y: number; z: number; need: number; elapsed: number } | null = null;
@@ -235,18 +245,51 @@ export class Game {
   private lastTouchTs = 0;
   won = false;
 
+  // ---------- Ship flight (Phase 1 + 2) ----------
+  // The Ship is a real entity: its cells live ship-local (ship.ts); the world
+  // only ever sees it through World.cellProvider. Membership = the Frame.
+  private ships = new Map<number, Ship>();
+  private shipSeq = 0;
+  private shipGroups = new Map<number, THREE.Group>();
+  private shipDirty = new Set<number>();          // groups needing a re-mesh
+  private worldCorners = new Set<string>();       // Frame Corners still living in chunks
+  private frameSeq = 0;                           // bumped whenever corner cells change
+  private pendingCache: { n: number; comps: PendingFrame[] } | null = null;
+  private coreFuel = new Map<string, number[]>(); // Engine Core before takeoff: world cell -> port charges
+  piloting: Ship | null = null;
+  private flyPending: PendingFrame | null = null; // yoke panel open on an unfinished Frame
+  private flyOutlineOn = true;
+  private pilotLand = false;                      // Set-down button: sink until touchdown, then land
+  private flightBump = 0;                         // toast cooldown for bumps / dry tanks
+  shipGridDone = false;                           // Panel + Battery + Core once on one Grid
+
   constructor(public meta: WorldMeta, run: RunSave | null, parent: HTMLElement, private settings: Settings, private audio: Audio) {
     this.seed = hashStr(meta.seedStr || meta.id);
     // Easy/Hard Start is fixed when the world is created; the run copy wins on load
     this.worldMode = run?.worldMode ?? meta.mode ?? "easy";
     this.world = new World(this.seed, this.worldMode);
-    // world-gen grids (Grid Relics, Town husks) join the live Grids the moment
-    // their chunk streams in — gen blocks carry no deltas to scan at load
+    // the world sees grounded AND airborne Ships through this one hook:
+    // a claimed cell reads as the Ship's block, never as the chunk under it
+    this.world.cellProvider = (x, y, z) => {
+      if (!this.ships.size) return null;
+      for (const sh of this.ships.values()) {
+        const b = sh.worldAABB();
+        if (x < b.min[0] || x >= b.max[0] || y < b.min[1] || y >= b.max[1] || z < b.min[2] || z >= b.max[2]) continue;
+        const c = sh.cellAtWorld(x, y, z);
+        if (c) return c.id;
+      }
+      return null;
+    };
+    // world-gen grids (Grid Relics, Towns) join the live Grids the moment
+    // their chunk streams in — gen blocks carry no deltas to scan at load;
+    // the same pass indexes the wreck's pre-declared Frame Corners
     this.world.onChunk = (cx, cz, c) => {
       for (let i = 0; i < c.length; i++) {
-        if (!isPowerBlock(c[i])) continue;
         const lx = Math.floor(i / (CS * CH)), rem = i % (CS * CH);
-        this.powerCells.set(`${cx * CS + lx},${rem % CH},${cz * CS + Math.floor(rem / CH)}`, c[i]);
+        const wx = cx * CS + lx, wy = rem % CH, wz = cz * CS + Math.floor(rem / CH);
+        if (c[i] === FRAME_CORNER) { this.worldCorners.add(`${wx},${wy},${wz}`); this.frameSeq++; }
+        if (!isPowerBlock(c[i])) continue;
+        this.powerCells.set(`${wx},${wy},${wz}`, c[i]);
         this.powerDirty = true;
       }
     };
@@ -299,8 +342,8 @@ export class Game {
     // the cockpit's Chest is a real chest block, stocked with three full canisters
     const [x, y, z] = [3, 31, 0];
     if (this.world.get(x, y, z) !== AIR) return;
-    this.world.set(x, y, z, CHEST);
-    this.chests.set(Game.chestKey([[x, y, z]]), [
+    this.wset(x, y, z, CHEST);
+    this.chests.set(this.chestKey([[x, y, z]]), [
       { itemId: "canister_full", x: 0, y: 0 },
       { itemId: "canister_full", x: 1, y: 0 },
       { itemId: "canister_full", x: 2, y: 0 },
@@ -333,8 +376,28 @@ export class Game {
     return out;
   }
 
-  private static chestKey(cells: [number, number, number][]): string {
-    return [...cells].sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]).map((c) => c.join(",")).join(";");
+  /** stable contents key: world cells on land, ship-local cells aboard,
+   *  so a Chest's contents ride with a flying Ship instead of falling out. */
+  private chestKey(cells: [number, number, number][]): string {
+    return cells.map(([x, y, z]) => {
+      const sh = this.claimShip(x, y, z);
+      if (!sh) return `${x},${y},${z}`;
+      const l = sh.worldToLocal(x + 0.5, y + 0.5, z + 0.5);
+      return `s${sh.id},${Math.floor(l.x)},${Math.floor(l.y)},${Math.floor(l.z)}`;
+    }).sort().join(";");
+  }
+
+  /** re-key one Chest-cluster cell token across a takeoff / landing. */
+  private migrateChests(map: Map<string, string>) {
+    if (!map.size) return;
+    for (const k of [...this.chests.keys()]) {
+      const cells = k.split(";");
+      if (!cells.some((c) => map.has(c))) continue;
+      const nk = cells.map((c) => map.get(c) ?? c).sort().join(";");
+      if (nk === k) continue;
+      this.chests.set(nk, this.chests.get(k)!);
+      this.chests.delete(k);
+    }
   }
 
   private static chestDims(n: number): [number, number] {
@@ -418,7 +481,7 @@ export class Game {
       this.audio.error();
       return;
     }
-    const key = Game.chestKey(cells);
+    const key = this.chestKey(cells);
     const known = this.chests.has(key);
     if (!this.chests.has(key)) this.chests.set(key, []);
     const ci = this.emptyChestGrid(cells.length);
@@ -466,7 +529,7 @@ export class Game {
     const cells = this.chestCluster(bx, by, bz);
     const ci = this.emptyChestGrid(cells.length);
     for (const sl of old) if (!Game.placeSlotFree(ci, sl)) this.dropEntity(sl.itemId, 1, 2, sl.charges);
-    if (ci.slots.length) this.chests.set(Game.chestKey(cells), ci.slots);
+    if (ci.slots.length) this.chests.set(this.chestKey(cells), ci.slots);
     if (cells.length > 1) hud.toast(`Chests linked — one ${ci.w}×${ci.h} inventory.`);
   }
 
@@ -478,10 +541,10 @@ export class Game {
         for (const it of c.items) for (let i = 0; i < it.count; i++) this.dropEntity(it.itemId, 1, 2);
         return;
       }
-      this.world.set(c.x, c.y, c.z, CHEST);
+      this.wset(c.x, c.y, c.z, CHEST);
     }
     const cells = this.chestCluster(c.x, c.y, c.z);
-    const k = Game.chestKey(cells);
+    const k = this.chestKey(cells);
     if (!this.chests.has(k)) this.chests.set(k, []);
     const ci = this.emptyChestGrid(cells.length);
     ci.slots = this.chests.get(k)!;
@@ -525,6 +588,13 @@ export class Game {
       if (id && known(id)) this.equip[slot] = { itemId: id, x: 0, y: 0, charges: run.equip?.charges?.[slot as "regulator" | "light"] };
     }
     this.beaconMarks = run.beaconMarks ?? [];
+    // Ships ride outside the chunks: restore the entities, re-index their power
+    this.ships = new Map((run.ships ?? []).map((s) => [s.id, Ship.restore(s)]));
+    this.shipSeq = [...this.ships.keys()].reduce((m, i) => Math.max(m, i), 0) + 1;
+    this.coreFuel = new Map(run.coreFuel ?? []);
+    for (const sh of this.ships.values())
+      for (const [k, c] of sh.cells) if (isPowerBlock(c.id)) this.powerCells.set("s" + sh.id + "," + k, c.id);
+    for (const sh of this.ships.values()) this.buildShipGroup(sh);
     this.worldMode = run.worldMode ?? "easy";
     this.pins = run.pins ?? [];
     this.pinSeq = this.pins.reduce((m, p) => Math.max(m, p.id), 0);
@@ -661,6 +731,8 @@ export class Game {
         },
       },
       beaconMarks: this.beaconMarks,
+      ships: [...this.ships.values()].map((s) => s.snapshot()),
+      coreFuel: [...this.coreFuel],
       collected: [...this.collected],
       entities: this.entities.filter((e) => !e.buried).map((e) => ({ x: e.x, y: e.y, z: e.z, itemId: e.itemId, charges: e.charges, age: Math.floor(e.age ?? 0), stack: e.stack })),
       pods: this.pods,
@@ -750,8 +822,8 @@ export class Game {
     if (seg.openDoor && c.t >= seg.openDoor.t) {
       const { x, y, z } = seg.openDoor;
       if (this.world.get(x, y, z) !== DOOR_OPEN) {
-        this.world.set(x, y, z, DOOR_OPEN);
-        for (const dy of [-1, 1]) if (isDoorHalf(this.world.get(x, y + dy, z))) this.world.set(x, y + dy, z, DOOR_OPEN);
+        this.wset(x, y, z, DOOR_OPEN);
+        for (const dy of [-1, 1]) if (isDoorHalf(this.world.get(x, y + dy, z))) this.wset(x, y + dy, z, DOOR_OPEN);
         this.audio.door();
       }
     }
@@ -850,7 +922,7 @@ export class Game {
     hud.toast(`Quest complete: ${done.title}`);
     if (done.reward) this.crashPod(done.reward.item, done.reward.n);
     this.audio.savePing();
-    if (done.kind === "finish") hud.toast("Power runs through the wreck. Four dead engines left — find them a way to burn.");
+    if (done.kind === "liftoff") hud.toast("Power runs through the wreck. Four dead engines left — find them a way to burn.");
     this.renderQuest();
   }
 
@@ -1026,7 +1098,7 @@ export class Game {
         return o ? { name: "Oasis", x: o.x + 0.5, y: ground(o.x, o.z), z: o.z + 0.5, lmKey: `oasis:${o.key}` } : null;
       }
       case "water_home":
-      case "finish": {
+      case "liftoff": {
         const b = [...this.beaconMarks, { x: -4, y: 31, z: -1 }].reverse()
           .find((b) => this.world.get(b.x, b.y, b.z) === BEACON);
         return b ? { name: "Save Beacon", x: b.x + 0.5, y: b.y, z: b.z + 0.5 } : null;
@@ -1330,7 +1402,7 @@ export class Game {
     if (!wrap || !(cv instanceof HTMLCanvasElement)) return;
     const visor = this.equip.head?.itemId === "visor";
     const hudOn = !document.getElementById("hud")!.classList.contains("hidden");
-    if (!visor || this.ui || this.paused || this.cine || this.liftoff || !hudOn) {
+    if (!visor || this.ui || this.paused || this.cine || !hudOn) {
       if (!wrap.classList.contains("hidden")) wrap.classList.add("hidden");
       return;
     }
@@ -1407,12 +1479,17 @@ export class Game {
       if (ke.code !== "Escape" &&
           (ae instanceof HTMLInputElement || ae instanceof HTMLTextAreaElement)) return;
       this.keys.add(ke.code);
-      if (ke.code === "KeyE") this.act();
-      if (ke.code === "KeyQ") this.useItem();
+      if (ke.code === "KeyE") {
+        if (this.piloting) this.exitPiloting();            // E is the way off the yoke
+        else if (this.ui === "flycheck") this.closeFlycheck();
+        else this.act();
+      }
+      if (ke.code === "KeyQ" && !this.piloting) this.useItem();
       if (ke.code === "KeyX") this.surge();
       if (ke.code === "KeyT") this.toggleLantern();
+      if (ke.code === "KeyF" && (this.piloting || this.flyPending || this.ui === "flycheck")) this.toggleFlyOutline();
       if (ke.code === "KeyM" && this.equip.head?.itemId === "visor" &&
-          !this.ui && !this.paused && !this.cine && !this.liftoff) {
+          !this.ui && !this.paused && !this.cine) {
         this.mapMax = !this.mapMax;
         this.renderPinPanel();
         this.drawMap();
@@ -1431,7 +1508,7 @@ export class Game {
         }
         this.renderInv();
       }
-      if (ke.code === "KeyR" && !this.ui && !this.paused && !this.cine && !this.liftoff) {
+      if (ke.code === "KeyR" && !this.ui && !this.paused && !this.cine && !this.piloting) {
         // in the field: R turns a held rotatable block a quarter turn;
         // anything else is left alone (G throws it away)
         const s = this.inv.selectedSlot();
@@ -1444,13 +1521,17 @@ export class Game {
           }
         }
       }
-      if (ke.code === "KeyG" && !this.ui && !this.paused && !this.cine && !this.liftoff) this.dropHeld();
+      if (ke.code === "KeyG" && !this.ui && !this.paused && !this.cine && !this.piloting) this.dropHeld();
       if (ke.code === "Escape") {
-        if (this.liftoff) return; // the Ship is mid-flight; nothing to close
+        if (this.piloting) { this.exitPiloting(); return; } // hands off the yoke; the Ship settles itself
         if (this.tut && !this.ui) { this.tut.finish(true); return; }
         this.escape();
       }
-      if (ke.code === "KeyP" && !this.liftoff) this.escape(true);
+      if (ke.code === "KeyP") {
+        if (this.piloting) this.exitPiloting();
+        else if (this.ui === "flycheck") this.closeFlycheck();
+        else this.escape(true);
+      }
       if (ke.code.startsWith("Digit")) {
         const n = Number(ke.code.slice(5));
         const hb = this.hotbarItems();
@@ -1465,6 +1546,7 @@ export class Game {
     });
     on("keyup", (e) => this.keys.delete((e as KeyboardEvent).code));
     document.getElementById("surge-btn")!.onclick = () => this.surge();
+    this.wireFlightUI();
     document.getElementById("btn-inv-craft")!.onclick = () => { this.invCraft = !this.invCraft; this.renderCraftTab(); };
     document.getElementById("hotbar")!.addEventListener("pointerdown", (e) => {
       const b = (e.target as HTMLElement).closest("[data-hb]");
@@ -1761,12 +1843,19 @@ export class Game {
 
     if (!this.ui && !this.cine) {
       let mx = this.stick.x, mz = -this.stick.y;
-      if (this.keys.has("KeyW")) mz += 1;
-      if (this.keys.has("KeyS")) mz -= 1;
-      if (this.keys.has("KeyA")) mx -= 1;
-      if (this.keys.has("KeyD")) mx += 1;
-      const jump = this.keys.has("Space") || this.mobileJump;
-      this.player.sprinting = this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || this.sprintOn;
+      // at the yoke the keys fly the Ship; the player is bolted to the deck
+      const hands = !this.piloting;
+      if (hands) {
+        if (this.keys.has("KeyW")) mz += 1;
+        if (this.keys.has("KeyS")) mz -= 1;
+        if (this.keys.has("KeyA")) mx -= 1;
+        if (this.keys.has("KeyD")) mx += 1;
+      }
+      const jump = hands && (this.keys.has("Space") || this.mobileJump);
+      this.player.sprinting = hands && (this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") || this.sprintOn);
+      // while piloting the deck carries the crew: no gravity, no walking,
+      // the Ship's own motion is the only thing that moves the player
+      if (hands) {
       this.player.update(dt, mx, mz, jump, this.speedMul);
       // landing a fall: the first 4 blocks are free; ~16 without armour is lethal
       if (this.player.lastFallDist > 0) {
@@ -1780,6 +1869,7 @@ export class Game {
           this.audio.hurt();
           if (this.survival.health > 0 && dmg >= 10) hud.toast("You hit the ground hard.");
         }
+      }
       }
       this.stormShieldTick();
       this.cozyTick(dt);
@@ -1839,14 +1929,14 @@ export class Game {
       cam.position.copy(this.player.eye());
       cam.rotation.order = "YXZ";
       cam.rotation.set(this.player.pitch, this.player.yaw, 0);
-      if (this.liftoff) {
-        // the whole ravine rattles while the Ship climbs
-        cam.position.x += (Math.random() - 0.5) * 0.14;
-        cam.position.y += (Math.random() - 0.5) * 0.10;
-        cam.position.z += (Math.random() - 0.5) * 0.14;
+      if (this.piloting && (this.keys.has("KeyW") || this.keys.has("KeyS") || this.keys.has("Space"))) {
+        // the engines rumble through the deck plates
+        cam.position.x += (Math.random() - 0.5) * 0.05;
+        cam.position.y += (Math.random() - 0.5) * 0.04;
+        cam.position.z += (Math.random() - 0.5) * 0.05;
       }
     }
-    this.liftoffFrame(dt);
+    this.flightTick(dt);
 
     const target = this.raycastTarget();
     this.renderer.setPlayerLight(this.lanternOn ? this.player.eye() : null);
@@ -1985,12 +2075,12 @@ export class Game {
     let water: { x: number; y: number; z: number } | null = null;
     for (let i = 0; i < 80; i++) {
       const id = this.world.get(x, y, z);
-      if (isWater(id)) {
+      if (isFluid(id)) {
         if (!water) water = { x, y, z };
         // Flow is see-through; a Source is aimable, so pools can be emptied for good
-        if (id === WATER) return { hit: { x, y, z }, water, face: new THREE.Vector3(prev.x - x, prev.y - y, prev.z - z) };
+        if (id === WATER || id === OIL) return { hit: { x, y, z }, water, face: new THREE.Vector3(prev.x - x, prev.y - y, prev.z - z) };
       }
-      else if (id !== AIR && id !== WATER) return { hit: { x, y, z }, water, face: new THREE.Vector3(prev.x - x, prev.y - y, prev.z - z) };
+      else if (id !== AIR) return { hit: { x, y, z }, water, face: new THREE.Vector3(prev.x - x, prev.y - y, prev.z - z) };
       prev.set(x, y, z);
       if (tMax.x < tMax.y && tMax.x < tMax.z) { x += step.x; tMax.x += tDelta.x; }
       else if (tMax.y < tMax.z) { y += step.y; tMax.y += tDelta.y; }
@@ -2026,8 +2116,10 @@ export class Game {
       if (id === POWER_PANEL) return this.trippedPanels.has(`${t.hit.x},${t.hit.y},${t.hit.z}`)
         ? "E: Reset the tripped Power Panel" : "E: Power Panel — check the meters";
       if (id === THRUSTER) return this.inv.has("thruster_nozzle", 1) ? "E: Install Thruster Nozzle" : null;
+      if (id === ENGINECORE) return "E: Engine Core — load Rocket Fuel";
+      if (id === FLIGHT_CONTROLS) return this.shipAt(t.hit.x, t.hit.y, t.hit.z) ? "E: Take the controls" : "E: Flight Controls — read what the Ship still needs";
     }
-    if (t.water) return "E: Refill canister";
+    if (t.water) return this.world.get(t.water.x, t.water.y, t.water.z) === OIL ? null : "E: Refill canister";
     return null;
   }
 
@@ -2119,17 +2211,17 @@ export class Game {
     this.questBump("mine");
     const doorG = DOOR_GROUP.get(id);
     if (doorG) {
-      this.world.set(x, y, z, AIR);
+      this.wset(x, y, z, AIR);
       for (const dy of [-1, 1]) {
         const n = this.world.get(x, y + dy, z);
-        if (DOOR_GROUP.get(n) === doorG) this.world.set(x, y + dy, z, AIR);
+        if (DOOR_GROUP.get(n) === doorG) this.wset(x, y + dy, z, AIR);
       }
       this.giveOrDrop(BLOCK_TO_ITEM[doorG.base], 1);
       this.audio.blockBreak();
       return;
     }
     if (id === BEACON) {
-      this.world.set(x, y, z, AIR);
+      this.wset(x, y, z, AIR);
       this.beaconMarks = this.beaconMarks.filter((b) => !(b.x === x && b.y === y && b.z === z));
       hud.toast("Save beacon destroyed. Respawn falls back to the newest intact beacon.");
       this.audio.blockBreak();
@@ -2137,21 +2229,21 @@ export class Game {
     }
     if (id === CACTUS) {
       // every cactus column block carries fruit: one Prickly Pear plus the block itself
-      this.world.set(x, y, z, AIR);
+      this.wset(x, y, z, AIR);
       this.giveOrDrop("prickly_pear", 1);
       this.giveOrDrop("cactus", 1);
       this.audio.blockBreak();
       return;
     }
     if (id === CACTUS_FRUIT) {
-      this.world.set(x, y, z, AIR);
+      this.wset(x, y, z, AIR);
       this.giveOrDrop("prickly_pear", 2);
       this.giveOrDrop("cactus", 1);
       this.audio.blockBreak();
       return;
     }
     if (id === SAPLING || id === APPLE_SAPLING) {
-      this.world.set(x, y, z, AIR);
+      this.wset(x, y, z, AIR);
       this.trees.delete(`${x},${y},${z}`);
       this.appleTrees.delete(`${x},${y},${z}`);
       this.giveOrDrop(id === SAPLING ? "seed_tree" : "apple_pip", 1); // the seed comes back
@@ -2167,7 +2259,7 @@ export class Game {
     }
     if (id === APPLE_FRUIT) {
       // breaking the branch knocks the Apple loose but hurts nothing else
-      this.world.set(x, y, z, LEAVES);
+      this.wset(x, y, z, LEAVES);
       this.giveOrDrop("apple", 1);
       this.audio.blockBreak();
       return;
@@ -2175,7 +2267,7 @@ export class Game {
     if (id === MELON_2 || id === MELON_1 || id === WHEAT_2 || id === WHEAT_1 || id === SUGARCANE_2 || id === SUGARCANE_1) {
       // breaking a crop by hand or tool yields its harvest too — rougher than
       // picking it (E) but never a wasted plant
-      this.world.set(x, y, z, AIR); // wheat sits ON farmland: breaking it must not stack a second tilled block
+      this.wset(x, y, z, AIR); // wheat sits ON farmland: breaking it must not stack a second tilled block
       this.crops.delete(`${x},${y},${z}`);
       if (id === MELON_2) { this.giveOrDrop("dune_melon", 1); if (this.seedLuck(x, z, 97)) this.giveOrDrop("seed_melon", 1); }
       if (id === WHEAT_2) { this.giveOrDrop("wheat", 1); this.giveOrDrop("seed_wheat", 1); if (this.seedLuck(x, z, 83)) this.giveOrDrop("seed_wheat", 1); }
@@ -2187,7 +2279,7 @@ export class Game {
       return;
     }
     if (id === LEAVES) {
-      this.world.set(x, y, z, AIR);
+      this.wset(x, y, z, AIR);
       this.giveOrDrop("kindling", 1);
       if (hash2(x + 7 * z, y, this.seed + 91) < 0.2) this.giveOrDrop("seed_tree", 1); // canopy sheds seeds: farms renew
       this.audio.blockBreak();
@@ -2196,9 +2288,9 @@ export class Game {
     if (id === BED || id === BED_EXT) {
       // a bed is a pair: breaking either half removes the whole bed, in
       // whichever direction the pillow half was turned
-      this.world.set(x, y, z, AIR);
+      this.wset(x, y, z, AIR);
       const peer = this.bedPeer(x, y, z);
-      if (peer) this.world.set(peer[0], peer[1], peer[2], AIR);
+      if (peer) this.wset(peer[0], peer[1], peer[2], AIR);
       this.giveOrDrop("bed", 1);
       this.audio.blockBreak();
       return;
@@ -2229,13 +2321,13 @@ export class Game {
     }
     if (id === WATER_CAGE_FULL) {
       // the Cage drops, the Water it held does not: it stays in the world
-      this.world.set(x, y, z, WATER);
+      this.wset(x, y, z, WATER);
       this.giveOrDrop("water_cage", 1);
       this.audio.blockBreak();
       return;
     }
     if (id === WATER_CAGE) {
-      this.world.set(x, y, z, AIR);
+      this.wset(x, y, z, AIR);
       this.giveOrDrop("water_cage", 1);
       this.audio.blockBreak();
       return;
@@ -2244,14 +2336,14 @@ export class Game {
       // breaking one chest of a linked cluster: the grid shrinks; contents that
       // no longer fit spill onto the sand. The chest block itself drops too.
       const cells = this.chestCluster(x, y, z);
-      const old = this.chests.get(Game.chestKey(cells)) ?? [];
-      this.chests.delete(Game.chestKey(cells));
-      this.world.set(x, y, z, AIR);
+      const old = this.chests.get(this.chestKey(cells)) ?? [];
+      this.chests.delete(this.chestKey(cells));
+      this.wset(x, y, z, AIR);
       const rest = cells.filter(([cx, cy, cz]) => cx !== x || cy !== y || cz !== z);
       const groups: [string, Inventory][] = [];
       for (const c of rest) {
         const g = this.chestCluster(c[0], c[1], c[2]);
-        const k = Game.chestKey(g);
+        const k = this.chestKey(g);
         if (groups.some(([gk]) => gk === k)) continue;
         groups.push([k, this.emptyChestGrid(g.length)]);
       }
@@ -2271,13 +2363,13 @@ export class Game {
       // room for spills onto the sand
       const cells = this.chestCluster(x, y, z);
       if (cells.length) {
-        const old = this.chests.get(Game.chestKey(cells)) ?? [];
-        this.chests.delete(Game.chestKey(cells));
-        this.world.set(x, y, z, AIR);
+        const old = this.chests.get(this.chestKey(cells)) ?? [];
+        this.chests.delete(this.chestKey(cells));
+        this.wset(x, y, z, AIR);
         const groups: [string, Inventory][] = [];
         for (const c of cells) {
           const g = this.chestCluster(c[0], c[1], c[2]);
-          const k = Game.chestKey(g);
+          const k = this.chestKey(g);
           if (groups.some(([gk]) => gk === k)) continue;
           groups.push([k, this.emptyChestGrid(g.length)]);
         }
@@ -2290,8 +2382,13 @@ export class Game {
       }
       // fall through: the rail / interface itself drops as an item
     }
+    if (id === FRAME_CORNER) {
+      // pulling a Corner out dismantles whatever Frame it declared
+      this.worldCorners.delete(`${x},${y},${z}`); this.frameSeq++;
+      this.renderer.setFrameOutline(null);
+    }
     if (id === ENGINECORE) {
-      this.world.set(x, y, z, AIR);
+      this.wset(x, y, z, AIR);
       this.giveOrDrop("engine_core", 1);
       this.questBump("core");
       this.audio.blockBreak();
@@ -2299,8 +2396,8 @@ export class Game {
     }
     if (id === BENCH || id === BENCH_EXT) {
       const peer = this.benchPeer(x, y, z);
-      this.world.set(x, y, z, AIR);
-      if (peer) this.world.set(peer[0], peer[1], peer[2], AIR);
+      this.wset(x, y, z, AIR);
+      if (peer) this.wset(peer[0], peer[1], peer[2], AIR);
       this.giveOrDrop("bench", 1);
       this.audio.blockBreak();
       return;
@@ -2319,7 +2416,7 @@ export class Game {
       }
       this.rebuildPower();
     }
-    this.world.set(x, y, z, AIR);
+    this.wset(x, y, z, AIR);
     const item = this.blockItemId(id);
     if (item) this.giveOrDrop(item, 1);
     this.audio.blockBreak();
@@ -2838,7 +2935,7 @@ export class Game {
     const slot = this.inv.selectedSlot();
     if (!slot) return;
     if (slot.itemId === "bucket") { this.bucketScoop(); return; }
-    if (slot.itemId === "bucket_full") { this.bucketPour(); return; }
+    if (slot.itemId === "bucket_full" || slot.itemId === "oil_bucket") { this.bucketPour(); return; }
     const def = ITEMS[slot.itemId];
     if (def.block === undefined) { hud.toast("Not a placeable block"); this.audio.error(); return; }
     // raw materials (iron ore, scrap chunks) never stand as building blocks
@@ -2863,7 +2960,7 @@ export class Game {
       for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const) {
         const nb = this.world.get(bx + dx, by + dy, bz + dz);
         if (nb !== CHEST && nb !== CHEST_CONNECTOR && nb !== CHEST_INTERFACE) continue;
-        const k = Game.chestKey(this.chestCluster(bx + dx, by + dy, bz + dz));
+        const k = this.chestKey(this.chestCluster(bx + dx, by + dy, bz + dz));
         if (done.has(k)) continue;
         done.add(k);
         chestOld.push(...(this.chests.get(k) ?? []));
@@ -2916,28 +3013,36 @@ export class Game {
         this.audio.error(); return;
       }
     }
-    this.world.set(bx, by, bz, def.block);
+    this.wset(bx, by, bz, def.block);
     if (slot.blockRot && rotatable(def.block)) this.world.setRot(bx, by, bz, slot.blockRot);
     if (benchPeer) {
-      this.world.set(benchPeer[0], benchPeer[1], benchPeer[2], BENCH_EXT);
+      this.wset(benchPeer[0], benchPeer[1], benchPeer[2], BENCH_EXT);
       if (slot.blockRot) this.world.setRot(benchPeer[0], benchPeer[1], benchPeer[2], slot.blockRot);
     }
     if (doorPlace && def.block === doorPlace.base && this.world.get(bx, by + 1, bz) === AIR)
-      this.world.set(bx, by + 1, bz, doorPlace.upper);
+      this.wset(bx, by + 1, bz, doorPlace.upper);
     if (bedPeer) { // a bed spans 2 blocks, pillow where you turned it
-      this.world.set(bedPeer[0], bedPeer[1], bedPeer[2], BED_EXT);
+      this.wset(bedPeer[0], bedPeer[1], bedPeer[2], BED_EXT);
       if (slot.blockRot) this.world.setRot(bedPeer[0], bedPeer[1], bedPeer[2], slot.blockRot);
     }
     if (def.block === MELON_1 || def.block === WHEAT_1 || def.block === SUGARCANE_1) { this.crops.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); }
     if (def.block === SAPLING) { this.trees.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); hud.toast("Seed in the soil. Keep water within 10 blocks and it climbs, stage by stage."); }
-    if (def.block === APPLE_SAPLING) { this.appleTrees.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); hud.toast("A Pip in the soil. Keep water within 10 blocks and an Apple Tree climbs, stage by stage."); }
+    if (def.block === APPLE_SAPLING) { this.wset(bx, by, bz, APPLE_SAPLING); this.appleTrees.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); hud.toast("A Pip in the soil. Keep water within 10 blocks and an Apple Tree climbs, stage by stage."); }
+    if (def.block === FRAME_CORNER) {
+      // a new Corner may declare (or ruin) a Frame — the caches must notice
+      this.worldCorners.add(`${bx},${by},${bz}`); this.frameSeq++;
+      hud.toast("Corner set. Eight Corners, one face-braced cuboid — the Frame declares what flies.");
+    }
+    if (def.block === FLIGHT_CONTROLS) {
+      const comp = this.pendingFrames().find((c) => Game.compContains(c.frame, bx, by, bz));
+      if (comp) { this.questBump("yoke"); hud.toast("The yoke is bolted inside the Frame. Press E at it: the panel reads out everything the Ship still needs."); }
+      else hud.toast("The yoke wants to stand inside a Ship Frame — put it within the Corners.");
+    }
     if (def.block === ENGINECORE) {
-      // the Core beside a beacon wakes the wreck's power — the Ship still needs its wings
-      if (this.beaconAdjacent(bx, by, bz)) {
-        const q = currentQuest(this.quests);
-        if (q && q.kind === "finish" && !this.tut) this.questBump("finish");
-        else hud.toast("The Core hums next to the beacon. Power runs — now wake the wingtip engines.");
-      } else hud.toast("The relay needs the Core right next to a Save Beacon.");
+      // the Core is the Ship's heart: it works inside the Frame, not beside a beacon
+      const comp = this.pendingFrames().find((c) => Game.compContains(c.frame, bx, by, bz));
+      if (comp) { this.questBump("core_set"); hud.toast("The Engine Core stands inside the Frame. The Ship's grid — and its fuel — start here."); }
+      else hud.toast("The Engine Core works inside the Ship Frame — set it up within the Corners.");
     }
     // a LAMP only lights once the power tick finds a live Panel beside it
     if (def.block === THRUSTER_LIT) this.renderer.addPointLight(bx, by, bz, "fire"); // a carried engine keeps burning
@@ -2958,12 +3063,6 @@ export class Game {
     this.inv.selected = Math.min(this.inv.selected, Math.max(0, this.inv.slots.length - 1));
     this.renderHeld();
     this.audio.place();
-  }
-
-  /** Is any face of this cell touching a Save Beacon block? */
-  private beaconAdjacent(bx: number, by: number, bz: number): boolean {
-    return [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
-      .some(([dx, dy, dz]) => this.world.get(bx + dx, by + dy, bz + dz) === BEACON);
   }
 
   private act() {
@@ -2988,7 +3087,7 @@ export class Game {
         // the gate leaf swings on its stile; world.set clears the rotation
         // nibble, so carry it across the id swap
         const r = this.world.getRot(x, y, z);
-        this.world.set(x, y, z, id === ALAB_GATE ? ALAB_GATE_OPEN : ALAB_GATE);
+        this.wset(x, y, z, id === ALAB_GATE ? ALAB_GATE_OPEN : ALAB_GATE);
         if (r) this.world.setRot(x, y, z, r);
         this.audio.door();
         return;
@@ -3007,14 +3106,14 @@ export class Game {
           }
           // rebuild the pair with correct halves: the open block below marks us as the top
           if (this.world.get(x, y - 1, z) === openId) {
-            this.world.set(x, y, z, upper);
-            this.world.set(x, y - 1, z, base);
+            this.wset(x, y, z, upper);
+            this.wset(x, y - 1, z, base);
           } else if (this.world.get(x, y + 1, z) === openId) {
-            this.world.set(x, y, z, base);
-            this.world.set(x, y + 1, z, upper);
+            this.wset(x, y, z, base);
+            this.wset(x, y + 1, z, upper);
           } else {
             // lone open half — its neighbor tells us which half we are
-            this.world.set(x, y, z, half(this.world.get(x, y + 1, z)) ? upper : base);
+            this.wset(x, y, z, half(this.world.get(x, y + 1, z)) ? upper : base);
           }
         } else {
           // push-door: the leaf swings away from whoever opens it
@@ -3024,8 +3123,8 @@ export class Game {
           const k = x + "," + z;
           if (Math.abs(off) > 0.35) this.world.doorSwing.set(k, (off > 0 ? -1 : 1) as 1 | -1);
           else this.world.doorSwing.delete(k);
-          this.world.set(x, y, z, openId);
-          for (const dy of [-1, 1]) if (half(this.world.get(x, y + dy, z))) this.world.set(x, y + dy, z, openId);
+          this.wset(x, y, z, openId);
+          for (const dy of [-1, 1]) if (half(this.world.get(x, y + dy, z))) this.wset(x, y + dy, z, openId);
           this.tut?.notify("door");
         }
         this.audio.door();
@@ -3067,7 +3166,7 @@ export class Game {
         const sel = this.inv.selectedSlot();
         if (full && sel?.itemId === "bucket") {
           this.inv.removeItem("bucket", 1);
-          this.world.set(x, y, z, WATER_CAGE);
+          this.wset(x, y, z, WATER_CAGE);
           this.inv.addItem("bucket_full", 1);
           this.audio.drink();
           hud.toast("You ladle Water out of the Cage — the Water stays behind the Wire.");
@@ -3076,7 +3175,7 @@ export class Game {
         }
         if (!full && sel?.itemId === "bucket_full") {
           this.inv.removeItem("bucket_full", 1);
-          this.world.set(x, y, z, WATER_CAGE_FULL);
+          this.wset(x, y, z, WATER_CAGE_FULL);
           this.inv.addItem("bucket", 1);
           this.audio.place();
           hud.toast("You pour a full Bucket into the Cage.");
@@ -3087,6 +3186,17 @@ export class Game {
         hud.toast(full ? "The Cage holds Water — scoop it with an empty Bucket (E)." : "The Cage is empty — fill it with a full Bucket (E).");
         return;
       }
+      if (id === FLIGHT_CONTROLS) {
+        const sh = this.shipAt(x, y, z);
+        if (sh) this.enterPiloting(sh);
+        else {
+          const comp = this.pendingFrames().find((c) => Game.compContains(c.frame, x, y, z));
+          if (comp) this.openFlycheck(comp);
+          else hud.toast("This yoke isn't standing inside a Ship Frame yet.");
+        }
+        return;
+      }
+      if (id === ENGINECORE) { this.engineCoreAct(x, y, z); return; }
       if (id === THRUSTER) {
         if (!this.inv.has("thruster_nozzle", 1)) {
           this.audio.error();
@@ -3094,13 +3204,13 @@ export class Game {
           return;
         }
         this.inv.removeItem("thruster_nozzle", 1);
-        this.world.set(x, y, z, THRUSTER_LIT);
+        this.wset(x, y, z, THRUSTER_LIT);
         this.renderer.addPointLight(x, y, z, "fire");
         this.questBump("thruster");
         this.audio.door();
         this.audio.win();
         hud.toast("Nozzle seated. The engine coughs, catches, holds.");
-        if (!this.liftoff && this.thrustersAllLit()) this.startLiftoff();
+        if (this.thrustersAllLit()) hud.toast("All four engines are lit. The Frame, the Core, the Grid — then the yoke.");
         return;
       }
       if (id === REGULATOR) {
@@ -3122,6 +3232,11 @@ export class Game {
       }
     }
     if (t.water) {
+      if (this.world.get(t.water.x, t.water.y, t.water.z) === OIL) {
+        if (this.inv.selectedSlot()?.itemId === "bucket") { hud.toast("Thick black oil — scoop it with an empty Bucket (Q)."); this.audio.error(); }
+        else hud.toast("Crude oil. No Canister wants this — a Bucket will.");
+        return;
+      }
       if (this.inv.selectedSlot()?.itemId === "bucket") { hud.toast("E won't fill it — press Q or right-click with the Bucket to scoop."); this.audio.error(); return; }
       if (this.inv.has("canister_empty")) {
         // refilling costs nothing from the water body — Sources, the ship's
@@ -3140,7 +3255,7 @@ export class Game {
   /** E at a ripe crop: pick it. Melons re-ripen on the vine; wheat leaves the Farmland it stood on. */
   private harvest(x: number, y: number, z: number, id: number) {
     if (id === MELON_2) {
-      this.world.set(x, y, z, MELON_1);
+      this.wset(x, y, z, MELON_1);
       this.crops.set(`${x},${y},${z}`, 30); // the vine keeps growing from partway
       this.giveOrDrop("dune_melon", 1 + (hash2(x, z, this.seed + 71) < 0.4 ? 1 : 0));
       if (this.seedLuck(x, z, 97)) this.giveOrDrop("seed_melon", 1);
@@ -3149,7 +3264,7 @@ export class Game {
       if (!this.melonHintShown) { this.melonHintShown = true; hud.toast("Dune Melon picked — the plant keeps growing. Break an oasis sprout, or pick with luck, for Melon Seeds."); }
       else hud.toast("Dune Melon picked — the plant keeps growing.");
     } else if (id === WHEAT_2) {
-      this.world.set(x, y, z, AIR); // the tilled Farmland under the cut stays put
+      this.wset(x, y, z, AIR); // the tilled Farmland under the cut stays put
       this.crops.delete(`${x},${y},${z}`);
       this.giveOrDrop("wheat", 2);
       this.giveOrDrop("seed_wheat", 1);
@@ -3158,7 +3273,7 @@ export class Game {
       this.audio.pickup();
       hud.toast("Desert Wheat cut — the Farmland stays tilled.");
     } else if (id === SUGARCANE_2) {
-      this.world.set(x, y, z, SUGARCANE_1);
+      this.wset(x, y, z, SUGARCANE_1);
       this.crops.set(`${x},${y},${z}`, 30); // the stubble re-sprouts partway
       this.giveOrDrop("sugar_cane", 2);
       if (this.seedLuck(x, z, 89)) this.giveOrDrop("sugar_cane", 1);
@@ -3166,13 +3281,13 @@ export class Game {
       this.audio.pickup();
       hud.toast("Sugarcane cut — the stubble sprouts again.");
     } else if (id === APPLE_FRUIT) {
-      this.world.set(x, y, z, LEAVES);
+      this.wset(x, y, z, LEAVES);
       this.fruitRegrow.set(`${x},${y},${z}`, 0); // the same bough ripens another Apple
       this.giveOrDrop("apple", 1);
       this.audio.pickup();
       hud.toast("Apple picked — the bough will fruit again.");
     } else {
-      this.world.set(x, y, z, CACTUS);
+      this.wset(x, y, z, CACTUS);
       this.giveOrDrop("prickly_pear", 2);
       this.questBump("farm");
       this.audio.pickup();
@@ -3323,7 +3438,7 @@ export class Game {
         const np = p + dtc;
         this.crops.set(key, np);
         const ripe = melon ? 60 : cane ? 60 : 90;
-        if (np >= ripe) this.world.set(x, y, z, melon ? MELON_2 : cane ? SUGARCANE_2 : WHEAT_2);
+        if (np >= ripe) this.wset(x, y, z, melon ? MELON_2 : cane ? SUGARCANE_2 : WHEAT_2);
       }
     }
   }
@@ -3331,6 +3446,103 @@ export class Game {
   // ---------------- Grid power (ADR-0007) ----------------
   /** A connected component of Poles (linked within POLE_LINK) with devices
    *  attached at DEVICE_REACH; one Panel per component or the Grid has no power. */
+  // ---------- ship-space plumbing ----------
+  // the only sanctioned way to change a cell: a grounded Ship owning the
+  // coordinate gets the write routed ship-local instead of to the chunk
+  private wset(x: number, y: number, z: number, id: number): void {
+    const sh = this.claimShip(x, y, z);
+    if (sh && !sh.grounded) {
+      const p = sh.worldToLocal(x + 0.5, y + 0.5, z + 0.5);
+      const lx = Math.floor(p.x), ly = Math.floor(p.y), lz = Math.floor(p.z);
+      if (id === AIR) sh.deleteCell(lx, ly, lz);
+      else sh.setCell(lx, ly, lz, id);
+      this.shipDirty.add(sh.id);
+      this.markShipChunksDirty(sh);
+      return;
+    }
+    this.world.set(x, y, z, id);
+  }
+
+  /** the grounded Ship claiming this world cell, or any Ship holding it. */
+  private claimShip(x: number, y: number, z: number): Ship | null {
+    for (const sh of this.ships.values()) {
+      const b = sh.worldAABB();
+      if (x < b.min[0] || x >= b.max[0] || y < b.min[1] || y >= b.max[1] || z < b.min[2] || z >= b.max[2]) continue;
+      const l = sh.worldToLocal(x + 0.5, y + 0.5, z + 0.5);
+      const lx = Math.floor(l.x), ly = Math.floor(l.y), lz = Math.floor(l.z);
+      if (sh.getCell(lx, ly, lz) || sh.claimsLocal(lx, ly, lz)) return sh;
+    }
+    return null;
+  }
+
+  /** any Ship (grounded or airborne) with a cell at this world coord. */
+  private shipAt(x: number, y: number, z: number): Ship | null {
+    for (const sh of this.ships.values()) if (sh.cellAtWorld(x + 0.5, y + 0.5, z + 0.5)) return sh;
+    return null;
+  }
+
+  /** mark world chunks under a Ship dirty when its pose or cells change. */
+  private markShipChunksDirty(sh: Ship): void {
+    const b = sh.worldAABB();
+    for (let x = Math.floor(b.min[0] / CS); x <= Math.floor(b.max[0] / CS); x++)
+      for (let z = Math.floor(b.min[2] / CS); z <= Math.floor(b.max[2] / CS); z++)
+        this.world.dirty.add(x + "," + z);
+  }
+
+  private static keyPos(k: string): [number, number, number] { return k.split(",").map(Number) as [number, number, number]; }
+
+  /** resolve a "s<id>,lx,ly,lz" power key to its Ship (null for world keys). */
+  private shipOfPowerKey(k: string): Ship | null {
+    if (!k.startsWith("s")) return null;
+    return this.ships.get(Number(k.slice(1, k.indexOf(",")))) ?? null;
+  }
+
+  /** the live Frames declared by world Corner Blocks, as components. */
+  private pendingFrames(): PendingFrame[] {
+    if (this.pendingCache && this.pendingCache.n === this.frameSeq) return this.pendingCache.comps;
+    const live = new Set<string>();
+    for (const k of this.worldCorners) {
+      const [x, y, z] = Game.keyPos(k);
+      if (this.world.get(x, y, z) === FRAME_CORNER) live.add(k);
+    }
+    let comps: PendingFrame[] = [];
+    if (live.size) {
+      const full = computeFrame([...live]);
+      // group cuboids that brace a shared Corner or face-touch: one component
+      // per physically connected Frame; two separate Ships stay separate
+      const vsets = full.cuboids.map((b) => {
+        const s = new Set<string>();
+        for (const dx of [b.min[0], b.max[0]]) for (const dy of [b.min[1], b.max[1]]) for (const dz of [b.min[2], b.max[2]]) s.add(dx + "," + dy + "," + dz);
+        return s;
+      });
+      const touch = (a: Box3, b: Box3) =>
+        a.min[0] <= b.max[0] + 1 && b.min[0] <= a.max[0] + 1 &&
+        a.min[1] <= b.max[1] + 1 && b.min[1] <= a.max[1] + 1 &&
+        a.min[2] <= b.max[2] + 1 && b.min[2] <= a.max[2] + 1;
+      const par = full.cuboids.map((_, i) => i);
+      const find = (i: number): number => (par[i] === i ? i : (par[i] = find(par[i])));
+      for (let i = 0; i < full.cuboids.length; i++)
+        for (let j = i + 1; j < full.cuboids.length; j++)
+          if (touch(full.cuboids[i], full.cuboids[j]) || [...vsets[i]].some((k) => vsets[j].has(k))) par[find(i)] = find(j);
+      const groups = new Map<number, Set<string>>();
+      full.cuboids.forEach((_, i) => {
+        const r = find(i);
+        if (!groups.has(r)) groups.set(r, new Set());
+        for (const k of vsets[i]) if (live.has(k)) groups.get(r)!.add(k);
+      });
+      comps = [...groups.values()]
+        .filter((g) => g.size)
+        .map((g) => ({ corners: [...g], frame: computeFrame([...g]) }));
+    }
+    this.pendingCache = { n: this.frameSeq, comps };
+    return comps;
+  }
+
+  /** does a (world) cell sit inside any cuboid of this Frame? */
+  private static compContains(f: FrameResult, x: number, y: number, z: number): boolean {
+    return f.cuboids.some((c) => x >= c.min[0] && x <= c.max[0] && y >= c.min[1] && y <= c.max[1] && z >= c.min[2] && z <= c.max[2]);
+  }
+
   private rebuildPower() {
     this.grids = [];
     const keys = [...this.powerCells.keys()];
@@ -3339,12 +3551,15 @@ export class Game {
     const union = (a: string, b: string) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
     for (const k of keys) parent.set(k, k);
     const xyz = (k: string): [number, number, number] => { const [x, y, z] = k.split(",").map(Number); return [x, y, z]; };
+    // ship power cells live in ship-local coords: they form their own Grids,
+    // never bridged to world machines — the Ship's Grid IS self-sufficient
+    const space = (k: string) => (k.startsWith("s") ? k.slice(0, k.indexOf(",")) : "w");
     for (let i = 0; i < keys.length; i++) for (let j = i + 1; j < keys.length; j++) {
       const idA = this.powerCells.get(keys[i])!, idB = this.powerCells.get(keys[j])!;
       // Pole-to-Pole wires at POLE_LINK; a device joins a Pole's Grid at DEVICE_REACH
       const reach = idA === POWER_POLE && idB === POWER_POLE ? POLE_LINK
         : idA === POWER_POLE || idB === POWER_POLE ? DEVICE_REACH : -1;
-      if (reach < 0) continue;
+      if (reach < 0 || space(keys[i]) !== space(keys[j])) continue;
       const [ax, ay, az] = xyz(keys[i]), [bx, by, bz] = xyz(keys[j]);
       if ((ax - bx) ** 2 + (ay - by) ** 2 + (az - bz) ** 2 <= reach * reach) union(keys[i], keys[j]);
     }
@@ -3363,8 +3578,11 @@ export class Game {
       for (const [k, id] of g.cells) {
         if (id !== ELEC_LAMP) continue;
         const [x, y, z] = k.split(",").map(Number);
-        if (g.powered) this.renderer.addPointLight(x, y, z, "elec");
-        else this.renderer.removePointLight(x, y, z);
+        const sh = this.shipOfPowerKey(k);
+        // a lamp aboard a flying Ship lights at its world position
+        const w = sh ? sh.localToWorld(x, y, z) : { x, y, z };
+        if (g.powered) this.renderer.addPointLight(Math.floor(w.x), Math.floor(w.y), Math.floor(w.z), "elec");
+        else this.renderer.removePointLight(Math.floor(w.x), Math.floor(w.y), Math.floor(w.z));
       }
   }
 
@@ -3372,17 +3590,24 @@ export class Game {
   private genOutput(k: string, id: number, gridOn: boolean): number {
     if (!gridOn) return 0;
     const [x, y, z] = k.split(",").map(Number);
+    const sh = this.shipOfPowerKey(k);
     if (id === GEN_WOOD) return (this.genFuel.get(k) ?? 0) > 0 ? 4 : 0;
     if (id === WIND_TURBINE) {
-      for (let dy = 1; dy <= 8; dy++) if (BLOCKS[this.world.get(x, y + dy, z)].opaque) return 0; // roof kills it
+      // a Turbine boxed into a cabin is dead; on a Ship the hull is the sky check
+      for (let dy = 1; dy <= 8; dy++) {
+        if (sh) { const up = sh.getCell(x, y + dy, z); if (up && BLOCKS[up.id].opaque) return 0; }
+        else if (BLOCKS[this.world.get(x, y + dy, z)].opaque) return 0; // roof kills it
+      }
       return 8 * (0.15 + 0.85 * this.survival.storm); // the storm is the fuel
     }
     if (id === SOLAR_PANEL) {
       const frac = (this.timeSec % DAY_SECONDS) / DAY_SECONDS;
       const a = (frac - 0.25) * Math.PI * 2, elev = Math.sin(a); // same sun arc the renderer draws
       if (elev <= 0.02) return 0;
-      const inv = 1 / Math.hypot(Math.cos(a), elev, 0.4);
-      if (!this.world.sunVisible(x, y, z, Math.cos(a) * inv, elev * inv, 0.4 * inv)) return 0;
+      if (!sh) {
+        const inv = 1 / Math.hypot(Math.cos(a), elev, 0.4);
+        if (!this.world.sunVisible(x, y, z, Math.cos(a) * inv, elev * inv, 0.4 * inv)) return 0;
+      }
       return 4 * elev * (1 - 0.7 * this.survival.storm);
     }
     return 0;
@@ -3425,6 +3650,12 @@ export class Game {
         if (id === BATTERY) batts.push(k);
       }
       if (on) {
+        // a live Panel + Battery + Engine Core on one Grid: the Ship has a nervous system
+        if (!this.shipGridDone) {
+          let core = false, batt = false, panel = false;
+          for (const [, id] of g.cells) { if (id === ENGINECORE) core = true; else if (id === BATTERY) batt = true; else if (id === POWER_PANEL) panel = true; }
+          if (core && batt && panel) { this.shipGridDone = true; this.questBump("ship_grid"); hud.toast("The Ship's own Grid hums — Panel, Battery and Core on one wire. It will ride with you."); }
+        }
         const net = supply - draw;
         if (net >= 0) {
           const each = Math.min(6, net / Math.max(1, batts.length));
@@ -3570,7 +3801,7 @@ export class Game {
     if (id !== CHEST && id !== CHEST_CONNECTOR && id !== CHEST_INTERFACE) return null;
     const cells = this.chestCluster(x, y, z);
     if (!cells.length) return null;
-    const key = Game.chestKey(cells);
+    const key = this.chestKey(cells);
     return this.chests.get(key) ?? [];
   }
 
@@ -3580,7 +3811,7 @@ export class Game {
     if (cid !== CHEST && cid !== CHEST_CONNECTOR && cid !== CHEST_INTERFACE) return false;
     const cells = this.chestCluster(cx, cy, cz);
     if (!cells.length) return false;
-    const key = Game.chestKey(cells);
+    const key = this.chestKey(cells);
     const slots = this.chests.get(key) ?? [];
     const ci = this.emptyChestGrid(cells.length);
     ci.slots = slots;
@@ -3629,7 +3860,7 @@ export class Game {
     if (i < 0) return false;
     const melon = seeds[i].itemId === "seed_melon";
     seeds.splice(i, 1);
-    this.world.set(x, y + 2, z, melon ? MELON_1 : WHEAT_1);
+    this.wset(x, y + 2, z, melon ? MELON_1 : WHEAT_1);
     this.crops.set(`${x},${y + 2},${z}`, 0);
     return true;
   }
@@ -3642,41 +3873,44 @@ export class Game {
       if (!this.putInChest(x, y + 1, z, "dune_melon")) return false;
       if (hash2(x, z, this.seed + 71) < 0.4) this.putInChest(x, y + 1, z, "dune_melon"); // bonus fits if the grid has room
       if (this.seedLuck(x, z, 97)) this.putInChest(x, y + 1, z, "seed_melon"); // seed fits if the grid has room
-      this.world.set(x, y - 1, z, MELON_1);
+      this.wset(x, y - 1, z, MELON_1);
       this.crops.set(ck, 30); // the vine keeps growing from partway
     } else if (cid === WHEAT_2) {
       if (!this.putInChest(x, y + 1, z, "wheat")) return false;
       if (!this.putInChest(x, y + 1, z, "seed_wheat")) {
         // no room for both the cut and its returned seed — leave the wheat standing
         const cells = this.chestCluster(x, y + 1, z);
-        const slots = this.chests.get(Game.chestKey(cells));
+        const slots = this.chests.get(this.chestKey(cells));
         if (slots && slots[slots.length - 1]?.itemId === "wheat") slots.pop();
         return false;
       }
       if (this.seedLuck(x, z, 83)) this.putInChest(x, y + 1, z, "seed_wheat"); // bonus seed fits if the grid has room
-      this.world.set(x, y - 1, z, AIR); // the Farmland under the cut stays put
+      this.wset(x, y - 1, z, AIR); // the Farmland under the cut stays put
       this.crops.delete(ck);
     } else if (cid === CACTUS_FRUIT) {
       if (!this.putInChest(x, y + 1, z, "prickly_pear")) return false;
       this.putInChest(x, y + 1, z, "prickly_pear");
-      this.world.set(x, y - 1, z, CACTUS);
+      this.wset(x, y - 1, z, CACTUS);
     } else return false;
     this.world.dirty.add(Math.floor(x / CS) + "," + Math.floor(z / CS));
     return true;
   }
 
-  /** Bucket at the crosshair's water: only a Source is scoopable — flowing water isn't. */
+  /** Bucket at the crosshair's fluid: only a Source is scoopable — flow isn't. */
   private bucketScoop() {
     const t = this.raycastTarget();
-    if (!t?.water) { hud.toast("Aim at water."); this.audio.error(); return; }
+    if (!t?.water) { hud.toast("Aim at water or an Oil Seep."); this.audio.error(); return; }
     const { x, y, z } = t.water;
-    if (this.world.get(x, y, z) !== WATER) { hud.toast("Only a still Source fills the bucket — flowing water slips through."); this.audio.error(); return; }
+    const id = this.world.get(x, y, z);
+    if (id !== WATER && id !== OIL) { hud.toast("Only a still Source fills the bucket — flow slips through."); this.audio.error(); return; }
     if (!this.inv.has("bucket", 1)) { hud.toast("You need an empty Bucket."); this.audio.error(); return; }
     this.inv.removeItem("bucket", 1);
-    this.giveOrDrop("bucket_full", 1);
-    this.world.set(x, y, z, AIR);
+    this.giveOrDrop(id === WATER ? "bucket_full" : "oil_bucket", 1);
+    this.wset(x, y, z, AIR);
     this.audio.drink();
-    hud.toast("Bucket scooped from the Source — that water is gone from here.");
+    hud.toast(id === WATER
+      ? "Bucket scooped from the Source — that water is gone from here."
+      : "The Bucket comes up black and heavy. Oil — the Refinery will want this.");
     this.renderHeld();
   }
 
@@ -3686,11 +3920,12 @@ export class Game {
     if (!t?.hit) return;
     const x = t.hit.x + t.face.x, y = t.hit.y + t.face.y, z = t.hit.z + t.face.z;
     if (this.world.get(x, y, z) !== AIR) { hud.toast("Pour into open space."); this.audio.error(); return; }
-    this.world.set(x, y, z, WATER);
-    this.inv.removeItem("bucket_full", 1);
+    const oil = this.inv.selectedSlot()?.itemId === "oil_bucket";
+    this.wset(x, y, z, oil ? OIL : WATER);
+    this.inv.removeItem(oil ? "oil_bucket" : "bucket_full", 1);
     this.giveOrDrop("bucket", 1);
     this.audio.drink();
-    hud.toast("Water pours out and finds its level.");
+    hud.toast(oil ? "Oil glops down and creeps, slower than water." : "Water pours out and finds its level.");
     this.renderHeld();
   }
 
@@ -3721,7 +3956,7 @@ export class Game {
       for (const part of plan) {
         if (part.stage > upto) continue;
         const cur = this.world.get(part.x, part.y, part.z);
-        if (cur === AIR || cur === SAPLING) this.world.set(part.x, part.y, part.z, part.b); // the seed cell itself turns to trunk
+        if (cur === AIR || cur === SAPLING) this.wset(part.x, part.y, part.z, part.b); // the seed cell itself turns to trunk
       }
     }
   }
@@ -3754,7 +3989,7 @@ export class Game {
       for (const part of plan) {
         if (part.stage > upto) continue;
         const cur = this.world.get(part.x, part.y, part.z);
-        if (cur === AIR || cur === APPLE_SAPLING) this.world.set(part.x, part.y, part.z, part.b); // the pip cell itself turns to trunk
+        if (cur === AIR || cur === APPLE_SAPLING) this.wset(part.x, part.y, part.z, part.b); // the pip cell itself turns to trunk
       }
     }
     // picked boughs: the plan's fruit slots turn back to Apple over a minute of good air
@@ -3762,7 +3997,7 @@ export class Game {
       const [x, y, z] = key.split(",").map(Number);
       if (this.world.get(x, y, z) !== LEAVES) { this.fruitRegrow.delete(key); continue; }
       const nt = t + dtc;
-      if (nt >= 60) { this.world.set(x, y, z, APPLE_FRUIT); this.fruitRegrow.delete(key); }
+      if (nt >= 60) { this.wset(x, y, z, APPLE_FRUIT); this.fruitRegrow.delete(key); }
       else this.fruitRegrow.set(key, nt);
     }
   }
@@ -3813,7 +4048,7 @@ export class Game {
         const { x, y, z } = t.hit;
         const id = this.world.get(x, y, z);
         if (t.face.y === 1 && (id === DIRT || id === GRASS)) {
-          this.world.set(x, y, z, FARMLAND);
+          this.wset(x, y, z, FARMLAND);
           this.audio.place();
           hud.toast("Tilled into Farm Land — plant seeds here, keep water within 6 blocks.");
           return;
@@ -4340,22 +4575,48 @@ export class Game {
     }
   }
 
-  // ---------- liftoff ----------
-  // All four wingtip engines lit: the Ship lifts off IN PLACE — hull rows blink
-  // out top-down over ~2 s, hover in the sky as an afterimage, then re-stack
-  // bottom-up in its crater. Voxel-styled lift; no physics, no new geometry.
+  // ---------- Ship flight (Phase 1 + 2) ----------
+  // The Ship is a real entity, not an animation. Its cells live ship-local
+  // (ship.ts); the world reads them through cellProvider. Yaw steers the
+  // heading only: the Ship turns on its yaw, thrust drives it along the
+  // bank at the yoke. Block geometry never rotates on its own: cells stay on
+  // the grid, so landings stay exact.
 
-  /** Ship materials — everything that belongs to the hull, not the desert. */
-  private static readonly SHIP_IDS = new Set([
-    HULL, METAL_PLATING, CURVED_HULL, HULL_SLOPE, INSGLASS,
-    DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN,
-    LAMP, BEACON, BENCH, BENCH_EXT, REGULATOR, ENGINECORE, BED, BED_EXT,
-  ]);
+  /** raw chunk cell ignoring the Ship provider — what the terrain says. */
+  private terrainAt(x: number, y: number, z: number): number {
+    if (y < 0) return 1; // below the world: hard floor, never a fall-through
+    if (y >= CH) return AIR;
+    const cx = Math.floor(x / CS), cz = Math.floor(z / CS);
+    const c = this.world.chunk(cx, cz);
+    return c[((x - cx * CS) * CS + (z - cz * CS)) * CH + y];
+  }
 
-  private liftoff: {
-    t: number; rows: [number, number, number, number][][]; step: number; restored: number;
-  } | null = null;
+  /** does any claimed cell of the Ship's footprint sit inside terrain? */
+  private shipHitsTerrain(sh: Ship): boolean {
+    const b = sh.getBox();
+    if (!b) return false;
+    const [cos, sin] = sh.rot();
+    const c = sh.centerLocal();
+    const px = sh.pos.x, py = sh.pos.y, pz = sh.pos.z;
+    for (let ix = b.min[0]; ix <= b.max[0]; ix++)
+      for (let iy = b.min[1]; iy <= b.max[1]; iy++)
+        for (let iz = b.min[2]; iz <= b.max[2]; iz++) {
+          if (sh.getCell(ix, iy, iz) || !sh.claimsLocal(ix, iy, iz)) continue;
+          const dx = ix + 0.5 - c[0], dy = iy + 0.5 - c[1], dz = iz + 0.5 - c[2];
+          if (isSolid(this.terrainAt(
+            Math.floor(px + cos * dx + sin * dz),
+            Math.floor(py + dy),
+            Math.floor(pz - sin * dx + cos * dz),
+          ))) return true;
+        }
+    return false;
+  }
 
+  private litThrusters(sh: Ship): number {
+    return sh.thrusters().filter((t) => t.cell.id === THRUSTER_LIT).length;
+  }
+
+  /** the wreck's four wingtip engines, still in chunks, all burning? */
   private thrustersAllLit(): boolean {
     let lit = 0;
     for (let y = 29; y <= 37; y++)
@@ -4368,59 +4629,380 @@ export class Game {
     return lit >= 4;
   }
 
-  private startLiftoff() {
-    const rows: [number, number, number, number][][] = [];
-    for (let y = 37; y >= 29; y--) {
-      const cells: [number, number, number, number][] = [];
-      for (let x = -8; x <= 6; x++)
-        for (let z = -13; z <= 13; z++) {
-          const id = this.world.get(x, y, z);
-          if (Game.SHIP_IDS.has(id)) cells.push([x, y, z, id]);
-        }
-      if (cells.length) rows.push(cells);
-    }
-    this.liftoff = { t: 0, rows, step: 0, restored: 0 };
-    this.ui = "liftoff"; // locks movement, acting, and prompts until the Ship settles
-    if (document.pointerLockElement) document.exitPointerLock();
-    const fx = document.getElementById("lift-fx")!;
-    fx.classList.remove("hidden");
-    fx.textContent = "ENGINE IGNITION";
-    hud.toast("The whole Ship shudders. Every plate rattles at once.");
-    this.audio.win();
+  private isAboard(sh: Ship): boolean {
+    // cheap containment: the crew rides whenever they stand inside the hull;
+    // claimShip per frame would rebuild the whole Ship just to compare ids
+    const b = sh.worldAABB();
+    const p = this.player.pos;
+    return p.x >= b.min[0] && p.x < b.max[0] && p.y >= b.min[1] - 0.5 && p.y <= b.max[1] + 0.5 &&
+           p.z >= b.min[2] && p.z < b.max[2];
   }
 
-  /** Advances the liftoff each frame; wins when the Ship has settled back down. */
-  private liftoffFrame(dt: number) {
-    const L = this.liftoff;
-    if (!L) return;
-    L.t += dt;
-    const per = 2.2 / L.rows.length;   // one hull row blinks out every `per` s
-    const IGNITE_END = 2.4, HOVER_END = 4.6, LAND_END = HOVER_END + 2.2;
-    const fx = document.getElementById("lift-fx")!;
-    fx.textContent = L.t < IGNITE_END ? "LIFT-OFF" : L.t < HOVER_END ? "RESCUE SIGNAL LIVE" : "TOUCHDOWN";
-    // rising: rows vanish top-down with a thud per row
-    while (L.step < L.rows.length && L.t >= L.step * per) {
-      for (const [x, y, z] of L.rows[L.step]) this.world.set(x, y, z, AIR);
-      this.audio.door();
-      L.step++;
+  /** checklist rows for a pending Frame about to become a flying Ship. */
+  private flyCheckComp(comp: PendingFrame) {
+    const F = comp.frame;
+    const rows: { label: string; ok: boolean }[] = [];
+    rows.push({
+      label: F.errors.length ? "Frame: " + F.errors[0]
+        : `Frame: ${F.cuboids.length} cuboid${F.cuboids.length === 1 ? "" : "s"}, ${F.cellCount} cells`,
+      ok: !F.errors.length && !!F.bbox,
+    });
+    let lit = 0, unlit = 0, cores = 0, yokes = 0, batt = 0, panel = 0, mass = 0;
+    const portFuel: number[] = [];
+    const bb = F.bbox;
+    if (bb) {
+      for (let x = bb.min[0]; x <= bb.max[0]; x++)
+        for (let y = bb.min[1]; y <= bb.max[1]; y++)
+          for (let z = bb.min[2]; z <= bb.max[2]; z++) {
+            if (!Game.compContains(F, x, y, z)) continue;
+            const id = this.world.get(x, y, z);
+            if (id === AIR) continue;
+            mass += massOf(id);
+            if (id === THRUSTER_LIT) lit++;
+            else if (id === THRUSTER) unlit++;
+            else if (id === ENGINECORE) { cores++; portFuel.push(...(this.coreFuel.get(`${x},${y},${z}`) ?? [])); }
+            else if (id === FLIGHT_CONTROLS) yokes++;
+            else if (id === BATTERY) batt++;
+            else if (id === POWER_PANEL) panel++;
+          }
     }
-    // falling: the same rows re-stack bottom-up
-    if (L.t > HOVER_END) {
-      while (L.restored < L.rows.length && L.t - HOVER_END >= L.restored * per) {
-        for (const [x, y, z, id] of L.rows[L.rows.length - 1 - L.restored]) this.world.set(x, y, z, id);
-        this.audio.door();
-        L.restored++;
+    const aboard = !!bb && Game.compContains(F, Math.floor(this.player.pos.x), Math.floor(this.player.pos.y), Math.floor(this.player.pos.z));
+    rows.push({ label: `Engines: ${lit} lit${unlit ? `, ${unlit} still dead` : ""}`, ok: lit >= 4 });
+    rows.push({ label: "Engine Core standing in the Frame", ok: cores >= 1 });
+    rows.push({ label: "Flight Controls standing in the Frame", ok: yokes >= 1 });
+    rows.push({ label: "Ship Grid: Panel + Battery wired to the Core", ok: batt >= 1 && panel >= 1 });
+    rows.push({ label: `Fuel loaded: ${portFuel.reduce((a, b2) => a + b2, 0).toFixed(0)} charges`, ok: portFuel.some((p) => p > 0) });
+    rows.push({ label: `Mass ${mass} / lift ${lit * SHIP.liftCapacity}`, ok: mass > 0 && mass <= lit * SHIP.liftCapacity });
+    rows.push({ label: "You are inside the Ship", ok: aboard });
+    return { rows, mass, lift: lit * SHIP.liftCapacity, ready: rows.every((r) => r.ok) };
+  }
+
+  private openFlycheck(comp: PendingFrame) {
+    this.flyPending = comp;
+    this.ui = "flycheck";
+    this.paintFlycheck();
+    this.unlockPointer();
+  }
+
+  private paintFlycheck() {
+    const comp = this.flyPending;
+    const panel = document.getElementById("ui-flight")!;
+    panel.classList.remove("hidden");
+    document.getElementById("flight-mode")!.textContent = "Grounded — at the yoke";
+    if (!comp) return;
+    const ck = this.flyCheckComp(comp);
+    document.getElementById("fl-mass")!.textContent = String(ck.mass);
+    document.getElementById("fl-lift")!.textContent = String(ck.lift);
+    document.getElementById("fl-grid")!.textContent = ck.rows[4].ok ? "wired" : "incomplete";
+    const errs = document.getElementById("flight-errors")!;
+    errs.innerHTML = "";
+    for (const r of ck.rows) {
+      const d = document.createElement("div");
+      d.className = "fl-check " + (r.ok ? "ok" : "no");
+      d.textContent = (r.ok ? "✓ " : "— ") + r.label;
+      errs.appendChild(d);
+    }
+    const take = document.getElementById("flight-take") as HTMLButtonElement | null;
+    if (take) take.disabled = !ck.ready;
+    this.paintFlyOutline();
+  }
+
+  private closeFlycheck() {
+    if (this.ui === "flycheck") this.ui = null;
+    this.flyPending = null;
+    if (!this.piloting) document.getElementById("ui-flight")!.classList.add("hidden");
+    if (!this.ui) this.relock();
+  }
+
+  private enterPiloting(sh: Ship) {
+    this.piloting = sh;
+    this.pilotLand = false;
+    if (this.ui === "flycheck") { this.ui = null; this.flyPending = null; }
+    document.getElementById("ui-flight")!.classList.remove("hidden");
+    document.getElementById("flight-mode")!.textContent = "Airborne";
+    this.paintFlyOutline();
+    this.audio.door();
+    hud.toast("Hands on the yoke. W/S thrust, A/D heading, Space/Ctrl climb. E lets go.");
+  }
+
+  private exitPiloting() {
+    this.piloting = null;
+    this.pilotLand = false;
+    this.closeFlycheck();
+    document.getElementById("ui-flight")!.classList.add("hidden");
+    this.renderer.setFrameOutline(null);
+    hud.toast("Hands off the yoke — the Ship settles down on its own.");
+  }
+
+  private toggleFlyOutline() {
+    this.flyOutlineOn = !this.flyOutlineOn;
+    this.paintFlyOutline();
+  }
+
+  private paintFlyOutline() {
+    if (!this.flyOutlineOn) { this.renderer.setFrameOutline(null); return; }
+    if (this.piloting) this.renderer.setFrameOutline(this.piloting.frameWorld());
+    else if (this.flyPending) this.renderer.setFrameOutline(this.flyPending.frame.cuboids, this.flyPending.frame.errors.length > 0);
+    else this.renderer.setFrameOutline(null);
+  }
+
+  /** the yoke panel's readouts, refreshed every frame while flying. */
+  private renderFlightReadouts() {
+    const sh = this.piloting!;
+    const lit = this.litThrusters(sh);
+    document.getElementById("fl-mass")!.textContent = sh.mass().toFixed(0);
+    document.getElementById("fl-lift")!.textContent = String(lit * SHIP.liftCapacity);
+    document.getElementById("fl-fuel")!.textContent = sh.fuel.map((p) => Math.round(p)).join(" / ") + " charges";
+    document.getElementById("fl-alt")!.textContent = Math.round(sh.pos.y) + " m";
+    const hd = ((sh.yaw * 180) / Math.PI) % 360;
+    document.getElementById("fl-head")!.textContent = ((hd + 360) % 360).toFixed(0) + "°";
+    document.getElementById("flight-mode")!.textContent = this.pilotLand ? "Setting down" : (Math.abs(sh.vel.y) > 0.01 || this.keys.has("KeyW") ? "Airborne" : "Holding");
+  }
+
+  private wireFlightUI() {
+    document.getElementById("flight-outline")!.onclick = () => this.toggleFlyOutline();
+    const take = document.getElementById("flight-take");
+    if (take) take.onclick = () => {
+      const comp = this.flyPending;
+      if (!comp) return;
+      if (this.flyCheckComp(comp).ready) this.performTakeoff(comp);
+      else { this.audio.error(); this.paintFlycheck(); }
+    };
+  }
+
+  /** Frame cells become Ship cells; the chunk copies empty out; the desert falls away. */
+  private performTakeoff(comp: PendingFrame) {
+    const bb = comp.frame.bbox!;
+    const captured: [number, number, number, number, number][] = [];
+    for (let x = bb.min[0]; x <= bb.max[0]; x++)
+      for (let y = bb.min[1]; y <= bb.max[1]; y++)
+        for (let z = bb.min[2]; z <= bb.max[2]; z++) {
+          if (!Game.compContains(comp.frame, x, y, z)) continue;
+          const id = this.world.get(x, y, z);
+          if (id === AIR) continue;
+          captured.push([x, y, z, id, this.world.getRot(x, y, z)]);
+        }
+    const sh = new Ship(this.shipSeq++);
+    for (const [x, y, z, id, rot] of captured) sh.setCell(x, y, z, id, rot);
+    sh.pos = { x: (bb.min[0] + bb.max[0] + 1) / 2, y: (bb.min[1] + bb.max[1] + 1) / 2, z: (bb.min[2] + bb.max[2] + 1) / 2 };
+    sh.grounded = false;
+    const coreCell = captured.find((c) => c[3] === ENGINECORE);
+    if (coreCell) {
+      const pk = `${coreCell[0]},${coreCell[1]},${coreCell[2]}`;
+      sh.fuel = this.coreFuel.get(pk) ?? [0, 0];
+      this.coreFuel.delete(pk);
+    }
+    this.ships.set(sh.id, sh);
+    for (const [x, y, z, id] of captured) {
+      this.world.set(x, y, z, AIR);
+      const pk = `${x},${y},${z}`;
+      if (isPowerBlock(id)) {
+        this.powerCells.delete(pk);
+        this.powerCells.set("s" + sh.id + "," + pk, id);
+        const gf = this.genFuel.get(pk); if (gf !== undefined) { this.genFuel.delete(pk); this.genFuel.set("s" + sh.id + "," + pk, gf); }
+        const bc = this.batteryCharge.get(pk); if (bc !== undefined) { this.batteryCharge.delete(pk); this.batteryCharge.set("s" + sh.id + "," + pk, bc); }
+      }
+      if (id === FRAME_CORNER) this.worldCorners.delete(pk);
+    }
+    // Chest contents ride along: their keys become ship-local cells
+    const chestMove = new Map<string, string>();
+    for (const [x, y, z, id] of captured)
+      if (id === CHEST || id === CHEST_CONNECTOR || id === CHEST_INTERFACE)
+        chestMove.set(`${x},${y},${z}`, `s${sh.id},${x},${y},${z}`);
+    this.migrateChests(chestMove);
+    this.frameSeq++; this.pendingCache = null;
+    this.buildShipGroup(sh);
+    this.markShipChunksDirty(sh);
+    this.questBump("liftoff");
+    this.won = true;
+    this.saveNow(true);
+    this.audio.win();
+    hud.toast("The desert drops away. The Ship is yours.");
+    this.enterPiloting(sh);
+  }
+
+  /** the flying Ship's cells go back to chunks, at the Ship's current pose. */
+  private performLanding(sh: Ship) {
+    if (this.piloting === sh) this.exitPiloting();
+    // square up before the cells are written: a diagonal footprint would
+    // scatter the grid over wrong cells and clip its own blocks
+    sh.yaw = Math.round(sh.yaw / (Math.PI / 2)) * (Math.PI / 2);
+    const g = this.shipGroups.get(sh.id);
+    if (g) {
+      this.renderer.removeEntityGroup(g);
+      g.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
+      this.shipGroups.delete(sh.id);
+    }
+    this.ships.delete(sh.id); // provider stops shadowing before the cells land
+    const chestMove = new Map<string, string>();
+    for (const [k, c] of sh.cells) {
+      const [lx, ly, lz] = k.split(",").map(Number);
+      const [wx, wy, wz] = sh.cellToWorld(lx, ly, lz);
+      this.world.set(wx, wy, wz, c.id);
+      if (c.rot) this.world.setRot(wx, wy, wz, c.rot);
+      const wk = `${wx},${wy},${wz}`;
+      if (isPowerBlock(c.id)) {
+        const pk = "s" + sh.id + "," + k;
+        this.powerCells.delete(pk);
+        this.powerCells.set(wk, c.id);
+        const gf = this.genFuel.get(pk); if (gf !== undefined) { this.genFuel.delete(pk); this.genFuel.set(wk, gf); }
+        const bc = this.batteryCharge.get(pk); if (bc !== undefined) { this.batteryCharge.delete(pk); this.batteryCharge.set(wk, bc); }
+      }
+      if (c.id === FRAME_CORNER) this.worldCorners.add(wk);
+      if (c.id === ENGINECORE) this.coreFuel.set(wk, sh.fuel);
+      if (c.id === CHEST || c.id === CHEST_CONNECTOR || c.id === CHEST_INTERFACE)
+        chestMove.set(`s${sh.id},${lx},${ly},${lz}`, wk);
+    }
+    this.migrateChests(chestMove);
+    this.frameSeq++; this.pendingCache = null;
+    this.markShipChunksDirty(sh);
+    this.audio.door();
+    hud.toast("The Ship stands where you set it down. It will wait for you — home travels.");
+    this.saveNow(true);
+  }
+
+  /** one frame of flight for every airborne Ship: crew input, fuel, velocity, soft landings. */
+  private flightTick(dt: number) {
+    if (this.shipDirty.size) {
+      for (const id of this.shipDirty) { const sh = this.ships.get(id); if (sh) this.buildShipGroup(sh); }
+      this.shipDirty.clear();
+    }
+    for (const sh of [...this.ships.values()]) {
+      sh.prevPos = { x: sh.pos.x, y: sh.pos.y, z: sh.pos.z };
+      sh.prevYaw = sh.yaw;
+      const crew = this.piloting === sh;
+      const lit = this.litThrusters(sh);
+      const over = sh.mass() > lit * SHIP.liftCapacity;
+      let thrust = 0, climbCmd = 0, powered = false;
+      if (crew) {
+        const yawIn = (this.keys.has("KeyD") ? 1 : 0) - (this.keys.has("KeyA") ? 1 : 0);
+        thrust = (this.keys.has("KeyW") ? 1 : 0) - (this.keys.has("KeyS") ? 1 : 0);
+        climbCmd = (this.keys.has("Space") ? 1 : 0) - ((this.keys.has("ControlLeft") || this.keys.has("ControlRight")) ? 1 : 0);
+        if (this.pilotLand) climbCmd = -1;
+        sh.yaw += yawIn * SHIP.yawRate * dt;
+        powered = (thrust !== 0 || climbCmd !== 0) && lit > 0 && !over;
+        if (powered) {
+          let need = lit * SHIP.burnPerThruster * dt;
+          for (let p = 0; p < sh.fuel.length && need > 1e-9; p++) {
+            const burn = Math.min(sh.fuel[p], need);
+            sh.fuel[p] -= burn; need -= burn;
+          }
+          if (need > 1e-6) {
+            powered = false;
+            if (this.flightBump <= 0) { hud.toast("The tanks run dry — the engines cough and go quiet."); this.audio.error(); this.flightBump = 8; }
+          }
+        } else if (over && this.flightBump <= 0) {
+          hud.toast("Too much mass for these engines — nothing lifts.");
+          this.audio.error();
+          this.flightBump = 8;
+        }
+      }
+      // the engines hold the Ship's altitude for free; it only sinks when
+      // unpowered (no lit Thruster, dry tanks) or over-mass
+      const canFly = lit > 0 && (sh.fuel[0] + sh.fuel[1] > 0) && !over;
+      let vx = 0, vy = canFly ? 0 : -SHIP.sinkSpeed * (over ? 3 : 1), vz = 0;
+      if (powered) {
+        const fwd = thrust * SHIP.speed;
+        vx = Math.sin(sh.yaw) * fwd;
+        vz = Math.cos(sh.yaw) * fwd;
+        vy = climbCmd * SHIP.climb;
+      }
+      sh.vel = { x: vx, y: vy, z: vz };
+      const tryMove = (dx: number, dy: number, dz: number): boolean => {
+        if (!dx && !dy && !dz) return true; // hovering: nothing to collide-check
+        const old = { x: sh.pos.x, y: sh.pos.y, z: sh.pos.z };
+        sh.pos.x += dx; sh.pos.y += dy; sh.pos.z += dz;
+        if (sh.pos.y > CH + 32 || this.shipHitsTerrain(sh)) { sh.pos = old; return false; }
+        return true;
+      };
+      if (!tryMove(vx * dt, vy * dt, vz * dt)) {
+        const slideX = tryMove(vx * dt, 0, 0);
+        const slideZ = tryMove(0, 0, vz * dt);
+        const slidY = tryMove(0, vy * dt, 0);
+        if (!slideX && !slideZ && (vx !== 0 || vz !== 0) && crew && this.flightBump <= 0) {
+          hud.toast("The Ship shrugs off the rock and holds.");
+          this.flightBump = 4;
+        }
+        if (vy < 0 && !slidY) {
+          // the deck met the ground: a held Ctrl (or the Set-down button)
+          // makes it a landing, and an unpowered Ship settles wherever it
+          // came down
+          if (this.pilotLand || climbCmd < 0 || !canFly) { this.performLanding(sh); continue; }
+        }
+      }
+      const d = { x: sh.pos.x - sh.prevPos.x, y: sh.pos.y - sh.prevPos.y, z: sh.pos.z - sh.prevPos.z };
+      const dyaw = sh.yaw - sh.prevYaw;
+      this.updateShipGroup(sh);
+      if (d.x || d.y || d.z) {
+        if (this.isAboard(sh)) {
+          // the crew rides with the deck: turn with the hull, slide with it
+          if (dyaw) {
+            const c = Math.cos(dyaw), s = Math.sin(dyaw);
+            const px = this.player.pos.x - sh.pos.x, pz = this.player.pos.z - sh.pos.z;
+            this.player.pos.x = sh.pos.x + c * px + s * pz;
+            this.player.pos.z = sh.pos.z - s * px + c * pz;
+            this.player.yaw += dyaw;
+          }
+          this.player.pos.x += d.x;
+          this.player.pos.y += d.y;
+          this.player.pos.z += d.z;
+        }
       }
     }
-    if (L.t >= LAND_END + 0.4) {
-      this.liftoff = null;
-      this.won = true; // the Ship has lifted off: the beacon relay waits
-      this.ui = null;
-      fx.classList.add("hidden");
-      this.saveNow(true);
-      this.relock();
+    this.flightBump = Math.max(0, this.flightBump - dt);
+    if (this.piloting) this.renderFlightReadouts();
+  }
+
+  /** (re)build the THREE group holding a Ship's meshes, pivot at the frame centre. */
+  private buildShipGroup(sh: Ship) {
+    let g = this.shipGroups.get(sh.id);
+    if (g) {
+      for (const inner of [...g.children]) {
+        g.remove(inner);
+        for (const m of inner.children) (m as THREE.Mesh).geometry?.dispose();
+      }
+    } else {
+      g = new THREE.Group();
+      g.rotation.order = "YXZ";
+      this.shipGroups.set(sh.id, g);
+      this.renderer.addEntityGroup(g);
+    }
+    const inner = new THREE.Group();
+    const b = sh.getBox();
+    if (b) for (const m of meshShipCells(sh, [b.min[0], b.min[1], b.min[2]], [b.max[0], b.max[1], b.max[2]])) inner.add(m);
+    const [cx, cy, cz] = sh.centerLocal();
+    inner.position.set(-cx, -cy, -cz);
+    g.add(inner);
+    this.updateShipGroup(sh);
+  }
+
+  private updateShipGroup(sh: Ship) {
+    const g = this.shipGroups.get(sh.id);
+    if (!g) return;
+    g.position.set(sh.pos.x, sh.pos.y, sh.pos.z);
+    g.rotation.set(0, sh.yaw, 0);
+  }
+
+  /** E at an Engine Core: Rocket Fuel Canisters pour into the two ports. */
+  private engineCoreAct(x: number, y: number, z: number) {
+    const sh = this.claimShip(x, y, z);
+    const pk = `${x},${y},${z}`;
+    if (!sh && !this.coreFuel.has(pk)) this.coreFuel.set(pk, [0, 0]);
+    const ports = sh ? sh.fuel : this.coreFuel.get(pk)!;
+    const sel = this.inv.selectedSlot();
+    const free = ports.findIndex((p) => p < SHIP.canisterCharges - 1e-9);
+    if (sel?.itemId === "rocket_fuel" && free >= 0) {
+      ports[free] = SHIP.canisterCharges;
+      this.inv.removeItem("rocket_fuel", 1);
+      this.audio.place();
+      hud.toast(`Canister poured into port ${free + 1}. The Core will drink it in the air.`);
+      this.renderHeld();
+    } else {
+      hud.toast(`Engine Core ports: ${ports.map((p) => Math.round(p)).join(" / ")} of ${SHIP.canisterCharges}. Load Rocket Fuel Canisters.`);
+      this.audio.error();
     }
   }
+
 
   // ---------- death / respawn ----------
 
@@ -4490,6 +5072,8 @@ export class Game {
       this.tempOrigin = null;
     }
     this.ui = null; this.openStation = null; this.openCacheId = null;
+    if (this.flyPending) { this.flyPending = null; this.renderer.setFrameOutline(null); if (!this.piloting) this.relock(); }
+    if (!this.piloting) document.getElementById("ui-flight")!.classList.add("hidden");
     this.chestInv = null; this.ifcMode = false; this.fire = null; this.openFire = null;
     this.pot = null; this.openPot = null; this.gridFocus = "inv";
     for (const id of ["ui-inventory", "ui-craft", "ui-cache", "ui-trade"]) document.getElementById(id)!.classList.add("hidden");
@@ -5490,6 +6074,7 @@ export class Game {
         this.tut?.notify("craft");
         this.craftLesson(r.out);
         if (ITEMS[r.out]?.tool) this.questBump("tool");
+        if (r.out === "rocket_fuel") { this.questBump("refine"); hud.toast("Rocket Fuel, canistered. The Engine Core drinks it in the air."); }
         this.audio.place();
         this.renderCraft(mode);
       };

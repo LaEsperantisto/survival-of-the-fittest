@@ -10,6 +10,7 @@ import {
   ALAB_BRICK, ALAB_POLISHED, ALAB_CHISELLED, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_DOOR,
   ALAB_DOOR_UPPER, ALAB_GATE_OPEN,
   COOKPOT, WATER_CAGE, SUGARCANE_1, APPLE_SAPLING, APPLE_FRUIT, WATER_CAGE_FULL, SUGARCANE_2,
+  FRAME_CORNER, FLIGHT_CONTROLS,
 } from "./blocks";
 
 export interface ItemDef {
@@ -70,7 +71,7 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "canister_full", name: "Water Canister (full)", desc: "Drink to restore 25% Water. Refill at oases or the ship's water station.", w: 1, h: 2, mass: 1.0, color: "#3f8fe0" }),
   I({ id: "canister_empty", name: "Water Canister (empty)", desc: "Lighter until you find water.", w: 1, h: 1, mass: 0.3, color: "#7fa8cc" }),
   I({ id: "catalyst", name: "Catalyst", desc: "Rare alien chemistry. Found in Towns and the second wreck. Needed for Insulating Glass (M2 craft chain).", w: 1, h: 1, mass: 0.3, color: "#c07fe0" }),
-  I({ id: "engine_core", name: "Engine Core", desc: "The heart of the second wreck. Quest-exclusive — place it within reach of a Save Beacon to finish the Main Quest.", w: 1, h: 1, mass: 6.0, block: ENGINECORE, color: "#c468e8" }),
+  I({ id: "engine_core", name: "Engine Core", desc: "Quest-exclusive: the heart of the flying Ship. Stand it up inside the Ship Frame and the engines have something to burn fuel in.", w: 1, h: 1, mass: 6.0, block: ENGINECORE, color: "#c468e8" }),
   I({ id: "visor", name: "Surveyor's Visor", desc: "A Visor upgrade. Equipped in the Head slot, the HUD marks every Death Cache, Reward Cache and Chest through walls with a beam.", w: 1, h: 1, mass: 0.8, equip: "head", color: "#66e5f0" }),
   toolItem("pickaxe", 1, "wood", "#a8834f"), toolItem("pickaxe", 2, "stone", "#8d8680"), toolItem("pickaxe", 3, "metal", "#9aa0aa"),
   toolItem("shovel", 1, "wood", "#a8834f"), toolItem("shovel", 2, "stone", "#8d8680"), toolItem("shovel", 3, "metal", "#9aa0aa"),
@@ -174,7 +175,10 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "thruster_nozzle", name: "Thruster Nozzle", desc: "Cobalt-and-Copper replacement engine part. Press E at a Broken Thruster to wake it. All four wake the Ship.", w: 1, h: 2, mass: 3.0, color: "#c88a50" }),
   // ---- salvaged engine modules: a Disassembler pulls thrusters off their pylons ----
   I({ id: "thruster_broken", name: "Broken Thruster", desc: "A dead wingtip engine torn off its pylon. Heavy, inert — set it down anywhere and it waits for a Thruster Nozzle.", w: 2, h: 2, mass: 22.0, block: THRUSTER, color: "#6b707c" }),
-  I({ id: "thruster_lit", name: "Thruster (lit)", desc: "A running engine lifted off its pylon. It keeps burning while you carry it, and burns where you set it down.", w: 2, h: 2, mass: 22.0, block: THRUSTER_LIT, color: "#c88a50" }),
+  I({ id: "thruster", name: "Thruster", desc: "An installed engine — it lights only in the air. A Disassembler pulls it off its pylon.", w: 2, h: 2, mass: 22.0, block: THRUSTER_LIT, color: "#c88a50" }),
+  // ---- the Ship Frame: the corners declare the volume that flies ----
+  I({ id: "frame_corner", name: "Ship Frame Corner", desc: "The skeleton of a flying Ship. Stand the eight corners up and every cell inside the Frame rides with it — Corners move only while the Ship is grounded.", w: 1, h: 1, mass: 2.0, block: FRAME_CORNER, color: "#9aa4b8" }),
+  I({ id: "flight_controls", name: "Flight Controls", desc: "The yoke. Stand it inside the Ship Frame and press E to fly — mass, fuel, Grid and every takeoff refusal read out there.", w: 1, h: 1, mass: 4.0, block: FLIGHT_CONTROLS, color: "#3f7f8f" }),
   I({ id: "armory", name: "Armoury", desc: "A forge bench for gear that guards the body: armour, backpacks, visors and the Body Heat Regulator. Built at the Crafting Bench.", w: 2, h: 2, mass: 14.0, block: ARMORY, color: "#6a6258" }),
   I({ id: "hot_water_pouch", name: "Hot Water Pouch", desc: "A full canister heated at a lit Campfire. Use it (Q): a +10 °C heat pulse toward body-warm, and the empty canister comes back.", w: 1, h: 2, mass: 1.2, color: "#e08a4f" }),
   // ---- the Map kit (needs the Surveyor's Visor worn to see any of it) ----

@@ -629,6 +629,28 @@ function drawArt(id: string, w: number, h: number, color: string, tier = ""): HT
       if (full) rect(g, 5, 7, 6, 1, "#5fa3ea");
       return cv;
     }
+    case "oil_bucket": { // thick crude in the bucket: near-black, oily sheen
+      rect(g, 4, 6, 8, 9, "#241d2b");
+      outline(g, 4, 6, 8, 9, "#dfe6ee");
+      rect(g, 3, 5, 10, 2, "#c8d2da");           // rim
+      rect(g, 5, 2, 1, 3, "#8a98a8"); rect(g, 10, 2, 1, 3, "#8a98a8"); // bail ears
+      line(g, 5, 3, 11, 3, "#8a98a8", 1);        // handle
+      rect(g, 5, 7, 6, 1, "#4d3f5e");            // sheen on the crude
+      return cv;
+    }
+    case "rocket_fuel": { // red canister, hazard band, flame mark
+      const H = h * T;
+      rect(g, 6, 0, 4, 3, "#8a98a8");
+      rect(g, 7, 3, 2, 2, "#8a98a8");
+      rect(g, 4, 5, 8, H - 7, "#8f3b2b");
+      outline(g, 4, 5, 8, H - 7, "#ffd9a8");
+      rect(g, 4, 12, 8, 3, "#d8612f");           // hazard band
+      rect(g, 4, 15, 8, 1, "#3a2b26");
+      rect(g, 5, 18, 1, 10, "#ff9a4f");          // sheen
+      rect(g, 7, 22, 2, 2, "#ff9a4f");           // flame mark
+      rect(g, 6, 24, 4, 5, "#ffcf5a");
+      return cv;
+    }
     case "wood_log": case "deadwood": {
       blit(g, 0, 0, id === "wood_log" ? WOOD : DEADWOOD);
       if (tier === "1") { // burned down halfway: charred end

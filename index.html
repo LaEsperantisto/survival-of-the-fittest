@@ -122,6 +122,26 @@
 
 <div id="lift-fx" class="hidden"></div>
 
+<!-- Flight Controls panel: piloting view + readouts -->
+<div id="ui-flight" class="hidden">
+  <div id="flight-head">
+    <span id="flight-title">Flight Controls</span>
+    <span id="flight-mode">Grounded</span>
+  </div>
+  <div id="flight-readouts">
+    <div class="fl-row"><span>Mass</span><b id="fl-mass">—</b></div>
+    <div class="fl-row"><span>Lift</span><b id="fl-lift">—</b></div>
+    <div class="fl-row"><span>Fuel</span><b id="fl-fuel">—</b></div>
+    <div class="fl-row"><span>Altitude</span><b id="fl-alt">—</b></div>
+    <div class="fl-row"><span>Heading</span><b id="fl-head">—</b></div>
+    <div class="fl-row"><span>Ship Grid</span><b id="fl-grid">—</b></div>
+  </div>
+  <div id="flight-errors"></div>
+  <div id="flight-keys">W/S thrust &middot; A/D heading &middot; Space/Ctrl climb&ndash;descend &middot; hold Ctrl down to land &middot; F outline &middot; E leave the yoke (P / Esc too)</div>
+  <button id="flight-take" disabled>Lift off</button>
+  <button id="flight-outline">Frame outline (F)</button>
+</div>
+
 <div id="screen-pause" class="screen hidden">
   <button class="close-btn close-x" aria-label="Close">✕</button>
   <h2>Paused</h2>

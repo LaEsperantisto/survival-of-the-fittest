@@ -1,6 +1,7 @@
 // Persistence: world slots in localStorage, delta-chunk saves (see ADR-0002),
 // and JSON file export/import so a world can exceed the localStorage cap and
 // travel between devices.
+import type { ShipSnapshot } from "./ship";
 
 export interface WorldMeta { id: string; name: string; seedStr: string; updated: number; mode?: "easy" | "hard"; }
 
@@ -72,7 +73,7 @@ export interface RunSave {
   inventory: { slots: { itemId: string; count?: number; x: number; y: number; rot?: boolean; blockRot?: number; charges?: number; stack?: { itemId: string; count: number } }[]; selected: number; w: number; h: number }; // count: legacy only - items never stack now
   equip?: { backpack?: string; head?: string; body?: string; regulator?: string; light?: string;
             charges?: { regulator?: number; light?: number } };
-  beaconMarks: { x: number; y: number; z: number }[];
+  beaconMarks: { x: number; y: number; z: number; ck?: string }[]; // ck: ship-local key when the Beacon rides a Ship
   collected: string[];
   entities: { x: number; y: number; z: number; itemId: string; count?: number; charges?: number; age?: number; stack?: { itemId: string; count: number } }[];
   pods?: { x: number; z: number; t: number; itemId: string; n: number; ringEid?: number; beamEid?: number }[];
@@ -93,6 +94,8 @@ export interface RunSave {
   rots?: Record<string, number>; // cell "x,y,z" -> quarter-turn for player-placed blocks
   // ---- v2: the Map kit and the lessons ----
   worldMode?: "easy" | "hard";            // fixed at world creation (Easy/Hard Start)
+  ships?: ShipSnapshot[];                 // airborne/grounded Ships (cells are ship-local)
+  coreFuel?: [string, number[]][];        // Engine Core before takeoff: world cell -> port charges
   pins?: { id: number; x: number; z: number; name: string }[];   // Surveyor's Pins
   visited?: string[];                     // explored chunk keys "cx,cz"
   revealed?: string[];                    // landmark keys the Tracker/quests marked

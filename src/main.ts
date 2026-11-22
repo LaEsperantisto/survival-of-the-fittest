@@ -193,7 +193,7 @@ const ODD_IDS: Record<string, true> = { catalyst: true, engine_core: true, beaco
 const MACHINE_IDS: Record<string, true> = { lamp: true, regulator: true, regulator_broken: true, storm_breaker: true,
   storm_breaker_broken: true, power_pole: true, power_panel: true, gen_wood: true,
   wind_turbine: true, solar_panel: true, battery: true, elec_lamp: true, inserter: true, planter: true,
-  harvester: true, refinery: true, thruster_nozzle: true, thruster_broken: true, thruster_lit: true, bench: true, armory: true, campfire: true,
+  harvester: true, refinery: true, thruster_nozzle: true, thruster_broken: true, thruster: true, frame_corner: true, flight_controls: true, bench: true, armory: true, campfire: true,
   cooking_pot: true, water_cage: true };
 
 function itemSection(id: string): string {

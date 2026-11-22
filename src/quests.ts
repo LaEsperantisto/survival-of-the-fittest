@@ -3,7 +3,7 @@
 
 export interface QuestDef {
   id: string;
-  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "bread" | "dish" | "wreck" | "core" | "finish" | "grid" | "factory" | "thruster";
+  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "bread" | "dish" | "wreck" | "core" | "yoke" | "grid" | "factory" | "thruster" | "core_set" | "ship_grid" | "refine" | "liftoff";
   title: string;
   desc: string;
   goal: number;
@@ -66,8 +66,8 @@ export const QUESTS: QuestDef[] = [
     reward: { item: "metal", n: 4 },
   },
   {
-    id: "finish", kind: "finish", title: "Escape Vector",
-    desc: "Carry the Engine Core home and set it right next to a Save Beacon — that wakes the wreck's power.", goal: 1,
+    id: "frame", kind: "yoke", title: "Take the Yoke",
+    desc: "The wreck's Ship Frame is already declared — Corners glint at its eight vertices. Craft Flight Controls at a Crafting Bench and set the yoke inside the Frame, aboard the Ship.", goal: 1,
   },
   {
     id: "grid", kind: "grid", title: "Lights On",
@@ -82,6 +82,25 @@ export const QUESTS: QuestDef[] = [
   {
     id: "wings", kind: "thruster", title: "Wings of the Wreck",
     desc: "The Ship's four wingtip engines are dead. Mine Cobalt Ore in the deep Caves, smelt it at a Campfire, craft a Thruster Nozzle (Cobalt + Copper + Metal), and press E at each Broken Thruster. All four lit lifts the Ship.", goal: 4,
+  },
+  {
+    id: "heart", kind: "core_set", title: "Heart Aboard",
+    desc: "Carry the Engine Core from the second wreck and set it inside the Ship's own Frame — the Ship's grid starts there.", goal: 1,
+    reward: { item: "copperrod", n: 4 },
+  },
+  {
+    id: "shipgrid", kind: "ship_grid", title: "Self-Sufficient",
+    desc: "Put a Power Panel and a Battery inside the Frame, wired to the Engine Core — the Ship runs its own grid, no poles to the ground.", goal: 1,
+    reward: { item: "metal_plating", n: 6 },
+  },
+  {
+    id: "fuel", kind: "refine", title: "Black Gold",
+    desc: "Find an Oil Seep — dark sand weeping crude. Scoop Oil into an empty bucket, build a Refinery, and refine your first Rocket Fuel Canister.", goal: 1,
+    reward: { item: "canister_empty", n: 2 },
+  },
+  {
+    id: "liftoff", kind: "liftoff", title: "Lift-Off",
+    desc: "Bank Rocket Fuel into the Engine Core's ports, stand at the Flight Controls and raise the Ship under its own power. Home now travels with you.", goal: 1,
   },
 ];
 

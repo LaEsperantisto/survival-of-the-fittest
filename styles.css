@@ -361,3 +361,22 @@ image-rendering: pixelated; border: 1px solid #4a5262; border-radius: 3px; }
 /* Codex lock: entries you have never carried/crafted/mined read greyed */
 .cat-card.locked { opacity: 0.35; filter: grayscale(0.9); }
 .cat-card .cat-locked { font-size: 11px; color: #8a8f9a; font-style: italic; }
+
+/* ---- Flight Controls panel (the yoke) ---- */
+#ui-flight { position: fixed; z-index: 24; left: 50%; bottom: 84px; transform: translateX(-50%);
+  width: 400px; max-width: 92vw; background: rgba(26,29,37,0.92); border: 1px solid #555c69;
+  border-radius: 10px; padding: 14px 18px; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  font-size: 13px; color: #d8dbe2; }
+#flight-head { display: flex; justify-content: space-between; margin-bottom: 8px; }
+#flight-title { text-transform: uppercase; letter-spacing: 1px; font-size: 14px; }
+#flight-mode { color: #8fd18f; }
+#flight-readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; margin-bottom: 8px; }
+.fl-row { display: flex; justify-content: space-between; padding: 1px 0; }
+.fl-row span { color: #9aa0aa; }
+#flight-errors { margin: 6px 0; }
+.fl-check { padding: 1px 0; }
+.fl-check.ok { color: #8fd18f; }
+.fl-check.no { color: #d98c7a; }
+#flight-keys { margin-top: 8px; color: #8a909b; font-size: 11.5px; }
+#ui-flight button { margin: 8px 6px 0 0; }
+#ui-flight button:disabled { opacity: 0.45; }

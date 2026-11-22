@@ -12,9 +12,10 @@ import {
   ALAB_BRICK, ALAB_POLISHED, ALAB_CHISELLED, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_GATE_OPEN,
   ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN, CHEST_INTERFACE,
   COOKPOT, WATER_CAGE, WATER_CAGE_FULL, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING, APPLE_FRUIT,
-  isSolid, isWater, waterStrength,
+  OIL, OIL7, OIL6, OIL5, OIL4, OIL3, OIL2, OIL1, OIL_SANDS, FRAME_CORNER, FLIGHT_CONTROLS,
+  isSolid, isWater, isOpaque, isOil, isFluid, fluidStrength,
 } from "./blocks";
-import { World, ckey, faceVisible } from "./world";
+import { World, ckey } from "./world";
 import { DAY_SECONDS } from "./blocks";
 import { noise1, Rng } from "./noise";
 import { SkyLighting, MAX_LIGHT, lidx } from "./light";
@@ -24,8 +25,43 @@ const DOOR_BLOCKS = new Set([DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOO
   DOOR_INNER_OPEN, ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN]);
 /** blocks that render as crossed blade quads instead of cubes */
 const CROSS_BLOCKS = new Set([WHEAT_1, WHEAT_2, SAPLING, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING]);
-/** ground material that looks soaked while a water cell stands on it */
+/** ground material that looks soaked while a fluid cell stands on it */
 const SOIL_BLOCKS = new Set([DIRT, FARMLAND, SAND, SANDSTONE, GRAVEL, SALT]);
+
+// The chunk mesher reads cells through this shape, not through World: the
+// world passes itself (World.get/getRot already match), and game.ts wraps a
+// Ship's cells Map to mesh flying hulls through the exact same art switch.
+export interface CellProvider {
+  get(x: number, y: number, z: number): number;
+  getRot(x: number, y: number, z: number): number;
+}
+/** mirror of world.ts faceVisible over any provider — a Ship's hull shell
+ *  culls and seals faces against itself exactly like terrain does */
+function faceVisibleAt(src: CellProvider, x: number, y: number, z: number, selfId: number): boolean {
+  const n = src.get(x, y, z);
+  if (n === DOOR_CLOSED || n === DOOR_UPPER || n === DOOR_INNER || n === DOOR_INNER_UPPER) return true;
+  if (n === BENCH || n === BENCH_EXT || n === CURVED_HULL || n === HULL_SLOPE ||
+    n === ALAB_PILLAR || n === ALAB_FENCE || n === ALAB_GATE || n === ALAB_GATE_OPEN) return true;
+  if (isOpaque(n)) return false;
+  if (n === selfId) return false; // hide interior faces between same transparent block
+  return true;
+}
+
+/** the mesher's three vertex streams: opaque, emissive, translucent */
+interface Streams {
+  pos: number[]; col: number[]; idx: number[]; uvs: number[]; lite: number[];
+  epos: number[]; ecol: number[]; eidx: number[]; euvs: number[];
+  tpos: number[]; tcol: number[]; tidx: number[]; tuv: number[]; tlite: number[];
+}
+const mkStreams = (): Streams => ({
+  pos: [], col: [], idx: [], uvs: [], lite: [],
+  epos: [], ecol: [], eidx: [], euvs: [],
+  tpos: [], tcol: [], tidx: [], tuv: [], tlite: [],
+});
+const NO_SWING = new Map<string, 1 | -1>();
+/** the 12 outer edges of a unit cuboid, as corner pairs */
+const FRAME_EDGES: [number, number][] =
+  [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
 
 const FACES: { dir: [number, number, number]; corners: number[][]; shade: number; uv: [number, number] }[] = [
   { dir: [0, 1, 0], corners: [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]], shade: 1.0, uv: [0, 2] },
@@ -228,7 +264,8 @@ export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, G
   INSERTER, PLANTER, HARVESTER, REFINERY,
   ALAB_BRICK, ALAB_POLISHED, ALAB_CHISELLED, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_GATE_OPEN,
   ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN, CHEST_INTERFACE,
-  COOKPOT, WATER_CAGE, WATER_CAGE_FULL, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING, APPLE_FRUIT];
+  COOKPOT, WATER_CAGE, WATER_CAGE_FULL, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING, APPLE_FRUIT,
+  OIL, OIL7, OIL6, OIL5, OIL4, OIL3, OIL2, OIL1, OIL_SANDS, FRAME_CORNER, FLIGHT_CONTROLS];
 
 // extra face tiles, appended after the base tiles; each recipe is shaded with
 // the named block's base colour
@@ -238,7 +275,7 @@ const VARIANTS: [string, number][] = [
   ["water_side", WATER], ["bed_side", BED], ["chest_top", CHEST],
   ["bench_top", BENCH], ["bench_ext_top", BENCH_EXT], ["campfire_top", CAMPFIRE],
   ["campfire_cold", CAMPFIRE], ["cookpot_cold", COOKPOT],
-  ["cactus_top", CACTUS],
+  ["cactus_top", CACTUS], ["oil_side", OIL],
 ];
 const VI: Record<string, number> = {};
 VARIANTS.forEach(([name], i) => (VI[name] = TILE_LIST.length + i));
@@ -641,6 +678,29 @@ export function getAtlasCanvas(): HTMLCanvasElement {
     }
     for (let y = 2; y < 16; y++) if (rng.next() > 0.75) px(rng.int(0, 15), y, col(0.12, 0.4)); // rising bubbles
   });
+  // Oil is water's dark twin: same drifting-ripple recipe, dragged down to
+  // near-black brown, with sluggish sheen bands instead of bright shimmer
+  for (const w of [OIL1, OIL2, OIL3, OIL4, OIL5, OIL6, OIL7, OIL])
+    R(String(w), () => {
+      const n = fbmFill((x, y, nn) => nn * 0.05 + Math.sin((x * 0.7 + y) * 0.6 + nn * 3) * 0.03); // slow slick
+      for (const ry of [3, 8, 12]) for (let x = 0; x < 16; x++)
+        if (n[ry * 16 + x] > -0.1) px(x, ry + (x % 5 < 2 ? 0 : 1), col(0.1, 0.8));   // thick sheen bands
+      for (let i = 0; i < 3; i++) px(rng.int(1, 14), rng.int(1, 14), col(0.18, 1, 0.05, 0.01, -0.03)); // dust motes
+    });
+  R("oil_side", () => {
+    fbmFill((x, y, n) => n * 0.03 + y * 0.002);                             // denser with depth
+    for (let x = 0; x < 16; x++) {
+      if (rng.next() > 0.4) px(x, 0, col(0.12, 0.85));                      // dull meniscus, oil barely catches light
+      if (x % 4 === 1) px(x, 2 + (x % 3), col(0.06, 0.5));
+    }
+    for (let y = 3; y < 16; y++) if (rng.next() > 0.9) px(rng.int(0, 15), y, col(0.05, 0.35)); // sluggish bubbles
+  });
+  R(String(OIL_SANDS), () => {
+    fbmFill((x, y, n) => n * 0.08 - (n < -0.3 ? 0.22 : 0));                 // pale sand, black seeps through in patches
+    speckle(28, 0.16);
+    for (let i = 0; i < 6; i++) crack(rng.int(5, 10), 0.04, -0.28);         // tar veins
+    for (let i = 0; i < 12; i++) px(rng.int(0, 15), rng.int(0, 15), col(-0.3, 1, -0.04, 0.01, -0.04));
+  });
   R(String(ADOBE), () => {
     fbmFill((x, y, n) => n * 0.08 - 0.02);                                  // sandy mix variation
     for (let y = 0; y < 16; y++)                                            // mud courses, staggered joints
@@ -1040,6 +1100,34 @@ export function getAtlasCanvas(): HTMLCanvasElement {
     for (const [sx, sy] of [[3, 2], [12, 4], [5, 13], [11, 12]] as const)                                 // stray sparks
       px(sx, sy, col(0.4, 1, 0.5, 0.1, -0.35));
   });
+  R(String(FRAME_CORNER), () => {
+    // ship-frame angle: two bright legs along the tile edges, bolted
+    const n = fbmFill((x, y, nn) => nn * 0.03 + ((x + y) % 2 === 0 ? 0.012 : -0.012)); // pale brushed steel
+    for (let i = 0; i < 16; i++) {
+      px(1, i, col(0.16)); px(2, i, col(0.02)); px(0, i, col(-0.18));
+      px(i, 1, col(0.16)); px(i, 2, col(0.02)); px(i, 0, col(-0.18));
+    }
+    for (let k = 3; k < 13; k += 4) {                                                                     // gusset plate + bolts
+      px(k, k, col(0.3, 1, 0.04, 0.04, 0.08)); px(k + 1, k, col(-0.04)); px(k, k + 1, col(-0.04));
+    }
+    for (let i = 0; i < 16; i += 5) { px(1, i, col(0.3)); px(i, 1, col(0.3)); }                           // rivets down the legs
+    for (let i = 0; i < 5; i++) { const x = rng.int(4, 15), y = rng.int(4, 15); px(x, y, col(-0.16, 1, 0.2, 0.02, -0.14)); px(x + 1, y, col(-0.08, 1, 0.14, 0, -0.1)); } // weld rust
+    if (n[8] > 0.3) for (let y = 5; y < 9; y++) px(13, y, col(0.24, 1, 0.08, 0.1, 0.16));                 // one glint off the galvanising
+  });
+  R(String(FLIGHT_CONTROLS), () => {
+    // dark console: glass flight readout up top, toggles and a throttle below
+    fbmFill((x, y, nn) => nn * 0.03 - 0.12 + (y % 4 === 0 ? -0.03 : 0));
+    for (let i = 0; i < 16; i++) { px(0, i, col(-0.2)); px(15, i, col(-0.2)); }                           // case stiles
+    for (let y = 2; y <= 7; y++) for (let x = 3; x <= 12; x++) {                                         // glowing attitude screen
+      const e = y === 2 || y === 7 || x === 3 || x === 12;
+      px(x, y, e ? col(0.16) : col(-0.02, 1, -0.12, 0.24, 0.3));
+    }
+    for (const x of [4, 7, 10]) px(x, 5, col(0.45, 1, -0.16, 0.34, 0.2));                                // attitude pips
+    for (let x = 3; x <= 12; x += 3) px(x, 10, col(0.28));                                               // toggle row
+    for (let y = 12; y <= 14; y++) for (let x = 5; x <= 10; x++) px(x, y, y === 14 ? col(0.2) : col(-0.3)); // throttle quadrant
+    px(7, 13, col(0.45)); px(8, 13, col(0.3));                                                           // throttle lever
+    for (const [rx, ry] of [[2, 2], [13, 2], [2, 14], [13, 14]] as const) px(rx, ry, col(0.25));         // corner screws
+  });
   R(String(STORM_BREAKER), () => {
     fbmFill((x, y, nn) => nn * 0.03 - 0.22 + (x % 4 === 0 ? -0.04 : 0));                                  // dark pylon casing
     for (let y = 0; y < 16; y++) { px(2, y, col(-0.16)); px(13, y, col(-0.16)); }                         // side rails
@@ -1281,16 +1369,19 @@ export function getAtlasCanvas(): HTMLCanvasElement {
   for (const [name, base] of VARIANTS) paint(name, VI[name], BLOCKS[base].color);
 
   // water is see-through: its tiles bake at ~60 % alpha, so the transparent
-  // pass blends pools against what lies beneath and beyond them
+  // pass blends pools against what lies beneath and beyond them; oil rides
+  // the same pass but thicker — ~78 % — black syrup you only half see through
   {
-    const waterTiles = TILE_LIST.map((id, i) => (isWater(id) ? i : -1)).concat([VI.water_side]);
-    for (const t of waterTiles) {
-      if (t < 0) continue;
-      const rx = (t % ATLAS_COLS) * TILE_PX, ry = ((t / ATLAS_COLS) | 0) * TILE_PX;
-      const d = g.getImageData(rx, ry, TILE_PX, TILE_PX);
-      for (let i = 3; i < d.data.length; i += 4) d.data[i] = Math.round(d.data[i] * 0.6);
-      g.putImageData(d, rx, ry);
-    }
+    const bakeAlpha = (slots: number[], a: number) => {
+      for (const t of slots) {
+        const rx = (t % ATLAS_COLS) * TILE_PX, ry = ((t / ATLAS_COLS) | 0) * TILE_PX;
+        const d = g.getImageData(rx, ry, TILE_PX, TILE_PX);
+        for (let i = 3; i < d.data.length; i += 4) d.data[i] = Math.round(d.data[i] * a);
+        g.putImageData(d, rx, ry);
+      }
+    };
+    bakeAlpha(TILE_LIST.map((id, i) => (isWater(id) ? i : -1)).filter((t) => t >= 0).concat([VI.water_side]), 0.6);
+    bakeAlpha(TILE_LIST.map((id, i) => (isOil(id) ? i : -1)).filter((t) => t >= 0).concat([VI.oil_side]), 0.78);
   }
 
   atlasCv = cv;
@@ -1426,6 +1517,8 @@ setFaces(CACTUS, VI.cactus_top, TILE[CACTUS], TILE[CACTUS]);
 setFaces(CACTUS_FRUIT, VI.cactus_top, TILE[CACTUS], TILE[CACTUS_FRUIT]);
 for (const w of [WATER, WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1])
   setFaces(w, TILE[w], TILE[w], VI.water_side);
+for (const w of [OIL, OIL7, OIL6, OIL5, OIL4, OIL3, OIL2, OIL1])
+  setFaces(w, TILE[w], TILE[w], VI.oil_side);
 
 // ---------------- sky-mode shader ----------------
 // Baked-light chunk material: vertex `light` (0..1) is the flood-filled
@@ -1503,6 +1596,10 @@ const _dayAmb = new THREE.Color(1.0, 0.97, 0.9);     // linear: bright warm-neut
 const _nightAmb = new THREE.Color(0.2, 0.27, 0.45);  // linear: dim blue moonlight
 const _dustCol = new THREE.Color(0.72, 0.55, 0.35);  // a wall of airborne sand
 
+// exactly one Renderer lives per game canvas; the free mesher entry below
+// borrows its materials so Ship meshes match terrain pixel for pixel
+let activeRenderer: Renderer | null = null;
+
 export class Renderer {
   scene = new THREE.Scene();
   camera: THREE.PerspectiveCamera;
@@ -1569,6 +1666,7 @@ export class Renderer {
   });
 
   constructor(canvasParent: HTMLElement) {
+    activeRenderer = this;
     this.three = new THREE.WebGLRenderer({ antialias: false });
     this.three.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.three.setSize(innerWidth, innerHeight);
@@ -1789,6 +1887,46 @@ export class Renderer {
           break;
       }
     }
+    // airborne thruster flames: same jet flicker, culled by the hull's
+    // position rather than the cell's
+    for (const f of this.shipFx.values()) {
+      const wp = f.group.getWorldPosition(_p3);
+      f.spr.visible = (cp.x - wp.x) ** 2 + (cp.y - wp.y) ** 2 + (cp.z - wp.z) ** 2 <= 70 * 70;
+      if (!f.spr.visible) continue;
+      const n1 = noise1(t * 6 + f.x * 3.1 + f.z, 7);
+      f.spr.scale.set(0.38 + n1 * 0.08, 0.75 + n1 * 0.3, 1);
+      (f.spr.material as THREE.SpriteMaterial).opacity = 0.55 + n1 * 0.3;
+    }
+  }
+
+  /** Airborne thruster flames that fly with the hull: the caller hands over
+   *  the Ship's THREE.Group and the local coords of its lit THRUSTER cells
+   *  each refresh; sprites are parented to the group, so they travel, and a
+   *  smaller list (or null, on landing) drops the surplus. */
+  setShipThrusterFx(group: THREE.Group, cells: { x: number; y: number; z: number }[] | null) {
+    const seen = new Set<string>();
+    for (const e of cells ?? []) {
+      const key = group.uuid + "|" + e.x + "," + e.y + "," + e.z;
+      seen.add(key);
+      if (this.shipFx.has(key)) continue;
+      const mat = new THREE.SpriteMaterial({ map: fxTexture("jet"), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+      const spr = new THREE.Sprite(mat);
+      spr.scale.set(0.4, 0.85, 1);
+      spr.renderOrder = 3;
+      spr.position.set(e.x + 0.5, e.y - 0.5, e.z + 0.5);
+      group.add(spr);
+      this.shipFx.set(key, { spr, group, x: e.x, y: e.y, z: e.z });
+    }
+    for (const key of [...this.shipFx.keys()])
+      if (key.startsWith(group.uuid + "|") && !seen.has(key)) this.dropShipFx(key);
+  }
+  private shipFx = new Map<string, { spr: THREE.Sprite; group: THREE.Group; x: number; y: number; z: number }>();
+  private dropShipFx(key: string) {
+    const f = this.shipFx.get(key);
+    if (!f) return;
+    f.group.remove(f.spr);
+    (f.spr.material as THREE.SpriteMaterial).dispose(); // the texture map is shared
+    this.shipFx.delete(key);
   }
 
   /** Translucent previews of every cell the held item's placement would
@@ -1877,8 +2015,11 @@ export class Renderer {
   clearGhost() { if (this.ghost) this.ghost.visible = false; }
 
   dispose() {
+    if (activeRenderer === this) activeRenderer = null;
     this.resetChunkMeshes();
     this.setMachineFx([]);
+    for (const key of [...this.shipFx.keys()]) this.dropShipFx(key);
+    this.setFrameOutline(null);
     for (const d of this.dynLights) this.scene.remove(d.light);
     this.dynLights.length = 0;
     this.three.dispose();
@@ -2027,6 +2168,58 @@ export class Renderer {
     this.stormDome.position.set(center[0], center[1], center[2]);
   }
 
+  private frameOutline: THREE.LineSegments | null = null;
+  /** The Ship Frame made legible while you build it: one wire cuboid per
+   *  frame cell (world coords, already transformed by the caller), green
+   *  once the corner set forms a valid frame, red while it doesn't; null
+   *  clears. */
+  setFrameOutline(boxes: { min: [number, number, number]; max: [number, number, number] }[] | null, bad?: boolean) {
+    if (this.frameOutline) {
+      this.entityGroup.remove(this.frameOutline);
+      this.frameOutline.geometry.dispose();
+      (this.frameOutline.material as THREE.Material).dispose();
+      this.frameOutline = null;
+    }
+    if (!boxes || !boxes.length) return;
+    const geo = new THREE.BufferGeometry();
+    const P: number[] = [];
+    for (const b of boxes) {
+      const c = [
+        b.min[0], b.min[1], b.min[2], b.max[0], b.min[1], b.min[2],
+        b.max[0], b.min[1], b.max[2], b.min[0], b.min[1], b.max[2],
+        b.min[0], b.max[1], b.min[2], b.max[0], b.max[1], b.min[2],
+        b.max[0], b.max[1], b.max[2], b.min[0], b.max[1], b.max[2],
+      ];
+      for (const [i, j] of FRAME_EDGES) P.push(c[i * 3], c[i * 3 + 1], c[i * 3 + 2], c[j * 3], c[j * 3 + 1], c[j * 3 + 2]);
+    }
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(P, 3));
+    this.frameOutline = new THREE.LineSegments(geo,
+      new THREE.LineBasicMaterial({ color: bad ? 0xf0453a : 0x4fd07a, transparent: true, opacity: 0.9, fog: false }));
+    this.frameOutline.renderOrder = 4; // over the world mesh; the frame reads through clutter
+    this.entityGroup.add(this.frameOutline);
+  }
+
+  private flyPos: { x: number; y: number; z: number } | null = null;
+  private flyR = 0;
+  /** Third-person chase camera while the Ship flies: render() seats the
+   *  camera on an orbit behind/above shipPos, borrowing the first-person
+   *  update's mouse-written yaw/pitch as the orbit angles and radius as the
+   *  arm length (the caller owns wheel-zoom). null hands the camera straight
+   *  back to first person — the player's own camera state is never touched. */
+  setFlightView(shipPos: { x: number; y: number; z: number } | null, radius: number) {
+    this.flyPos = shipPos;
+    this.flyR = Math.max(2, radius);
+  }
+  private applyFlightView() {
+    if (!this.flyPos) return;
+    // camera.rotation (YXZ) is the mouse look state; read it as the orbit
+    const yaw = this.camera.rotation.y, pitch = this.camera.rotation.x;
+    const fx = -Math.sin(yaw) * Math.cos(pitch), fy = Math.sin(pitch), fz = -Math.cos(yaw) * Math.cos(pitch);
+    const c = this.flyPos;
+    this.camera.position.set(c.x - fx * this.flyR, c.y - fy * this.flyR + 0.6, c.z - fz * this.flyR);
+    this.camera.lookAt(c.x, c.y + 0.5, c.z);
+  }
+
   /**
    * Switch lighting at runtime (default "sky"). Flips the mode and shadow
    * arming only — call rebuildLights(world) right after so every chunk mesh
@@ -2089,9 +2282,7 @@ export class Renderer {
   buildChunk(world: World, k: string) {
     const [cx, cz] = k.split(",").map(Number);
     const c = world.chunk(cx, cz);
-    const pos: number[] = [], col: number[] = [], idx: number[] = [], uvs: number[] = [], lite: number[] = [];
-    const epos: number[] = [], ecol: number[] = [], eidx: number[] = [], euvs: number[] = [];
-    const tpos: number[] = [], tcol: number[] = [], tidx: number[] = [], tuv: number[] = [], tlite: number[] = [];
+    const S = mkStreams();
 
     // sky mode bakes the skylight into the mesh: one chunk flood per call
     // (the caller budgets chunks per frame); neighbors that would lag get
@@ -2106,15 +2297,15 @@ export class Renderer {
     const faceLight = (nx: number, ny: number, nz: number): number =>
       Lb && ny >= 0 && ny < CH ? Lb[lidx(nx, nz, ny)] / MAX_LIGHT : 0;
 
-    // soil within reach of Water reads damp: mark DIRT/GRASS cells that have a
-    // Water block in a 7×5×7 box (Chebyshev, ±2 y) — one pass over the water
-    // that can touch this chunk, then O(1) lookups in the mesh loop
+    // soil within reach of a fluid (Water or Oil) reads damp: mark DIRT/GRASS
+    // cells that have a fluid block in a 7×5×7 box (Chebyshev, ±2 y) — one
+    // pass over the fluids that can touch this chunk, then O(1) lookups
     const damp = new Uint8Array(CS * CS * CH);
     const x0w = cx * CS - 3, z0w = cz * CS - 3;
     for (let wx = x0w; wx < cx * CS + CS + 3; wx++)
       for (let wz = z0w; wz < cz * CS + CS + 3; wz++)
         for (let y = 0; y < CH; y++) {
-          if (!isWater(world.get(wx, y, wz))) continue;
+          if (!isFluid(world.get(wx, y, wz))) continue;
           for (let dx = -3; dx <= 3; dx++) {
             const lx = wx + dx - cx * CS;
             if (lx < 0 || lx >= CS) continue;
@@ -2132,168 +2323,188 @@ export class Renderer {
           }
         }
 
+    // The chunk loop stays direct-array: (x*CS+z)*CH+y is the hot read and
+    // the rots Map lookup is only paid when rotations exist. Everything past
+    // the cell id lives in meshCell, shared verbatim with the Ship mesher.
     for (let x = 0; x < CS; x++) for (let z = 0; z < CS; z++) for (let y = 0; y < CH; y++) {
-      const id = c[(x * CS + z) * CH + y];
+      const li = (x * CS + z) * CH + y;
+      const id = c[li];
       if (id === AIR) continue;
-      const wx = cx * CS + x, wz = cz * CS + z;
-      const r = world.rots.size ? world.getRot(wx, y, wz) : 0;
-      if (DOOR_BLOCKS.has(id)) {
-        // the thin slab borrows the brightest light of its four sides — the
-        // room it belongs to
-        let dl = 0;
-        if (Lb) for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const)
-          dl = Math.max(dl, Lb[lidx(x + dx, z + dz, y)]);
-        this.emitDoor(pos, col, idx, uvs, lite, dl / MAX_LIGHT, world, x, y, z, cx * CS, cz * CS, id);
-        continue;
-      }
-      if (CROSS_BLOCKS.has(id)) {
-        // a stand of blades on two crossed quads; crops are non-opaque, so
-        // the plant's own cell carries light and shades the blades
-        const ft = TILE[id];
-        const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
-        const lv = Lb ? Lb[lidx(x, z, y)] / MAX_LIGHT : 0;
-        const quad = (x0: number, z0: number, x1: number, z1: number) => {
-          const base = tpos.length / 3;
-          tpos.push(x0, y, z0, x1, y, z1, x1, y + 1, z1, x0, y + 1, z0);
-          for (let i = 0; i < 4; i++) { tcol.push(0.92, 0.92, 0.92); tlite.push(lv); }
-          tuv.push(
-            (tx0 + 0.5) / ATLAS_PX, (ty0 + 15.5) / ATLAS_PX,
-            (tx0 + 15.5) / ATLAS_PX, (ty0 + 15.5) / ATLAS_PX,
-            (tx0 + 15.5) / ATLAS_PX, (ty0 + 0.5) / ATLAS_PX,
-            (tx0 + 0.5) / ATLAS_PX, (ty0 + 0.5) / ATLAS_PX,
-          );
-          tidx.push(base, base + 1, base + 2, base, base + 2, base + 3);
-        };
-        quad(x, z, x + 1, z + 1);
-        quad(x + 1, z, x, z + 1);
-        continue;
-      }
-      if (id === CURVED_HULL || id === HULL_SLOPE) {
-        // chamfered cube: axis faces cull exactly like a plain cube, the 45°
-        // facets are always drawn
-        this.emitShape(rotShapes(HULL_SHAPES[id], r), pos, col, idx, uvs, lite, id, world, x, y, z, cx * CS, cz * CS, faceLight);
-        continue;
-      }
-      if (id === BENCH || id === BENCH_EXT) {
-        // the two-cell workbench: orient the model by where the partner cell
-        // actually is, then apply the player's rotation stored on the BENCH
-        const wx2 = cx * CS + x, wz2 = cz * CS + z;
-        let d: number, base: ShapeFace[], rr: number;
-        if (id === BENCH) {
-          d = world.get(wx2 + 1, y, wz2) === BENCH_EXT ? 0 : world.get(wx2, y, wz2 + 1) === BENCH_EXT ? 1
-            : world.get(wx2 - 1, y, wz2) === BENCH_EXT ? 2 : 3;
-          base = BENCH_MODEL;
-          // the partner sits exactly where the stored rotation points, so the
-          // nibble already carries the pair direction - never add both
-          if (r !== 0) { d = 0; rr = r; } else rr = 0;
-        } else {
-          d = world.get(wx2 - 1, y, wz2) === BENCH ? 0 : world.get(wx2, y, wz2 - 1) === BENCH ? 1
-            : world.get(wx2 + 1, y, wz2) === BENCH ? 2 : 3;
-          base = BENCHX_MODEL;
-          rr = world.getRot(wx2 + (d === 0 ? -1 : d === 2 ? 1 : 0), y, wz2 + (d === 1 ? -1 : d === 3 ? 1 : 0));
-          if (rr !== 0) d = 0;
-        }
-        this.emitShape(rotShapes(base, (d + rr) & 3), pos, col, idx, uvs, lite, id, world, x, y, z, cx * CS, cz * CS, faceLight);
-        continue;
-      }
-      if (id === ALAB_PILLAR) {
-        this.emitShape(rotShapes(PILLAR_MODEL, r), pos, col, idx, uvs, lite, id, world, x, y, z, cx * CS, cz * CS, faceLight);
-        continue;
-      }
-      if (id === ALAB_FENCE) {
-        // rails only reach toward a fence or gate beside us; the post alone
-        // stands for anything else
-        const wx2 = cx * CS + x, wz2 = cz * CS + z;
-        const link = (nx: number, nz: number) => {
-          const nb = world.get(nx, y, nz);
-          return nb === ALAB_FENCE || nb === ALAB_GATE || nb === ALAB_GATE_OPEN;
-        };
-        let faces = FENCE_POST;
-        if (link(wx2 + 1, wz2)) faces = [...faces, ...fenceRails(0)];
-        if (link(wx2 - 1, wz2)) faces = [...faces, ...fenceRails(1)];
-        if (link(wx2, wz2 + 1)) faces = [...faces, ...fenceRails(2)];
-        if (link(wx2, wz2 - 1)) faces = [...faces, ...fenceRails(3)];
-        this.emitShape(faces, pos, col, idx, uvs, lite, id, world, x, y, z, cx * CS, cz * CS, faceLight);
-        continue;
-      }
-      if (id === ALAB_GATE) {
-        this.emitShape(rotShapes(GATE_MODEL, r), pos, col, idx, uvs, lite, id, world, x, y, z, cx * CS, cz * CS, faceLight);
-        continue;
-      }
-      if (id === ALAB_GATE_OPEN) {
-        this.emitShape(rotShapes(GATE_OPEN_MODEL, r), pos, col, idx, uvs, lite, id, world, x, y, z, cx * CS, cz * CS, faceLight);
-        continue;
-      }
-      if (id >= WATER7 && id <= WATER1) {
-        // Flowing water lies shallower the further it has run from its
-        // Source: level/8 of the cell. Top and step edges get faces; where a
-        // deeper neighbour covers the cell, its own side hides ours.
-        const h = (33 - id) / 8;
-        for (let fi = 0; fi < FACES.length; fi++) {
-          const f = FACES[fi];
-          const lx = x + f.dir[0], ly = y + f.dir[1], lz = z + f.dir[2];
-          const nb = world.get(cx * CS + lx, ly, cz * CS + lz);
-          let bottom = 0;
-          if (f.dir[1] === 0 && isWater(nb)) {
-            bottom = waterStrength(nb) / 8;
-            if (bottom >= h) continue;
-          } else if (isWater(nb)) continue;
-          else if (!faceVisible(world, cx * CS + lx, ly, cz * CS + lz, id)) continue; // flush against solid
-          const ft = FACE_T[id * 6 + fi];
-          const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
-          const base = tpos.length / 3;
-          const lv = faceLight(lx, ly, lz);
-          for (const cn of f.corners) {
-            tpos.push(x + cn[0], cn[1] ? y + h : y + bottom, z + cn[2]);
-            tcol.push(f.shade, f.shade, f.shade);
-            tlite.push(lv);
-            tuv.push((tx0 + 0.5 + cn[f.uv[0]] * (TILE_PX - 1)) / ATLAS_PX, (ty0 + 0.5 + cn[f.uv[1]] * (TILE_PX - 1)) / ATLAS_PX);
-          }
-          tidx.push(base, base + 1, base + 2, base, base + 2, base + 3);
-        }
-        continue;
-      }
-      const def = BLOCKS[id];
-      // soil under water bakes a darker face shade — the mesher owns the chunk,
-      // so this rides in as vertex colour, never as a post pass
-      const wet = SOIL_BLOCKS.has(id) && isWater(world.get(wx, y + 1, wz));
-      // damp soil beside water: same trick, lighter touch (plan: ~0.7x)
-      const dampSoil = (id === DIRT || id === GRASS) && damp[(x * CS + z) * CH + y];
-      // a campfire only glows while it has fuel charges; empty ones are cold
-      // charcoal — dark tile, opaque pass, no point light
-      const coldFire = (id === CAMPFIRE || id === COOKPOT) && (this.fires.get(wx + "," + y + "," + wz) ?? 0) <= 0;
-      const useE = def.emissive && !coldFire, useT = def.transparent;
-      const P = useT ? tpos : useE ? epos : pos;
-      const C = useT ? tcol : useE ? ecol : col;
-      const I = useT ? tidx : useE ? eidx : idx;
-      const U = useT ? tuv : useE ? euvs : uvs;
-      const LM = useT ? tlite : useE ? null : lite;
-      for (let fi = 0; fi < FACES.length; fi++) {
-        const f = FACES[fi];
-        const fd = r ? rotDir(f.dir, r) : f.dir;
-        const nx = x + fd[0], ny = y + fd[1], nz = z + fd[2];
-        if (!faceVisible(world, cx * CS + nx, ny, cz * CS + nz, id)) continue;
-        // cold fires draw their charcoal tile instead of the flame tile
-        const ft = coldFire ? (id === COOKPOT ? VI.cookpot_cold : VI.campfire_cold) : FACE_T[id * 6 + fi];
-        const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
-        const base = P.length / 3;
-        const sh = useE ? 1 : wet ? f.shade * 0.78 : dampSoil ? f.shade * 0.7 : f.shade;
-        const lv = LM ? faceLight(nx, ny, nz) : 0;
-        for (const cn of f.corners) {
-          const [px, pz] = r ? rot2(cn[0], cn[2], r) : [cn[0], cn[2]];
-          P.push(x + px, y + cn[1], z + pz);
-          C.push(sh, sh, sh); // shading only; texture carries the color
-          if (LM) LM.push(lv);
-          U.push((tx0 + 0.5 + cn[f.uv[0]] * (TILE_PX - 1)) / ATLAS_PX, (ty0 + 0.5 + cn[f.uv[1]] * (TILE_PX - 1)) / ATLAS_PX);
-        }
-        I.push(base, base + 1, base + 2, base, base + 2, base + 3);
-      }
+      const r = world.rots.size ? world.getRot(cx * CS + x, y, cz * CS + z) : 0;
+      this.meshCell(S, id, r, x, y, z, cx * CS + x, cz * CS + z, world, faceLight, world.doorSwing, damp[li]);
     }
 
     const old = this.chunkMeshes.get(k);
     if (old) for (const m of old) { this.group.remove(m); m.geometry.dispose(); }
-    const meshes: THREE.Mesh[] = [];
+    const meshes = this.mkMeshes(S, !!Lb, cx * CS, cz * CS);
+    for (const m of meshes) this.group.add(m);
+    this.chunkMeshes.set(k, meshes);
+  }
+
+  /** One cell's faces into the chunk streams — the whole per-id art switch,
+   *  written against CellProvider so terrain and Ship hulls run the exact
+   *  same code. (x,y,z) places the cell in the mesh's own space, (wx,_,wz)
+   *  is where `src` answers neighbour queries; for chunks and Ships the two
+   *  coincide, only the space's origin differs. */
+  private meshCell(S: Streams, id: number, r: number, x: number, y: number, z: number, wx: number, wz: number,
+    src: CellProvider, faceLight: (nx: number, ny: number, nz: number) => number,
+    doorSwing: Map<string, 1 | -1>, dampSoil: number) {
+    if (DOOR_BLOCKS.has(id)) {
+      // the thin slab borrows the brightest light of its four sides — the
+      // room it belongs to
+      let dl = 0;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const)
+        dl = Math.max(dl, faceLight(x + dx, y, z + dz));
+      this.emitDoor(S.pos, S.col, S.idx, S.uvs, S.lite, dl, src, x, y, z, wx, wz, id, doorSwing);
+      return;
+    }
+    if (CROSS_BLOCKS.has(id)) {
+      // a stand of blades on two crossed quads; crops are non-opaque, so
+      // the plant's own cell carries light and shades the blades
+      const ft = TILE[id];
+      const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
+      const lv = faceLight(x, y, z);
+      const quad = (x0: number, z0: number, x1: number, z1: number) => {
+        const base = S.tpos.length / 3;
+        S.tpos.push(x0, y, z0, x1, y, z1, x1, y + 1, z1, x0, y + 1, z0);
+        for (let i = 0; i < 4; i++) { S.tcol.push(0.92, 0.92, 0.92); S.tlite.push(lv); }
+        S.tuv.push(
+          (tx0 + 0.5) / ATLAS_PX, (ty0 + 15.5) / ATLAS_PX,
+          (tx0 + 15.5) / ATLAS_PX, (ty0 + 15.5) / ATLAS_PX,
+          (tx0 + 15.5) / ATLAS_PX, (ty0 + 0.5) / ATLAS_PX,
+          (tx0 + 0.5) / ATLAS_PX, (ty0 + 0.5) / ATLAS_PX,
+        );
+        S.tidx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      };
+      quad(x, z, x + 1, z + 1);
+      quad(x + 1, z, x, z + 1);
+      return;
+    }
+    if (id === CURVED_HULL || id === HULL_SLOPE) {
+      // chamfered cube: axis faces cull exactly like a plain cube, the 45°
+      // facets are always drawn
+      this.emitShape(rotShapes(HULL_SHAPES[id], r), S.pos, S.col, S.idx, S.uvs, S.lite, id, src, x, y, z, wx, wz, faceLight);
+      return;
+    }
+    if (id === BENCH || id === BENCH_EXT) {
+      // the two-cell workbench: orient the model by where the partner cell
+      // actually is, then apply the player's rotation stored on the BENCH
+      let d: number, base: ShapeFace[], rr: number;
+      if (id === BENCH) {
+        d = src.get(wx + 1, y, wz) === BENCH_EXT ? 0 : src.get(wx, y, wz + 1) === BENCH_EXT ? 1
+          : src.get(wx - 1, y, wz) === BENCH_EXT ? 2 : 3;
+        base = BENCH_MODEL;
+        // the partner sits exactly where the stored rotation points, so the
+        // nibble already carries the pair direction - never add both
+        if (r !== 0) { d = 0; rr = r; } else rr = 0;
+      } else {
+        d = src.get(wx - 1, y, wz) === BENCH ? 0 : src.get(wx, y, wz - 1) === BENCH ? 1
+          : src.get(wx + 1, y, wz) === BENCH ? 2 : 3;
+        base = BENCHX_MODEL;
+        rr = src.getRot(wx + (d === 0 ? -1 : d === 2 ? 1 : 0), y, wz + (d === 1 ? -1 : d === 3 ? 1 : 0));
+        if (rr !== 0) d = 0;
+      }
+      this.emitShape(rotShapes(base, (d + rr) & 3), S.pos, S.col, S.idx, S.uvs, S.lite, id, src, x, y, z, wx, wz, faceLight);
+      return;
+    }
+    if (id === ALAB_PILLAR) {
+      this.emitShape(rotShapes(PILLAR_MODEL, r), S.pos, S.col, S.idx, S.uvs, S.lite, id, src, x, y, z, wx, wz, faceLight);
+      return;
+    }
+    if (id === ALAB_FENCE) {
+      // rails only reach toward a fence or gate beside us; the post alone
+      // stands for anything else
+      const link = (nx: number, nz: number) => {
+        const nb = src.get(nx, y, nz);
+        return nb === ALAB_FENCE || nb === ALAB_GATE || nb === ALAB_GATE_OPEN;
+      };
+      let faces = FENCE_POST;
+      if (link(wx + 1, wz)) faces = [...faces, ...fenceRails(0)];
+      if (link(wx - 1, wz)) faces = [...faces, ...fenceRails(1)];
+      if (link(wx, wz + 1)) faces = [...faces, ...fenceRails(2)];
+      if (link(wx, wz - 1)) faces = [...faces, ...fenceRails(3)];
+      this.emitShape(faces, S.pos, S.col, S.idx, S.uvs, S.lite, id, src, x, y, z, wx, wz, faceLight);
+      return;
+    }
+    if (id === ALAB_GATE) {
+      this.emitShape(rotShapes(GATE_MODEL, r), S.pos, S.col, S.idx, S.uvs, S.lite, id, src, x, y, z, wx, wz, faceLight);
+      return;
+    }
+    if (id === ALAB_GATE_OPEN) {
+      this.emitShape(rotShapes(GATE_OPEN_MODEL, r), S.pos, S.col, S.idx, S.uvs, S.lite, id, src, x, y, z, wx, wz, faceLight);
+      return;
+    }
+    if ((id >= WATER7 && id <= WATER1) || (id >= OIL7 && id <= OIL1)) {
+      // Flowing water or oil lies shallower the further it has run from its
+      // Source: level/8 of the cell. Top and step edges get faces; where a
+      // deeper neighbour covers the cell, its own side hides ours.
+      const h = fluidStrength(id) / 8;
+      for (let fi = 0; fi < FACES.length; fi++) {
+        const f = FACES[fi];
+        const lx = x + f.dir[0], ly = y + f.dir[1], lz = z + f.dir[2];
+        const nb = src.get(wx + f.dir[0], ly, wz + f.dir[2]);
+        let bottom = 0;
+        if (f.dir[1] === 0 && isFluid(nb)) {
+          bottom = fluidStrength(nb) / 8;
+          if (bottom >= h) continue;
+        } else if (isFluid(nb)) continue;
+        else if (!faceVisibleAt(src, wx + f.dir[0], ly, wz + f.dir[2], id)) continue; // flush against solid
+        const ft = FACE_T[id * 6 + fi];
+        const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
+        const base = S.tpos.length / 3;
+        const lv = faceLight(lx, ly, lz);
+        for (const cn of f.corners) {
+          S.tpos.push(x + cn[0], cn[1] ? y + h : y + bottom, z + cn[2]);
+          S.tcol.push(f.shade, f.shade, f.shade);
+          S.tlite.push(lv);
+          S.tuv.push((tx0 + 0.5 + cn[f.uv[0]] * (TILE_PX - 1)) / ATLAS_PX, (ty0 + 0.5 + cn[f.uv[1]] * (TILE_PX - 1)) / ATLAS_PX);
+        }
+        S.tidx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      }
+      return;
+    }
+    const def = BLOCKS[id];
+    // soil under a fluid bakes a darker face shade — the mesher owns the cell,
+    // so this rides in as vertex colour, never as a post pass
+    const wet = SOIL_BLOCKS.has(id) && isFluid(src.get(wx, y + 1, wz));
+    // damp soil beside a fluid: same trick, lighter touch (plan: ~0.7x)
+    const dampGrass = (id === DIRT || id === GRASS) && dampSoil;
+    // a campfire only glows while it has fuel charges; empty ones are cold
+    // charcoal — dark tile, opaque pass, no point light
+    const coldFire = (id === CAMPFIRE || id === COOKPOT) && (this.fires.get(wx + "," + y + "," + wz) ?? 0) <= 0;
+    const useE = def.emissive && !coldFire, useT = def.transparent;
+    const P = useT ? S.tpos : useE ? S.epos : S.pos;
+    const C = useT ? S.tcol : useE ? S.ecol : S.col;
+    const I = useT ? S.tidx : useE ? S.eidx : S.idx;
+    const U = useT ? S.tuv : useE ? S.euvs : S.uvs;
+    const LM = useT ? S.tlite : useE ? null : S.lite;
+    for (let fi = 0; fi < FACES.length; fi++) {
+      const f = FACES[fi];
+      const fd = r ? rotDir(f.dir, r) : f.dir;
+      const nx = x + fd[0], ny = y + fd[1], nz = z + fd[2];
+      if (!faceVisibleAt(src, wx + fd[0], ny, wz + fd[2], id)) continue;
+      // cold fires draw their charcoal tile instead of the flame tile
+      const ft = coldFire ? (id === COOKPOT ? VI.cookpot_cold : VI.campfire_cold) : FACE_T[id * 6 + fi];
+      const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
+      const base = P.length / 3;
+      const sh = useE ? 1 : wet ? f.shade * 0.78 : dampGrass ? f.shade * 0.7 : f.shade;
+      const lv = LM ? faceLight(nx, ny, nz) : 0;
+      for (const cn of f.corners) {
+        const [px, pz] = r ? rot2(cn[0], cn[2], r) : [cn[0], cn[2]];
+        P.push(x + px, y + cn[1], z + pz);
+        C.push(sh, sh, sh); // shading only; texture carries the color
+        if (LM) LM.push(lv);
+        U.push((tx0 + 0.5 + cn[f.uv[0]] * (TILE_PX - 1)) / ATLAS_PX, (ty0 + 0.5 + cn[f.uv[1]] * (TILE_PX - 1)) / ATLAS_PX);
+      }
+      I.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+  }
+
+  /** the three streams into chunk-material meshes at (ox,0,oz) — opaque,
+   *  emissive, translucent; the caller parents them where they belong. */
+  private mkMeshes(S: Streams, withLight: boolean, ox: number, oz: number): THREE.Mesh[] {
     const skyMode = this.lightingMode === "sky";
+    const meshes: THREE.Mesh[] = [];
     const mk = (p: number[], cc: number[], i: number[], u: number[], lm: number[] | null, mat: THREE.Material) => {
       if (p.length === 0) return;
       const geo = new THREE.BufferGeometry();
@@ -2304,41 +2515,55 @@ export class Renderer {
       geo.setIndex(i);
       geo.computeVertexNormals();
       const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(cx * CS, 0, cz * CS);
+      mesh.position.set(ox, 0, oz);
       if (!skyMode && mat !== this.matEmissive) {
         mesh.castShadow = mat !== this.matTrans;
         mesh.receiveShadow = true;
       }
-      this.group.add(mesh);
       meshes.push(mesh);
     };
-    mk(pos, col, idx, uvs, Lb ? lite : null, skyMode ? this.matSky : this.matOpaque);
-    mk(epos, ecol, eidx, euvs, null, this.matEmissive);
-    mk(tpos, tcol, tidx, tuv, Lb ? tlite : null, skyMode ? this.matSkyT : this.matTrans);
-    this.chunkMeshes.set(k, meshes);
+    mk(S.pos, S.col, S.idx, S.uvs, withLight ? S.lite : null, skyMode ? this.matSky : this.matOpaque);
+    mk(S.epos, S.ecol, S.eidx, S.euvs, null, this.matEmissive);
+    mk(S.tpos, S.tcol, S.tidx, S.tuv, withLight ? S.tlite : null, skyMode ? this.matSkyT : this.matTrans);
+    return meshes;
+  }
+
+  /** Mesh a provider's cells inside an inclusive min..max box with the chunk
+   *  materials at full bright — the Ship mesher's entry; the returned meshes
+   *  are in provider-local space, unparented, for the caller to hang on the
+   *  Ship's Group. */
+  meshProviderBox(src: CellProvider, min: [number, number, number], max: [number, number, number]): THREE.Mesh[] {
+    const S = mkStreams();
+    for (let x = min[0]; x <= max[0]; x++)
+      for (let z = min[2]; z <= max[2]; z++)
+        for (let y = min[1]; y <= max[1]; y++) {
+          const id = src.get(x, y, z);
+          if (id === AIR) continue;
+          this.meshCell(S, id, src.getRot(x, y, z), x, y, z, x, z, src, () => 1, NO_SWING, 0);
+        }
+    return this.mkMeshes(S, this.lightingMode === "sky", 0, 0);
   }
 
   /** Door leaf: a thin slab filling the doorway cell, hinged on one vertical edge.
    *  Open doors are that same slab rotated 90 deg about the hinge into an
    *  adjoining air cell. Hinge edge picks the wall side deterministically. */
-  private emitDoor(P: number[], C: number[], I: number[], U: number[], Lm: number[], dl: number, world: World,
-    lx: number, ly: number, lz: number, ox: number, oz: number, id: number) {
-    const wx = ox + lx, wz = oz + lz;
+  private emitDoor(P: number[], C: number[], I: number[], U: number[], Lm: number[], dl: number, src: CellProvider,
+    lx: number, ly: number, lz: number, wx: number, wz: number, id: number, doorSwing: Map<string, 1 | -1>) {
     const inner = id === DOOR_INNER || id === DOOR_INNER_UPPER || id === DOOR_INNER_OPEN;
     const alab = id === ALAB_DOOR || id === ALAB_DOOR_UPPER || id === ALAB_DOOR_OPEN;
     const upper = id === DOOR_UPPER || id === DOOR_INNER_UPPER || id === ALAB_DOOR_UPPER ||
-      (id === DOOR_OPEN && world.get(wx, ly - 1, wz) === DOOR_OPEN) ||
-      (id === DOOR_INNER_OPEN && world.get(wx, ly - 1, wz) === DOOR_INNER_OPEN) ||
-      (id === ALAB_DOOR_OPEN && world.get(wx, ly - 1, wz) === ALAB_DOOR_OPEN);
+      (id === DOOR_OPEN && src.get(wx, ly - 1, wz) === DOOR_OPEN) ||
+      (id === DOOR_INNER_OPEN && src.get(wx, ly - 1, wz) === DOOR_INNER_OPEN) ||
+      (id === ALAB_DOOR_OPEN && src.get(wx, ly - 1, wz) === ALAB_DOOR_OPEN);
     const tile = TILE_SRC(upper
       ? (alab ? ALAB_DOOR_UPPER : inner ? DOOR_INNER_UPPER : DOOR_UPPER)
       : (alab ? ALAB_DOOR : inner ? DOOR_INNER : DOOR_CLOSED));
     const open = id === DOOR_OPEN || id === DOOR_INNER_OPEN || id === ALAB_DOOR_OPEN;
     // wall running along x -> leaf spans x, thin in z; running along z -> spans z, thin in x
-    const wallX = isSolid(world.get(wx - 1, ly, wz)) || isSolid(world.get(wx + 1, ly, wz));
-    const spanZ = !wallX && (isSolid(world.get(wx, ly, wz - 1)) || isSolid(world.get(wx, ly, wz + 1)));
-    const airNeg = spanZ ? !isSolid(world.get(wx - 1, ly, wz)) : !isSolid(world.get(wx, ly, wz - 1));
-    const airPos = spanZ ? !isSolid(world.get(wx + 1, ly, wz)) : !isSolid(world.get(wx, ly, wz + 1));
+    const wallX = isSolid(src.get(wx - 1, ly, wz)) || isSolid(src.get(wx + 1, ly, wz));
+    const spanZ = !wallX && (isSolid(src.get(wx, ly, wz - 1)) || isSolid(src.get(wx, ly, wz + 1)));
+    const airNeg = spanZ ? !isSolid(src.get(wx - 1, ly, wz)) : !isSolid(src.get(wx, ly, wz - 1));
+    const airPos = spanZ ? !isSolid(src.get(wx + 1, ly, wz)) : !isSolid(src.get(wx, ly, wz + 1));
     // deterministic hinge: pick edge by parity so both halves of the pair agree,
     // preferring a side with air to swing into
     const parity = (wx + wz) & 1;
@@ -2348,7 +2573,7 @@ export class Renderer {
     else if (airPos) { edge = 1; swing = 1; }
     else { edge = 0; swing = -1; }
     // whoever pushed the door open recorded which room the leaf swings into
-    const pushed = world.doorSwing.get(wx + "," + wz);
+    const pushed = doorSwing.get(wx + "," + wz);
     if (pushed) swing = pushed;
     // slab corners in (s, y, t): s spans the wall, t is the thickness
     const s0 = 0.04, s1 = 0.96;
@@ -2385,13 +2610,13 @@ export class Renderer {
    *  their two adjacent axis cells (the diagonal cell has no baked value of
    *  its own in the chunk halo). Shading is per face, mirroring FACES. */
   private emitShape(faces: ShapeFace[], P: number[], C: number[], I: number[], U: number[], Lm: number[],
-    id: number, world: World, x: number, y: number, z: number, ox: number, oz: number,
+    id: number, src: CellProvider, x: number, y: number, z: number, wx: number, wz: number,
     faceLight: (nx: number, ny: number, nz: number) => number) {
     for (const f of faces) {
       const axis = (f.dir[0] ? 1 : 0) + (f.dir[1] ? 1 : 0) + (f.dir[2] ? 1 : 0);
       if (f.fill) {
-        if (faceVisible(world, ox + x + f.fill[0], y + f.fill[1], oz + z + f.fill[2], id)) continue;
-      } else if (axis === 1 && !f.always && !faceVisible(world, ox + x + f.dir[0], y + f.dir[1], oz + z + f.dir[2], id)) continue;
+        if (faceVisibleAt(src, wx + f.fill[0], y + f.fill[1], wz + f.fill[2], id)) continue;
+      } else if (axis === 1 && !f.always && !faceVisibleAt(src, wx + f.dir[0], y + f.dir[1], wz + f.dir[2], id)) continue;
       const ft = FACE_T[id * 6 + f.kind];
       const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
       let lv = 0;
@@ -2423,6 +2648,12 @@ export class Renderer {
   removeEntityMesh(eid: number) {
     const o = this.entityGroup.children.find((ch) => ch.userData.eid === eid);
     if (o) { this.entityGroup.remove(o); (o as THREE.Mesh).geometry.dispose(); }
+  }
+  /** a container the caller owns: the Ship hull group, re-meshed on demand */
+  addEntityGroup(g: THREE.Object3D) { this.entityGroup.add(g); }
+  removeEntityGroup(g: THREE.Object3D) {
+    this.entityGroup.remove(g);
+    g.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
   }
   moveEntityMesh(eid: number, pos: [number, number, number]) {
     const o = this.entityGroup.children.find((ch) => ch.userData.eid === eid);
@@ -2463,5 +2694,13 @@ export class Renderer {
     return eid;
   }
 
-  render() { this.tickFx(); this.three.render(this.scene, this.camera); }
+  render() { this.tickFx(); this.applyFlightView(); this.three.render(this.scene, this.camera); }
+}
+
+/** Mesh a Ship's cells with the chunk art: game.ts wraps a Ship's cells Map
+ *  in a CellProvider, gets back meshes in the cells' own local space (the
+ *  min..max box is inclusive), and hangs them on the Ship's Group so the
+ *  hull flies with its art. */
+export function meshShipCells(provider: CellProvider, min: [number, number, number], max: [number, number, number]): THREE.Mesh[] {
+  return activeRenderer?.meshProviderBox(provider, min, max) ?? [];
 }

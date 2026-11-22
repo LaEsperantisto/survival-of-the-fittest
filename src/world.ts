@@ -1,4 +1,4 @@
-import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, LEAVES, REGULATOR, CAMPFIRE, BED, BED_EXT, STORM_BREAKER, POWER_PANEL, INSGLASS, BENCH, BENCH_EXT, CURVED_HULL, HULL_SLOPE, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_GATE_OPEN, CS, CH, isOpaque, isWater, waterStrength, flowId } from "./blocks";
+import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, LEAVES, REGULATOR, CAMPFIRE, BED, BED_EXT, STORM_BREAKER, POWER_PANEL, INSGLASS, BENCH, BENCH_EXT, CURVED_HULL, HULL_SLOPE, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_GATE_OPEN, CS, CH, WATER, WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1, OIL, OIL7, OIL6, OIL5, OIL4, OIL3, OIL2, OIL1, isOpaque, isFluid, waterStrength, flowId, oilStrength, oilFlowId } from "./blocks";
 import { genChunk, Structures } from "./gen";
 
 export const ckey = (cx: number, cz: number) => cx + "," + cz;
@@ -8,6 +8,19 @@ const ROOM_DIRS: [number, number, number][] = [[1, 0, 0], [-1, 0, 0], [0, 1, 0],
  *  Inside Doors (open or closed — exactly air thermally, they never seal or split
  *  a Space), and Leaves (walk-blocking, but never part of a room's sealing). */
 const ROOM_OPEN = new Set<number>([AIR, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, LEAVES]);
+/** One fluid family's flow rules. Water and oil run the same queue and the
+ *  same code path; only these lookups differ. */
+type Fluid = {
+  source: number,
+  flowIds: number[], // ids for flow levels 7..1, strongest first
+  strength: (id: number) => number,
+  flowId: (level: number) => number,
+  opaque: boolean, // mirrors the block def — both fluids are translucent
+};
+const FLUIDS: Fluid[] = [
+  { source: WATER, flowIds: [WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1], strength: waterStrength, flowId, opaque: false },
+  { source: OIL, flowIds: [OIL7, OIL6, OIL5, OIL4, OIL3, OIL2, OIL1], strength: oilStrength, flowId: oilFlowId, opaque: false },
+];
 /**
  * Infinite voxel world: base terrain is regenerated deterministically from the
  * seed; only player modifications (deltas) are persisted.
@@ -22,9 +35,9 @@ export class World {
   /** cell "x,y,z" -> quarter-turn rotation (1..3) for player-placed blocks.
    *  Sparse: unrotated cells are absent, so terrain costs nothing. */
   rots = new Map<string, number>();
-  /** cells whose water situation may have changed (Minecraft-style flow sim). */
-  private waterQ = new Set<string>();
-  private waterGen = 0; // counts propagation steps; odd steps skip the fall
+  /** cells whose fluid situation may have changed (Minecraft-style flow sim). */
+  private fluidQ = new Set<string>();
+  private fluidGen = 0; // counts propagation steps; odd steps skip the fall
   gen: Structures;
 
   constructor(public seed: number, public worldMode: "easy" | "hard" = "easy") {
@@ -47,7 +60,17 @@ export class World {
    *  Power Poles, Panels and lamps of Grid Relics and Towns into its Grids. */
   onChunk?: (cx: number, cz: number, c: Uint8Array) => void;
 
+  /** Optional shadow over world cells: game.ts installs a lookup that returns
+   *  a Ship cell's id when a Ship polycube occupies this world cell (its own
+   *  cells are never written back into chunks). Every read-side consumer —
+   *  physics, mobs, fluids, roomInfo, sky — becomes Ship-aware for free. */
+  cellProvider: ((x: number, y: number, z: number) => number | null) | null = null;
+
   get(x: number, y: number, z: number): number {
+    if (this.cellProvider) {
+      const s = this.cellProvider(x, y, z);
+      if (s !== null) return s;
+    }
     if (y < 0 || y >= CH) return AIR;
     const cx = Math.floor(x / CS), cz = Math.floor(z / CS);
     const c = this.chunk(cx, cz);
@@ -98,39 +121,9 @@ export class World {
     return true;
   }
 
-  /**
-   * Flood the open region containing (x,y,z), bounded at `cap` cells.
-   * Open doors leak (they are passable); Inside Doors are exactly air — closed,
-   * they neither bound a room nor split two rooms; Leaves never seal or boundary
-   * a room. Water and other solid blocks bound it.
-   * Reaching the cap, or the top of the world, means the region is not sealed.
-   * Regulator capacity stacks: each Heat Regulator bordering the region covers
-   * REGULATOR_ROOM_MAX open cells.
-   */
+  /** Flood the open region containing (x,y,z) — see roomInfoAt. */
   roomInfo(x: number, y: number, z: number, cap = 400): { size: number; sealed: boolean; regulators: number; regCells: string[]; anchors: string[] } {
-    if (!ROOM_OPEN.has(this.get(x, y, z))) return { size: 0, sealed: false, regulators: 0, regCells: [], anchors: [] };
-    const seen = new Set<string>([`${x},${y},${z}`]);
-    const stack: [number, number, number][] = [[x, y, z]];
-    const regs = new Set<string>();
-    // border blocks that make a sealed Space a Base (GLOSSARY: anchor)
-    const anchors = new Set<string>();
-    let size = 0, sealed = true;
-    while (stack.length) {
-      const [cx, cy, cz] = stack.pop()!;
-      if (++size > cap) { sealed = false; break; }
-      for (const [dx, dy, dz] of ROOM_DIRS) {
-        const nx = cx + dx, ny = cy + dy, nz = cz + dz;
-        if (ny >= CH) { sealed = false; continue; }
-        const id = this.get(nx, ny, nz);
-        if (ROOM_OPEN.has(id)) {
-          const k = nx + "," + ny + "," + nz;
-          if (!seen.has(k)) { seen.add(k); stack.push([nx, ny, nz]); }
-        } else if (id === REGULATOR) regs.add(nx + "," + ny + "," + nz);
-        else if (id === CAMPFIRE || id === BED || id === BED_EXT || id === STORM_BREAKER || id === POWER_PANEL)
-          anchors.add(nx + "," + ny + "," + nz);
-      }
-    }
-    return { size, sealed, regulators: regs.size, regCells: [...regs], anchors: [...anchors] };
+    return roomInfoAt((x, y, z) => this.get(x, y, z), x, y, z, cap);
   }
 
   set(x: number, y: number, z: number, id: number) {
@@ -141,9 +134,9 @@ export class World {
     if (c[i] === id) return;
     const prev = c[i];
     c[i] = id;
-    if (isWater(id) || isWater(prev) || id === AIR) { // water appeared, vanished, or a cell opened beside water — re-check this cell and its neighbours
-      this.queueWater(x, y, z);
-      for (const [dx, dy, dz] of ROOM_DIRS) this.queueWater(x + dx, y + dy, z + dz);
+    if (isFluid(id) || isFluid(prev) || id === AIR) { // a fluid appeared, vanished, or a cell opened beside one — re-check this cell and its neighbours
+      this.queueFluid(x, y, z);
+      for (const [dx, dy, dz] of ROOM_DIRS) this.queueFluid(x + dx, y + dy, z + dz);
     }
     let d = this.deltas.get(ckey(cx, cz));
     if (!d) this.deltas.set(ckey(cx, cz), (d = new Map()));
@@ -151,9 +144,9 @@ export class World {
     this.rots.delete(x + "," + y + "," + z); // a new block starts unrotated
     this.markDirty(cx, cz);
     const lx = x - cx * CS, lz = z - cz * CS;
-    // soil within 3 cells of water renders damp, so a water edit near a chunk
-    // edge must also re-mesh the neighbour chunk
-    const wetEdge = isWater(id) || isWater(prev);
+    // soil within 3 cells of any fluid — water damp, oil stained — renders
+    // changed, so a fluid edit near a chunk edge must also re-mesh the neighbour chunk
+    const wetEdge = isFluid(id) || isFluid(prev);
     const reach = wetEdge ? 3 : 0;
     if (lx === 0 || lx <= reach) this.markDirty(cx - 1, cz);
     if (lz === 0 || lz <= reach) this.markDirty(cx, cz - 1);
@@ -175,48 +168,56 @@ export class World {
     if (r & 3) this.rots.set(k, r & 3); else this.rots.delete(k);
   }
 
-  private queueWater(x: number, y: number, z: number) {
-    if (y >= 0 && y < CH) this.waterQ.add(x + "," + y + "," + z);
+  private queueFluid(x: number, y: number, z: number) {
+    if (y >= 0 && y < CH) this.fluidQ.add(x + "," + y + "," + z);
   }
 
   /**
-   * Run queued Minecraft-style flow: Sources (WATER) spread 7 cells sideways and
-   * fall straight down; flow keeps the feed alive downstream and drains away when
-   * its feed vanishes. One propagation step per call — water placed during this
-   * call is queued for the next, so a spill crawls outward a cell at a time.
-   * A flow cell sitting under any water refills to a full block; flow spreads
-   * sideways only when it stands on something — water falls to the ground
-   * before it wanders, and never rests on air.
+   * Run queued Minecraft-style flow for both fluids — water and oil share the
+   * queue and the code path (see FLUIDS). Sources spread 7 cells sideways and
+   * fall straight down; flow keeps the feed alive downstream and drains away
+   * when its feed vanishes. One propagation step per call — fluid placed
+   * during this call is queued for the next, so a spill crawls outward a cell
+   * at a time. The fluids never mix: each pass sees only its own family.
+   * A flow cell sitting under the same fluid refills to a full block; flow
+   * spreads sideways only when it stands on something — fluid falls to the
+   * ground before it wanders, and never rests on air.
    */
   processWater(budget = 4000): number {
     let ops = 0;
-    const wave = [...this.waterQ];
-    this.waterQ.clear();
+    const wave = [...this.fluidQ];
+    this.fluidQ.clear();
     // vertical steps only run on every other propagation generation — a column
-    // of water falls at half the speed it spreads sideways
-    const gen = this.waterGen++ & 1;
+    // of fluid falls at half the speed it spreads sideways
+    const gen = this.fluidGen++ & 1;
     for (const k of wave) {
       if (ops >= budget) break;
       const [x, y, z] = k.split(",").map(Number);
-      ops += this.drainFlow(x, y, z, budget - ops);
-      ops += this.floodFrom(x, y, z, budget - ops, gen);
+      const here = this.get(x, y, z);
+      for (const f of FLUIDS) {
+        // a cell holding the other fluid needs only that fluid's pass; air and
+        // solid cells seed both, so their fluid neighbours still get checked
+        if (isFluid(here) && !f.strength(here)) continue;
+        ops += this.drainFlow(f, x, y, z, budget - ops);
+        ops += this.floodFrom(f, x, y, z, budget - ops, gen);
+      }
     }
     return ops;
   }
 
-  private drainFlow(sx: number, sy: number, sz: number, budget: number): number {
+  private drainFlow(f: Fluid, sx: number, sy: number, sz: number, budget: number): number {
     let ops = 0;
     const stack: [number, number, number][] = [[sx, sy, sz],
       [sx + 1, sy, sz], [sx - 1, sy, sz], [sx, sy, sz + 1], [sx, sy, sz - 1]];
     const seen = new Set<string>();
     while (stack.length && ops++ < budget) {
       const [x, y, z] = stack.pop()!;
-      const s = waterStrength(this.get(x, y, z));
-      if (!s || s === 8) continue; // air, solid, or Source: sources never drain on their own
+      const s = f.strength(this.get(x, y, z));
+      if (!s || s === 8) continue; // air, solid, other fluid, or Source: sources never drain on their own
       const k = x + "," + y + "," + z;
       if (seen.has(k)) continue;
       seen.add(k);
-      if (!this.waterSupported(x, y, z, s)) {
+      if (!this.fluidSupported(f, x, y, z, s)) {
         this.set(x, y, z, AIR); // re-queues the neighbours; flood() gets the last word
         for (const [dx, dy, dz] of ROOM_DIRS) stack.push([x + dx, y + dy, z + dz]);
       }
@@ -224,15 +225,15 @@ export class World {
     return ops;
   }
 
-  private waterSupported(x: number, y: number, z: number, s: number): boolean {
+  private fluidSupported(f: Fluid, x: number, y: number, z: number, s: number): boolean {
     for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const)
-      if (waterStrength(this.get(x + dx, y, z + dz)) > s) return true; // fed sideways by a Source or stronger flow
-    // falling in from above: water directly overhead feeds this cell and
+      if (f.strength(this.get(x + dx, y, z + dz)) > s) return true; // fed sideways by a Source or stronger flow
+    // falling in from above: fluid directly overhead feeds this cell and
     // refills it to a full block, so it stays while that feed stands
-    return waterStrength(this.get(x, y + 1, z)) > 0;
+    return f.strength(this.get(x, y + 1, z)) > 0;
   }
 
-  private floodFrom(sx: number, sy: number, sz: number, budget: number, gen = 0): number {
+  private floodFrom(f: Fluid, sx: number, sy: number, sz: number, budget: number, gen = 0): number {
     let ops = 0;
     // the queued cell only — each call advances the front exactly one cell;
     // placements re-queue themselves for the next generation (see set())
@@ -240,28 +241,28 @@ export class World {
     while (q.length && ops++ < budget) {
       const [x, y, z] = q.shift()!;
       const below = this.get(x, y - 1, z);
-      // a flow cell under any water is a full block: its level resets
-      let s = waterStrength(this.get(x, y, z));
-      if (s && s !== 8 && s < 7 && waterStrength(this.get(x, y + 1, z)) > 0) {
-        this.set(x, y, z, flowId(7));
+      // a flow cell under the same fluid is a full block: its level resets
+      let s = f.strength(this.get(x, y, z));
+      if (s && s !== 8 && s < 7 && f.strength(this.get(x, y + 1, z)) > 0) {
+        this.set(x, y, z, f.flowId(7));
         s = 7;
       }
       if (!s) continue;
       if (gen === 0 && y > 0) { // fall straight down: a Source sends level 7, flow keeps its level
-        if ((below === AIR || isWater(below)) && waterStrength(below) < s)
-          this.set(x, y - 1, z, flowId(s === 8 ? 7 : s));
-      } else if (gen === 1 && y > 0 && (below === AIR || isWater(below)) && waterStrength(below) < s) {
-        this.queueWater(x, y, z); // off-gen: keep this cell in the wave so the fall isn't lost
+        if ((below === AIR || f.strength(below) > 0) && f.strength(below) < s)
+          this.set(x, y - 1, z, f.flowId(s === 8 ? 7 : s));
+      } else if (gen === 1 && y > 0 && (below === AIR || f.strength(below) > 0) && f.strength(below) < s) {
+        this.queueFluid(x, y, z); // off-gen: keep this cell in the wave so the fall isn't lost
       }
-      // flow only spreads sideways when it stands on something — water must
+      // flow only spreads sideways when it stands on something — fluid must
       // reach the ground first, instead of floating across open air
-      if (below === AIR || isWater(below)) continue;
+      if (below === AIR || f.strength(below) > 0) continue;
       const out = s === 8 ? 7 : s - 1; // Sources spread 7; flow decays by 1 per cell
       if (out < 1) continue;
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
         const side = this.get(x + dx, y, z + dz);
-        if ((side === AIR || isWater(side)) && waterStrength(side) < out)
-          this.set(x + dx, y, z + dz, flowId(out));
+        if ((side === AIR || f.strength(side) > 0) && f.strength(side) < out)
+          this.set(x + dx, y, z + dz, f.flowId(out));
       }
     }
     return ops;
@@ -306,6 +307,42 @@ export class World {
 // Block thermal resistances, kept local to avoid an import cycle with blocks.ts.
 import { BLOCKS } from "./blocks";
 const BLOCKRES: number[] = BLOCKS.map((b) => b.R);
+
+/**
+ * Flood the open region containing (x,y,z) over any id provider (World.get, or
+ * a ship-aware composition in game.ts), bounded at `cap` cells.
+ * Open doors leak (they are passable); Inside Doors are exactly air — closed,
+ * they neither bound a room nor split two rooms; Leaves never seal or boundary
+ * a room. Fluids (water, oil) and other solid blocks bound it.
+ * Reaching the cap, or the top of the world, means the region is not sealed.
+ * Regulator capacity stacks: each Heat Regulator bordering the region covers
+ * REGULATOR_ROOM_MAX open cells.
+ */
+export function roomInfoAt(get: (x: number, y: number, z: number) => number, x: number, y: number, z: number, cap = 400): { size: number; sealed: boolean; regulators: number; regCells: string[]; anchors: string[] } {
+  if (!ROOM_OPEN.has(get(x, y, z))) return { size: 0, sealed: false, regulators: 0, regCells: [], anchors: [] };
+  const seen = new Set<string>([`${x},${y},${z}`]);
+  const stack: [number, number, number][] = [[x, y, z]];
+  const regs = new Set<string>();
+  // border blocks that make a sealed Space a Base (GLOSSARY: anchor)
+  const anchors = new Set<string>();
+  let size = 0, sealed = true;
+  while (stack.length) {
+    const [cx, cy, cz] = stack.pop()!;
+    if (++size > cap) { sealed = false; break; }
+    for (const [dx, dy, dz] of ROOM_DIRS) {
+      const nx = cx + dx, ny = cy + dy, nz = cz + dz;
+      if (ny >= CH) { sealed = false; continue; }
+      const id = get(nx, ny, nz);
+      if (ROOM_OPEN.has(id)) {
+        const k = nx + "," + ny + "," + nz;
+        if (!seen.has(k)) { seen.add(k); stack.push([nx, ny, nz]); }
+      } else if (id === REGULATOR) regs.add(nx + "," + ny + "," + nz);
+      else if (id === CAMPFIRE || id === BED || id === BED_EXT || id === STORM_BREAKER || id === POWER_PANEL)
+        anchors.add(nx + "," + ny + "," + nz);
+    }
+  }
+  return { size, sealed, regulators: regs.size, regCells: [...regs], anchors: [...anchors] };
+}
 
 export function faceVisible(world: World, x: number, y: number, z: number, selfId: number): boolean {
   const n = world.get(x, y, z);

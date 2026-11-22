@@ -20,7 +20,9 @@ export const AIR = 0, SAND = 1, SANDSTONE = 2, ROCK = 3, GRAVEL = 4, DIRT = 5, S
   CHEST_INTERFACE = 83,
   COOKPOT = 84, WATER_CAGE = 85, WATER_CAGE_FULL = 86,
   SUGARCANE_1 = 87, SUGARCANE_2 = 88, APPLE_SAPLING = 89, APPLE_FRUIT = 90,
-  COAL_ORE = 91, REFINERY = 92;
+  COAL_ORE = 91, REFINERY = 92,
+  OIL = 93, OIL7 = 94, OIL6 = 95, OIL5 = 96, OIL4 = 97, OIL3 = 98, OIL2 = 99, OIL1 = 100,
+  OIL_SANDS = 101, FRAME_CORNER = 102, FLIGHT_CONTROLS = 103;
 
 export type ToolType = "pickaxe" | "shovel" | "axe" | "disassembler";
 
@@ -254,10 +256,28 @@ export const BLOCKS: BlockDef[] = [
   // Rocket Fuel. Keep this array in id order — BLOCKS is indexed by position.
   def({ id: COAL_ORE, name: "Coal Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 2.4, tool: "pickaxe", minTier: 1, placeable: false, color: [0.26, 0.24, 0.23] }),
   def({ id: REFINERY, name: "Refinery", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.4, 0.38, 0.42] }),
+  // Oil: the Refinery's other half. OIL (93) is a Source; OIL7..OIL1 are flow levels
+  // 7..1 — id = 101 − level, same feed rule as water. Seeps and oil-sand fields sit
+  // out in the Badlands (gen.ts); scoop it with a Bucket.
+  def({ id: OIL, name: "Oil", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0.13, 0.11, 0.08] }),
+  def({ id: OIL7, name: "Oil (flowing)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0.16, 0.14, 0.11] }),
+  def({ id: OIL6, name: "Oil (flowing)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0.15, 0.13, 0.10] }),
+  def({ id: OIL5, name: "Oil (flowing)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0.15, 0.12, 0.10] }),
+  def({ id: OIL4, name: "Oil (flowing)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0.14, 0.12, 0.09] }),
+  def({ id: OIL3, name: "Oil (flowing)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0.13, 0.11, 0.09] }),
+  def({ id: OIL2, name: "Oil (flowing)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0.12, 0.10, 0.08] }),
+  def({ id: OIL1, name: "Oil (flowing)", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0, tool: null, minTier: 0, placeable: false, color: [0.11, 0.09, 0.07] }),
+  // Oil Sands: sand soaked through with the stuff — digs like Sand, stains like a spill.
+  def({ id: OIL_SANDS, name: "Oil Sands", solid: true, opaque: true, transparent: false, emissive: false, R: 0.8, breakTime: 0.6, tool: null, fastTool: "shovel", minTier: 0, placeable: false, color: [0.30, 0.26, 0.20] }),
+  // The Ship Frame: eight Corner Blocks declare a cuboid; every cell inside rides
+  // with the Ship (shipframe.ts computes it). Corners move only while grounded.
+  def({ id: FRAME_CORNER, name: "Ship Frame Corner", solid: true, opaque: true, transparent: false, emissive: false, R: 0.3, breakTime: 2, tool: "disassembler", minTier: 0, placeable: true, color: [0.60, 0.64, 0.72] }),
+  // Flight Controls: the yoke. E opens the flight panel — takeoff refuses an invalid Frame.
+  def({ id: FLIGHT_CONTROLS, name: "Flight Controls", solid: true, opaque: true, transparent: false, emissive: true, R: 0.4, breakTime: 2, tool: "disassembler", minTier: 0, placeable: true, color: [0.25, 0.50, 0.56] }),
 ];
 
-/** Everything that lives on the Grid: Panel..Harvester (ADR-0007). */
-export function isPowerBlock(id: number): boolean { return id >= POWER_PANEL && id <= HARVESTER; }
+/** Everything that lives on the Grid: the Engine Core plus Panel..Harvester (ADR-0007). */
+export function isPowerBlock(id: number): boolean { return id === ENGINECORE || (id >= POWER_PANEL && id <= HARVESTER); }
 
 /** A Pole links to other Poles within this many blocks; every non-Pole power
  *  block joins the Grid of a Pole within this reach. */
@@ -276,3 +296,10 @@ export function isOpaque(id: number): boolean { return BLOCKS[id].opaque; }
 export function isWater(id: number): boolean { return id === WATER || (id >= WATER7 && id <= WATER1); }
 export function waterStrength(id: number): number { return id === WATER ? 8 : isWater(id) ? 33 - id : 0; }
 export function flowId(level: number): number { return 33 - level; }
+// Oil: OIL is a Source (strength 8); OIL7..OIL1 are flow levels 7..1 (id = 101 − level).
+export function isOil(id: number): boolean { return id === OIL || (id >= OIL7 && id <= OIL1); }
+export function oilStrength(id: number): number { return id === OIL ? 8 : isOil(id) ? 101 - id : 0; }
+export function oilFlowId(level: number): number { return 101 - level; }
+// Either liquid — the world sim runs both families over one queue (world.ts).
+export function isFluid(id: number): boolean { return isWater(id) || isOil(id); }
+export function fluidStrength(id: number): number { return isOil(id) ? oilStrength(id) : waterStrength(id); }

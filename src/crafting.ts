@@ -39,6 +39,11 @@ export const RECIPES: Recipe[] = [
   { out: "curved_hull", count: 2, needs: { metal: 2, sand: 2 }, station: "bench" },
   { out: "hull_slope", count: 2, needs: { metal: 2, sand: 2 }, station: "bench" },
   { out: "thruster_nozzle", count: 1, needs: { cobaltrod: 1, copperrod: 2, metal: 1 }, station: "bench" },
+  // The Ship kit: eight Corners declare the Frame, the yoke flies it, and a spare
+  // Nozzle plus Rods builds a whole engine.
+  { out: "frame_corner", count: 1, needs: { metal_plating: 2, copperrod: 1 }, station: "bench" },
+  { out: "flight_controls", count: 1, needs: { metal_plating: 4, copperrod: 2, glass: 1 }, station: "bench" },
+  { out: "thruster", count: 1, needs: { thruster_nozzle: 1, metal_plating: 4, cobaltrod: 1 }, station: "bench" },
   // Grid power (ADR-0007): the whole chain is Bench kit; Copper Rods are the wires.
   { out: "power_pole", count: 2, needs: { metal: 1, deadwood: 3 }, station: "bench" },
   { out: "power_panel", count: 1, needs: { metal: 4, copperrod: 2, glass: 1 }, station: "bench" },

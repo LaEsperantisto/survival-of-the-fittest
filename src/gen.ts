@@ -6,6 +6,7 @@ import {
   STORM_BREAKER, STORM_BREAKER_HUSK,
   POWER_PANEL, POWER_POLE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
   CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, COAL_ORE, THRUSTER,
+  OIL, OIL_SANDS, FRAME_CORNER,
 } from "./blocks";
 import { fbm2, ridge2, value2, hash2, Rng } from "./noise";
 
@@ -16,6 +17,8 @@ export const BIOME_NAMES = ["Dunes", "Rocky Desert", "Salt Flats", "Badlands", "
 const SP = 1e6; // structure id salt
 
 export interface Oasis { x: number; z: number; r: number; key: string; }
+/** An Oil Seep: the same bowl an oasis cuts, running black instead of blue. */
+export interface Seep { x: number; z: number; r: number; key: string; }
 /** One block of a staged Living Tree: b is the block id, stage 1 trunk base,
  *  2 full trunk + branches, 3 leaf canopy. Stamped in stage order. */
 export interface TreePart { x: number; y: number; z: number; b: number; stage: number }
@@ -44,6 +47,16 @@ export const CAVE_MOUTH_L = 150;
 /** Oases sit on this lattice: a jittered pool per cell, forever — the desert
  *  horizon never runs out of water. Centers jitter up to ±80 from the cell. */
 export const OASIS_L = 240;
+
+/** Oil Seeps sit on their own lattice: a jittered tar pool per cell, forever —
+ *  the Refinery's supply never runs out. Centers jitter up to ±40 from the cell. */
+export const SEEP_L = 170;
+
+/** Giant oil-sand fields sit on a far sparser lattice than seeps: a broad,
+ *  irregular flat of oil-stained sand some 30 across with a few Oil sources
+ *  sweating through it — the desert's bulk fuel deposit. Centers jitter up to
+ *  ±180 from the cell. */
+export const FIELD_L = 600;
 
 /** Buried canisters sit on this lattice — landmarks, not containers: the
  *  Map only shows a dig site once its canister has actually been dug.
@@ -104,6 +117,86 @@ export class Structures {
       if (dd < bd) { bd = dd; best = o; }
     }
     return best;
+  }
+
+  /** Is there an Oil Seep on lattice cell (ix,iz)? Tar only breaks the crust on
+   *  loose ground, never atop the crash, and never crowding an oasis, a Town, a
+   *  camp, a Grid Relic, a cave mouth, a tar flat or the second wreck — the same
+   *  exclusions that keep oases and Towns apart. A pool needs solid ground all
+   *  round it, or the flow sim would carry the tar away. */
+  seepAt(ix: number, iz: number): boolean {
+    if (hash2(ix, iz, this.seed + 151) >= 0.5) return false;
+    const c = this.seepCenter(ix, iz);
+    if (c.x * c.x + c.z * c.z < 12100) return false; // 110 m clear of the wreck
+    if (biomeAt(c.x, c.z, this.seed) === B_CANYON) return false; // a canyon floor carves the pool away
+    if (Math.hypot(c.x - this.homeTown.x, c.z - this.homeTown.z) < 30) return false;
+    if (oasisNearSeed(this.seed, c.x, c.z, 22) !== null) return false; // a pool never cuts an oasis grove
+    if (fieldNearSeed(this.seed, c.x, c.z, 10) !== null) return false;
+    if (this.mouthNear(c.x, c.z, 18) !== null) return false;
+    if (this.townNear(c.x, c.z, 22) !== null) return false;
+    if (this.campNear(c.x, c.z, 22) !== null) return false;
+    if (this.outpostNear(c.x, c.z, 22) !== null) return false;
+    if (Math.hypot(this.secondShip.x - c.x, this.secondShip.z - c.z) < 40) return false;
+    return true;
+  }
+
+  /** Jittered centre of the seep on lattice cell (ix,iz). */
+  seepCenter(ix: number, iz: number): { x: number; z: number } {
+    const jx = (hash2(ix, iz, this.seed + 153) - 0.5) * 80;
+    const jz = (hash2(ix, iz, this.seed + 155) - 0.5) * 80;
+    return { x: Math.round(ix * SEEP_L + jx), z: Math.round(iz * SEEP_L + jz) };
+  }
+
+  /** The full seep for a lattice cell, or null. */
+  seepOf(ix: number, iz: number): Seep | null {
+    if (!this.seepAt(ix, iz)) return null;
+    const c = this.seepCenter(ix, iz);
+    return { x: c.x, z: c.z, r: 3 + (hash2(ix, iz, this.seed + 157) * 3 | 0), key: `${ix},${iz}` };
+  }
+
+  /** The seep whose pool, inflated by `rad`, covers (x,z). */
+  seepNear(x: number, z: number, rad = 1): Seep | null {
+    return seepNearSeed(this.seed, x, z, rad);
+  }
+
+  /** The seep nearest (x,z) within a few lattice cells — for waypoints and the
+   *  Hidden Landmark Tracker. */
+  nearestSeep(x: number, z: number, span = 4): Seep | null {
+    const cx = Math.floor(x / SEEP_L), cz = Math.floor(z / SEEP_L);
+    let best: Seep | null = null, bd = Infinity;
+    for (let ix = cx - span; ix <= cx + span; ix++) for (let iz = cz - span; iz <= cz + span; iz++) {
+      const o = this.seepOf(ix, iz);
+      if (!o) continue;
+      const dd = (o.x - x) ** 2 + (o.z - z) ** 2;
+      if (dd < bd) { bd = dd; best = o; }
+    }
+    return best;
+  }
+
+  /** Is there a giant oil-sand field on lattice cell (tx,tz)? The big tar flats
+   *  lie on open sand seas — dunes, rocky desert, salt flats — and stand well
+   *  clear of the crash, oases, Towns, camps, relics and the second wreck. */
+  fieldAt(tx: number, tz: number): boolean {
+    if (Math.abs(tx) <= 1 && Math.abs(tz) <= 1) return false; // keeps fields far clear of the crash
+    if (hash2(tx, tz, this.seed + 471) >= 0.4) return false;
+    const c = this.fieldCenter(tx, tz);
+    const bi = biomeAt(c.x, c.z, this.seed);
+    if (bi !== B_DUNES && bi !== B_ROCKY && bi !== B_SALT) return false;
+    if (c.x * c.x + c.z * c.z < 67600) return false; // 260 m clear of the wreck
+    if (oasisNearSeed(this.seed, c.x, c.z, 48) !== null) return false; // a flat never clips an oasis grove
+    if (this.mouthNear(c.x, c.z, 44) !== null) return false; // never tunnelled under by a cave mouth
+    if (this.townNear(c.x, c.z, 45) !== null) return false;
+    if (this.campNear(c.x, c.z, 40) !== null) return false;
+    if (this.outpostNear(c.x, c.z, 40) !== null) return false;
+    if (Math.hypot(this.secondShip.x - c.x, this.secondShip.z - c.z) < 70) return false;
+    return true;
+  }
+
+  /** Jittered centre of the oil-sand field on lattice cell (tx,tz). */
+  fieldCenter(tx: number, tz: number): { x: number; z: number } {
+    const jx = (hash2(tx, tz, this.seed + 473) - 0.5) * 360;
+    const jz = (hash2(tx, tz, this.seed + 475) - 0.5) * 360;
+    return { x: Math.round(tx * FIELD_L + jx), z: Math.round(tz * FIELD_L + jz) };
   }
 
   /** Is there a buried canister site on lattice cell (ix,iz)? Never atop the crash. */
@@ -235,6 +328,19 @@ export class Structures {
   /** The Grid Relic on lattice cell (tx,tz), and its jittered centre. */
   outpostAt(tx: number, tz: number): boolean { return outpostAtSeed(this.seed, tx, tz); }
   outpostCenter(tx: number, tz: number): { x: number; z: number } { return outpostCenterSeed(this.seed, tx, tz); }
+
+  /** The nearest Grid Relic within `rad` of (x,z), or null. */
+  outpostNear(x: number, z: number, rad: number): { x: number; z: number } | null {
+    let best: { x: number; z: number } | null = null, bd = rad;
+    const t0 = Math.floor((x - rad) / OUTPOST_L), t1 = Math.floor((x + rad) / OUTPOST_L);
+    const s0 = Math.floor((z - rad) / OUTPOST_L), s1 = Math.floor((z + rad) / OUTPOST_L);
+    for (let tx = t0; tx <= t1; tx++) for (let tz = s0; tz <= s1; tz++) {
+      if (!this.outpostAt(tx, tz)) continue;
+      const c = this.outpostCenter(tx, tz), d = Math.hypot(c.x - x, c.z - z);
+      if (d <= bd) { bd = d; best = c; }
+    }
+    return best;
+  }
 }
 
 /**
@@ -392,6 +498,39 @@ function oasisNearSeed(seed: number, x: number, z: number, rad: number): Oasis |
   return best;
 }
 
+/** Is a giant oil-sand Field's tar flat within `rad` of (x,z)? Centres jitter
+ *  ±180 and a flat reaches ~30 out, so 210 covers the worst offset. */
+function fieldNearSeed(seed: number, x: number, z: number, rad: number): { x: number; z: number } | null {
+  const st = structuresOf(seed);
+  const m = 210 + rad;
+  const i0 = Math.floor((x - m) / FIELD_L), i1 = Math.floor((x + m) / FIELD_L);
+  const j0 = Math.floor((z - m) / FIELD_L), j1 = Math.floor((z + m) / FIELD_L);
+  for (let ix = i0; ix <= i1; ix++) for (let iz = j0; iz <= j1; iz++) {
+    if (!st.fieldAt(ix, iz)) continue;
+    const c = st.fieldCenter(ix, iz);
+    if (Math.hypot(c.x - x, c.z - z) <= 30 + rad) return c;
+  }
+  return null;
+}
+
+/** The seep whose pool, inflated by `rad`, reaches (x,z) — same shape as
+ *  oasisNearSeed. Centers jitter ±40, radii reach 5, so 46 covers the worst
+ *  offset. Pure in the seed so cave guards and callers always agree. */
+function seepNearSeed(seed: number, x: number, z: number, rad: number): Seep | null {
+  const st = structuresOf(seed);
+  const m = 46 + rad;
+  const i0 = Math.floor((x - m) / SEEP_L), i1 = Math.floor((x + m) / SEEP_L);
+  const j0 = Math.floor((z - m) / SEEP_L), j1 = Math.floor((z + m) / SEEP_L);
+  let best: Seep | null = null, bd = Infinity;
+  for (let ix = i0; ix <= i1; ix++) for (let iz = j0; iz <= j1; iz++) {
+    const o = st.seepOf(ix, iz);
+    if (!o) continue;
+    const d = Math.hypot(o.x - x, o.z - z);
+    if (d <= o.r + rad && d < bd) { bd = d; best = o; }
+  }
+  return best;
+}
+
 /** Breach patches: inside these the cave band climbs all the way to the
  *  surface and carves a real cave mouth instead of a sealed band. Constant y
  *  in the lattice keeps this a pure 2D field. */
@@ -399,12 +538,14 @@ const caveBreach = (seed: number, x: number, z: number): boolean =>
   noise3(x / 9, 0.37, z / 9, seed + 309) > 0.75;
 
 /** The cave band's top for one column, shared by caveAt and genChunk so the
- *  chunk loop and edge cells always agree. Oasis floors stay sealed, the
- *  crash site's footing stays solid, breach columns open to the sky. */
+ *  chunk loop and edge cells always agree. Oasis and seep floors stay sealed,
+ *  the crash site's footing stays solid, breach columns open to the sky. */
 function caveCeil(seed: number, x: number, z: number, h: number): number {
   if (x * x + z * z < 240) return caveTop(h); // the crash site never opens
   const o = oasisNearSeed(seed, x, z, 1.5);
   if (o) return Math.min(caveTop(h), Math.round(heightAt(seed, o.x, o.z)) - 5); // pools stay sealed
+  const sp = seepNearSeed(seed, x, z, 1.5);
+  if (sp) return Math.min(caveTop(h), Math.round(heightAt(seed, sp.x, sp.z)) - 5); // tar pools too
   return caveBreach(seed, x, z) ? h : caveTop(h);
 }
 
@@ -622,6 +763,14 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void, h
   for (const [lx, lz] of [[3, 0], [0, 0], [-4, 3], [-4, -3], [-5, 0]] as const) set(lx, Y1, lz, LAMP);
   // scattered plating salvage — kept clear of every doorway approach
   for (const [sx, sz] of [[0, 3], [0, 4], [-1, 4], [2, 2]] as const) set(sx, 31, sz, METAL_PLATING);
+  // the wreck ships half-assembled: a Ship Frame already braced around it, one
+  // Frame Corner at each of the eight corners of x -6..4, y 30..35, z -11..11.
+  // That cuboid swallows the hull shell, both wings with their four Thrusters
+  // at z ±11 and the save room, and it encloses no ground: every column under
+  // it sits within 11 of the crash, where the plateau pins the sand at y 30 —
+  // so the floor row rests on the sand line. computeFrame reads exactly one
+  // cuboid out of these eight; the corners overwrite whatever stands there.
+  for (const cx of [-6, 4]) for (const cy of [30, 35]) for (const cz of [-11, 11]) set(cx, cy, cz, FRAME_CORNER);
 }
 
 function paintSecondShip(set: (x: number, y: number, z: number, id: number) => void, t: { x: number; z: number }, seed: number) {
@@ -809,6 +958,102 @@ function paintOasis(set: (x: number, y: number, z: number, id: number) => void, 
       const sr = rr + 1.8 + hash2(tz, tx, seed + 89 + i);
       const sx = o.x + Math.round(Math.cos(sa) * sr), sz = o.z + Math.round(Math.sin(sa) * sr);
       set(sx, Math.max(Math.round(heightAt(seed, sx, sz)), hb) + 1, sz, MELON_1);
+    }
+  }
+}
+
+/* ── Oil Seeps and Oil-Sand Fields ───────────────────────────────────────────
+ * Two lattices, one black liquid. A Seep is an oasis with the life taken out:
+ * the same bowl, filled with Oil Source instead of water, its ground stained to
+ * Oil Sands and nothing allowed to stand on it. The Fields are the bulk
+ * deposit — a broad, wobbling flat of oil-stained sand 2-3 deep with a few
+ * seep pans sweating through, never a rectangle and never a circle. */
+
+/** Sink one Oil pan into the stained crust: a Source that stands on oil sand
+ *  with solid ground all around it, so the flow sim never carries the tar off
+ *  across the desert. False when the spot sits on a lip — the caller picks
+ *  another. */
+function oilPan(set: (x: number, y: number, z: number, id: number) => void, seed: number, x: number, z: number): boolean {
+  const h = Math.round(heightAt(seed, x, z));
+  for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const)
+    if (Math.round(heightAt(seed, x + ox, z + oz)) < h) return false;
+  set(x, h, z, OIL);
+  set(x, h - 1, z, OIL_SANDS);
+  return true;
+}
+
+function paintSeep(set: (x: number, y: number, z: number, id: number) => void, o: Seep, seed: number) {
+  const hb = Math.round(heightAt(seed, o.x, o.z));
+  // the pool: same disc and bowl-rounded bottom as an oasis, running black
+  for (let dx = -o.r - 4; dx <= o.r + 4; dx++) {
+    for (let dz = -o.r - 4; dz <= o.r + 4; dz++) {
+      const x = o.x + dx, z = o.z + dz;
+      const d = Math.sqrt(dx * dx + dz * dz);
+      const h = Math.round(heightAt(seed, x, z));
+      if (d <= o.r) {
+        const dep = Math.max(1, Math.round(2.7 - 1.7 * (d / o.r))); // bowl: 3 .. 1
+        for (let y = h; y > hb - dep; y--) set(x, y, z, AIR);
+        set(x, hb - dep, z, OIL_SANDS);
+        for (let y = hb - dep + 1; y <= hb; y++) set(x, y, z, OIL);
+        // nothing grows in the tar: the terrain pass may have stood a cactus,
+        // a dead tree or a boulder here before the pool was cut
+        for (let y = hb + 1; y <= hb + 8; y++) set(x, y, z, AIR);
+      } else if (d <= o.r + 1) {
+        // the pool's rim is stained sand, level with the water line
+        for (let y = h; y < hb + 1; y++) set(x, y, z, OIL_SANDS);
+      } else if (d <= o.r + 4) {
+        // the seep's stain fades out over the crust for a few cells
+        set(x, h, z, OIL_SANDS);
+      }
+    }
+  }
+  // one or two pans just off the rim: Oil sunk into the stained sand, so a
+  // scavenger can scoop the seep dry without wading the pool
+  for (let i = 0; i < 2; i++) {
+    if (hash2(o.x, o.z, seed + 161 + i) > 0.55) continue;
+    const a0 = hash2(o.z - i, o.x + i, seed + 163 + i) * Math.PI * 2;
+    const r0 = o.r + 2 + hash2(o.x + i, o.z - i, seed + 165 + i);
+    for (let t = 0; t < 3; t++) {
+      const a = a0 + t * 2.1, rr = r0 + t;
+      if (oilPan(set, seed, o.x + Math.round(Math.cos(a) * rr), o.z + Math.round(Math.sin(a) * rr))) break;
+    }
+  }
+}
+
+function paintField(set: (x: number, y: number, z: number, id: number) => void, f: { x: number; z: number }, seed: number) {
+  // the outline wobbles: two slow angular lobes over the whole blob plus fine
+  // value noise at the rim, so the flat reads as a seep-stained scar, not a stamp
+  const R = 12.5 + hash2(f.x, f.z, seed + 481) * 4.5; // 12.5..17 base radius
+  const ph = hash2(f.z, f.x, seed + 483) * Math.PI * 2;
+  const RM = Math.ceil(R * 1.62) + 1;
+  for (let dx = -RM; dx <= RM; dx++) {
+    for (let dz = -RM; dz <= RM; dz++) {
+      const x = f.x + dx, z = f.z + dz;
+      const d = Math.sqrt(dx * dx + dz * dz);
+      const a = Math.atan2(dz, dx);
+      const wob = 1 + 0.2 * Math.sin(3 * a + ph) + 0.12 * Math.sin(5 * a + ph * 1.7)
+        + (value2(x / 11, z / 11, seed + 487) - 0.5) * 0.55;
+      const rr = R * wob;
+      if (d > rr) continue;
+      const h = Math.round(heightAt(seed, x, z));
+      const dep = d < rr - 4 ? 3 : 2; // a third deeper in, two at the ragged edge
+      for (let k = 0; k < dep; k++) set(x, h - k, z, OIL_SANDS);
+      // a tar flat stays bare: scrub whatever the terrain pass rooted in it
+      for (let y = h + 1; y <= h + 5; y++) set(x, y, z, AIR);
+    }
+  }
+  // the field sweats: 3-6 shallow Oil pans sunk into the stained sand
+  const nPan = 3 + (hash2(f.x, f.z, seed + 489) * 4 | 0); // 3..6
+  for (let i = 0; i < nPan; i++) {
+    const a0 = hash2(f.x + i * 7, f.z - i * 3, seed + 491) * Math.PI * 2;
+    for (let t = 0; t < 3; t++) {
+      const a = a0 + t * 2.1, rr = (R - 4) * hash2(f.x - i * 5, f.z + i * 11, seed + 493 + t);
+      const px = f.x + Math.round(Math.cos(a) * rr), pz = f.z + Math.round(Math.sin(a) * rr);
+      if (!oilPan(set, seed, px, pz)) continue;
+      // some pans are a two-cell puddle
+      if (hash2(px, pz, seed + 495) > 0.55)
+        oilPan(set, seed, px + (hash2(pz, px, seed + 497) > 0.5 ? 1 : -1), pz);
+      break;
     }
   }
 }
@@ -1229,15 +1474,37 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number, w
 
       // occasional 1x1 entrance shaft: one column punched straight down from
       // the surface into the cave band, with a rock floor — never at the
-      // crash, under a Town (its stair shaft owns those columns), an oasis,
-      // or a breach column (those already stand open to the sky)
+      // crash, under a Town (its stair shaft owns those columns), an oasis, in
+      // reach of a seep's pool and pans, or a breach column (those already
+      // stand open to the sky)
       if (!atCrash && h >= 12 && hash2(wx, wz, seed + 201) > 0.984 &&
           !caveBreach(seed, wx, wz) &&
-          st.townNear(wx, wz, 14) === null && st.nearOasis(wx, wz) === null) {
+          st.townNear(wx, wz, 14) === null && st.nearOasis(wx, wz) === null &&
+          st.seepNear(wx, wz, 7) === null) {
         const d = top - 4; // a little open headroom at the cave floor
         if (d >= 7) {
           for (let y = h - 1; y >= d; y--) c[(x * CS + z) * CH + y] = AIR;
           c[(x * CS + z) * CH + (d - 1)] = ROCK;
+        }
+      }
+
+      // Badlands coal: rare seams of Coal Ore poking through the crust, only
+      // where the ground runs to stone. A patch is its anchor plus a couple of
+      // arms, and every column asks the five anchors that could reach it, so a
+      // patch never clips at a chunk border.
+      if (!atCrash) {
+        let seam = false, proud = false;
+        for (const [ox, oz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+          const ax = wx - ox, az = wz - oz;
+          if (hash2(ax, az, seed + 51) <= 0.992) continue;
+          const abi = biomeAt(ax, az, seed);
+          if (abi !== B_MESA && abi !== B_ROCKY) continue;
+          if (ox === 0 && oz === 0) { seam = true; proud = true; break; }
+          if (hash2(ax + ox * 7, az + oz * 13, seed + 53) > 0.45) { seam = true; break; }
+        }
+        if (seam) {
+          c[(x * CS + z) * CH + h] = COAL_ORE;
+          if (proud && c[(x * CS + z) * CH + h + 1] === 0) setW(wx, h + 1, wz, COAL_ORE);
         }
       }
 
@@ -1300,6 +1567,24 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number, w
   for (let ix = ox0; ix <= ox1; ix++) for (let iz = oz0; iz <= oz1; iz++) {
     const o = st.oasisOf(ix, iz);
     if (o && Math.abs(cx * CS + 8 - o.x) < o.r + 24 && Math.abs(cz * CS + 8 - o.z) < o.r + 24) paintOasis(setW, o, seed);
+  }
+  // Oil-sand Fields on the rarest landmark lattice: centres jitter ±180 and a
+  // tar flat reaches ~30 cells out, so the scan window adds that much slack.
+  const gx0 = Math.floor((cx * CS - 210) / FIELD_L), gx1 = Math.floor((cx * CS + CS - 1 + 210) / FIELD_L);
+  const gz0 = Math.floor((cz * CS - 210) / FIELD_L), gz1 = Math.floor((cz * CS + CS - 1 + 210) / FIELD_L);
+  for (let ix = gx0; ix <= gx1; ix++) for (let iz = gz0; iz <= gz1; iz++) {
+    if (!st.fieldAt(ix, iz)) continue;
+    const fl = st.fieldCenter(ix, iz);
+    if (cx * CS <= fl.x + 31 && cx * CS + CS - 1 >= fl.x - 31 && cz * CS <= fl.z + 31 && cz * CS + CS - 1 >= fl.z - 31)
+      paintField(setW, fl, seed);
+  }
+  // Oil Seeps on their own lattice: centres jitter ±40, the pool plus its
+  // stained halo reaches r+4, hence the slack on each side.
+  const sx0 = Math.floor((cx * CS - 49) / SEEP_L), sx1 = Math.floor((cx * CS + CS - 1 + 49) / SEEP_L);
+  const sz0 = Math.floor((cz * CS - 49) / SEEP_L), sz1 = Math.floor((cz * CS + CS - 1 + 49) / SEEP_L);
+  for (let ix = sx0; ix <= sx1; ix++) for (let iz = sz0; iz <= sz1; iz++) {
+    const sp = st.seepOf(ix, iz);
+    if (sp && Math.abs(cx * CS + 8 - sp.x) < sp.r + 12 && Math.abs(cz * CS + 8 - sp.z) < sp.r + 12) paintSeep(setW, sp, seed);
   }
   // Towns on an unbounded lattice: check which lattice cells touch this chunk.
   // Centers jitter up to ±55 from their lattice point (the home Town can sit a
