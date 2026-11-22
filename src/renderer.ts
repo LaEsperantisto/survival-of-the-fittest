@@ -1624,8 +1624,8 @@ export class Renderer {
   matEmissive = new THREE.MeshBasicMaterial({ map: this.atlas, vertexColors: true, side: THREE.DoubleSide });
   matTrans = new THREE.MeshLambertMaterial({ map: this.atlas, vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide });
 
-  /** active lighting: baked skylight (default) or real-time directional shadows */
-  lightingMode: "sky" | "shadow" = "sky";
+  /** active lighting: baked skylight or real-time directional shadows (default) */
+  lightingMode: "sky" | "shadow" = "shadow";
   private skyLight = new SkyLighting();
   /** baked-light consistency queue: chunks whose light map lags a neighbor */
   private lightRecheck = new Set<string>();
@@ -2221,7 +2221,7 @@ export class Renderer {
   }
 
   /**
-   * Switch lighting at runtime (default "sky"). Flips the mode and shadow
+   * Switch lighting at runtime (default "shadow"). Flips the mode and shadow
    * arming only — call rebuildLights(world) right after so every chunk mesh
    * rebuilds with the mode's material (and baked light in "sky" mode).
    */

@@ -3,7 +3,7 @@
 // travel between devices.
 import type { ShipSnapshot } from "./ship";
 
-export interface WorldMeta { id: string; name: string; seedStr: string; updated: number; mode?: "easy" | "hard"; }
+export interface WorldMeta { id: string; name: string; seedStr: string; updated: number; mode?: "easy" | "hard" | "phase2"; }
 
 const K_INDEX = "sotf:index", K_SET = "sotf:settings";
 
@@ -17,7 +17,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   sens: 1, invertY: false, fov: 70, renderDist: 6, quality: "med", volume: 0.67, units: "C",
   fullscreen: false, music: true, uiScale: 1,
-  lighting: "sky",
+  lighting: "shadow",
 };
 
 export function getSettings(): Settings {
@@ -31,7 +31,7 @@ export function listWorlds(): WorldMeta[] {
 }
 function writeIndex(list: WorldMeta[]) { localStorage.setItem(K_INDEX, JSON.stringify(list)); }
 
-export function createWorld(name: string, seedStr: string, mode: "easy" | "hard" = "easy"): WorldMeta {
+export function createWorld(name: string, seedStr: string, mode: "easy" | "hard" | "phase2" = "easy"): WorldMeta {
   const id = "w" + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
   const meta = { id, name: name || seedStr || "world", seedStr, updated: Date.now(), mode };
   const list = listWorlds();
@@ -93,7 +93,8 @@ export interface RunSave {
   deltas: Record<string, number[]>;
   rots?: Record<string, number>; // cell "x,y,z" -> quarter-turn for player-placed blocks
   // ---- v2: the Map kit and the lessons ----
-  worldMode?: "easy" | "hard";            // fixed at world creation (Easy/Hard Start)
+  worldMode?: "easy" | "hard" | "phase2"; // fixed at world creation (Phase 0/1/2 Start)
+  cheats?: { immortal?: boolean; keep?: boolean }; // cheat-menu toggles that persist with the world
   ships?: ShipSnapshot[];                 // airborne/grounded Ships (cells are ship-local)
   coreFuel?: [string, number[]][];        // Engine Core before takeoff: world cell -> port charges
   pins?: { id: number; x: number; z: number; name: string }[];   // Surveyor's Pins

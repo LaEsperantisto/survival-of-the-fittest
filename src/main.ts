@@ -494,7 +494,7 @@ function renderInstructions() {
 $("btn-create").onclick = () => {
   const seedStr = $v("seed-input").trim() || Math.random().toString(36).slice(2, 10);
   const name = $v("world-name").trim() || seedStr;
-  const mode = (($("mode-select") as HTMLSelectElement).value === "hard" ? "hard" : "easy") as "easy" | "hard";
+  const mode = ($("mode-select") as HTMLSelectElement).value as "easy" | "hard" | "phase2";
   const meta = createWorld(name, seedStr, mode);
   startGame(meta, null);
 };
@@ -502,7 +502,7 @@ $("btn-create").onclick = () => {
 $("btn-guest").onclick = () => {
   // never enters the world index, never autosaves, random seed every time
   const seedStr = Math.random().toString(36).slice(2, 10);
-  const mode = (($("mode-select") as HTMLSelectElement).value === "hard" ? "hard" : "easy") as "easy" | "hard";
+  const mode = ($("mode-select") as HTMLSelectElement).value as "easy" | "hard" | "phase2";
   startGame({ id: "guest:" + Date.now().toString(36), name: "Guest world", seedStr, updated: Date.now(), mode }, null);
 };
 
@@ -547,7 +547,20 @@ $("btn-resume").onclick = () => { if (game) { game.paused = false; show("screen-
 $("btn-save").onclick = () => hud.toast("Manual saves are not allowed — save at Save Beacons (the world auto-persists).");
 $("btn-exportworld").onclick = () => { if (game) game.exportWorld(); };
 $("btn-quit").onclick = () => toTitle();
-$("btn-cheats").onclick = () => show("cheats", $("cheats").classList.contains("hidden"));
+$("btn-cheats").onclick = () => {
+  const open = $("cheats").classList.contains("hidden");
+  show("cheats", open);
+  if (open) paintCheatState();
+};
+function paintCheatState() {
+  if (!game) return;
+  for (const b of Array.from($("cheats").querySelectorAll<HTMLButtonElement>("button[data-immortal], button[data-keep]"))) {
+    const on = b.dataset.immortal !== undefined
+      ? game.cheatInvincible === (b.dataset.immortal === "1")
+      : game.keepInventory === (b.dataset.keep === "1");
+    b.classList.toggle("on", on);
+  }
+}
 const cheatItemSel = $("cheat-item") as HTMLSelectElement;
 for (const [id, def] of Object.entries(ITEMS).sort((a, b) => a[1].name.localeCompare(b[1].name))) {
   const o = document.createElement("option");
@@ -584,13 +597,18 @@ for (const b of Array.from($("cheats").querySelectorAll<HTMLButtonElement>("butt
       return;
     }
     if (b.dataset.immortal !== undefined) {
-      game.survival.invincible = b.dataset.immortal === "1";
-      hud.toast(`Immortality ${game.survival.invincible ? "on" : "off"}.`);
+      game.cheatInvincible = b.dataset.immortal === "1";
+      game.survival.invincible = game.cheatInvincible;
+      hud.toast(`Immortality ${game.cheatInvincible ? "on" : "off"} — saved with this world.`);
+      game.saveNow();
+      paintCheatState();
       return;
     }
     if (b.dataset.keep !== undefined) {
       game.keepInventory = b.dataset.keep === "1";
-      hud.toast(`Keeping inventory on death ${game.keepInventory ? "on" : "off"}.`);
+      hud.toast(`Keeping inventory on death ${game.keepInventory ? "on" : "off"} — saved with this world.`);
+      game.saveNow();
+      paintCheatState();
       return;
     }
     const frac = Number(b.dataset.frac);

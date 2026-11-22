@@ -16,7 +16,7 @@ import { meshShipCells } from "./renderer";
 const POWER_BATT_CAP = 120;
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
-import { heightAt, biomeAt, TOWN_L, CAMP_L, CAVE_MOUTH_L, OUTPOST_L, OASIS_L, CANISTER_L, treePlan, appleTreePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
+import { heightAt, biomeAt, TOWN_L, CAMP_L, CAVE_MOUTH_L, OUTPOST_L, OASIS_L, SEEP_L, CANISTER_L, PHASE2_CORE, treePlan, appleTreePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
 import { offersFor, Offer } from "./trades";
 import { RECIPES, SMELT, canCraft, doCraft, FIRE_FUEL, GEN_FUEL, POT_RECIPES, potHas, potConsume, type PotRecipe } from "./crafting";
 import { QUESTS, currentQuest, loadQuestState, questEvent, recordDeed, reconcile, type QuestDef, type QuestState } from "./quests";
@@ -123,7 +123,7 @@ export class Game {
   openGen: [number, number, number] | null = null;
   beaconMarks: { x: number; y: number; z: number }[] = [];
   // ---- the Map kit and the lessons (save v2) ----
-  worldMode: "easy" | "hard" = "easy";
+  worldMode: "easy" | "hard" | "phase2" = "easy";
   pins: { id: number; x: number; z: number; name: string }[] = [];
   private pinSeq = 0;
   revealed = new Set<string>();   // landmark keys marked by the Tracker, quest guidance or a dig
@@ -185,7 +185,8 @@ export class Game {
   private stick = { x: 0, y: 0 };
   private mobile = matchMedia("(pointer: coarse)").matches;
   speedMul = 1; // cheat-menu movement multiplier, session-only
-  keepInventory = false; // cheat-menu toggle: death costs nothing, session-only
+  keepInventory = false; // cheat-menu toggle: death costs nothing; persisted per world
+  cheatInvincible = false; // cheat-menu Immortality; the tour's own invincibility is separate
   private regGlow = new Map<string, number>(); // "x,y,z" -> entity mesh id of an active regulator's glow shell
   private regGlowMat: THREE.MeshLambertMaterial | null = null;
   private regTick = -1;
@@ -270,6 +271,10 @@ export class Game {
     // Easy/Hard Start is fixed when the world is created; the run copy wins on load
     this.worldMode = run?.worldMode ?? meta.mode ?? "easy";
     this.world = new World(this.seed, this.worldMode);
+    // Phase 2 Start: the wreck's Engine Core already holds two canisters'
+    // worth of Rocket Fuel in its ports
+    if (!run && this.worldMode === "phase2")
+      this.coreFuel.set(PHASE2_CORE.join(","), [SHIP.canisterCharges, SHIP.canisterCharges]);
     // the world sees grounded AND airborne Ships through this one hook:
     // a claimed cell reads as the Ship's block, never as the chunk under it
     this.world.cellProvider = (x, y, z) => {
@@ -598,6 +603,9 @@ export class Game {
       for (const [k, c] of sh.cells) if (isPowerBlock(c.id)) this.powerCells.set("s" + sh.id + "," + k, c.id);
     for (const sh of this.ships.values()) this.buildShipGroup(sh);
     this.worldMode = run.worldMode ?? "easy";
+    this.cheatInvincible = run.cheats?.immortal ?? false;
+    this.keepInventory = run.cheats?.keep ?? false;
+    this.survival.invincible = this.cheatInvincible;
     this.pins = run.pins ?? [];
     this.pinSeq = this.pins.reduce((m, p) => Math.max(m, p.id), 0);
     this.revealed = new Set(run.revealed ?? []);
@@ -764,6 +772,7 @@ export class Game {
       deltas: this.world.serializeDeltas(),
       rots: this.world.serializeRots(),
       worldMode: this.worldMode,
+      cheats: { immortal: this.cheatInvincible, keep: this.keepInventory },
       pins: this.pins,
       visited: [...this.visited],
       revealed: [...this.revealed],
@@ -790,7 +799,7 @@ export class Game {
   endTutorial() {
     this.tut = null;
     this.tutGuide = null;
-    this.survival.invincible = false;
+    this.survival.invincible = this.cheatInvincible;
     document.getElementById("quest")!.classList.remove("hidden");
     this.renderQuest();
     hud.toast("Tour complete. Now survive.");
@@ -1099,6 +1108,10 @@ export class Game {
         const o = this.world.gen.nearestOasis(p.x, p.z);
         return o ? { name: "Oasis", x: o.x + 0.5, y: ground(o.x, o.z), z: o.z + 0.5, lmKey: `oasis:${o.key}` } : null;
       }
+      case "refine": {
+        const sp = this.world.gen.nearestSeep(p.x, p.z);
+        return sp ? { name: "Oil Seep", x: sp.x + 0.5, y: ground(sp.x, sp.z), z: sp.z + 0.5, lmKey: `seep:${sp.key}` } : null;
+      }
       case "water_home":
       case "liftoff": {
         const b = [...this.beaconMarks, { x: -4, y: 31, z: -1 }].reverse()
@@ -1272,6 +1285,17 @@ export class Game {
           out.push({ key: k, x: o.x, z: o.z, kind: "oasis", label: "Oasis" });
       }
     }
+    { // Oil Seeps on their lattice: known = walked, quest-guided or Tracker-revealed
+      const i0 = Math.floor((px - rad) / SEEP_L) - 1, i1 = Math.floor((px + rad) / SEEP_L) + 1;
+      const j0 = Math.floor((pz - rad) / SEEP_L) - 1, j1 = Math.floor((pz + rad) / SEEP_L) + 1;
+      for (let ix = i0; ix <= i1; ix++) for (let iz = j0; iz <= j1; iz++) {
+        const o = g.seepOf(ix, iz);
+        if (!o) continue;
+        const k = `seep:${o.key}`;
+        if (Math.abs(o.x - px) <= rad && Math.abs(o.z - pz) <= rad && this.landmarkKnown(k, o.x, o.z))
+          out.push({ key: k, x: o.x, z: o.z, kind: "seep", label: "Oil Seep" });
+      }
+    }
     { // a buried site only appears once one of its canisters is dug (or Tracker-revealed)
       const i0 = Math.floor((px - rad) / CANISTER_L), i1 = Math.floor((px + rad) / CANISTER_L);
       const j0 = Math.floor((pz - rad) / CANISTER_L), j1 = Math.floor((pz + rad) / CANISTER_L);
@@ -1427,7 +1451,7 @@ export class Game {
         if (t.remembered) { g2.fillStyle = "rgba(8,10,14,0.55)"; g2.fillRect(rx, rz, CS * sc, CS * sc); }
       }
     // Landmarks
-    const lmColor: Record<string, string> = { ship: "#66e5f0", wreck: "#cc4433", town: "#d8b74f", camp: "#b48ad8", mouth: "#8a8f9a", oasis: "#41d878", canister: "#e08a4f" };
+    const lmColor: Record<string, string> = { ship: "#66e5f0", wreck: "#cc4433", town: "#d8b74f", camp: "#b48ad8", mouth: "#8a8f9a", oasis: "#41d878", canister: "#e08a4f", seep: "#8a6a35" };
     for (const l of this.landmarkList(px, pz, r + 8)) {
       const mx = (l.x - x0) * sc, mz = (l.z - z0) * sc;
       if (mx < -4 || mz < -4 || mx > size + 4 || mz > size + 4) continue;

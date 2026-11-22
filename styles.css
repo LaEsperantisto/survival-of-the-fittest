@@ -134,6 +134,7 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 .seg button.on { background: #d8b74f; border-color: #d8b74f; color: #14161c; }
 #cheats { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
 #cheats button { flex: 1 1 auto; padding: 6px 10px; font-size: 13px; min-width: 0; }
+#cheats button.on { border-color: #35e0ff; color: #35e0ff; }
 .cheat-lab { width: 100%; margin-top: 6px; color: #9aa0aa; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
 #cheat-item-row, #cheat-quest-row { display: flex; gap: 6px; }
 #cheat-item, #cheat-quest { flex: 1; background: #22262e; color: #e8e0d0; border: 1px solid #6b7280;

@@ -40,7 +40,7 @@ export class World {
   private fluidGen = 0; // counts propagation steps; odd steps skip the fall
   gen: Structures;
 
-  constructor(public seed: number, public worldMode: "easy" | "hard" = "easy") {
+  constructor(public seed: number, public worldMode: "easy" | "hard" | "phase2" = "easy") {
     this.gen = new Structures(seed);
   }
 

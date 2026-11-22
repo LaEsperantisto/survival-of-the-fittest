@@ -55,7 +55,7 @@ A sub-space of the Ship or a Base separated by Insulating Blocks and a Door, sea
 The ship's insulating wall block.
 
 **Ship**:
-The small wreck at the world origin — a rounded hull with broken wings — split into sealable Compartments: a forward cockpit (its Chest), a central hall, a Save Room whose stern Door is the wreck's only opening to the outside, a water compartment, and a regulator room. On Easy Start the hall and regulator room hold a working Storm Breaker and Heat Regulator; on Hard Start they hold only their Husks. It holds no Crafting Bench and no Bed — bench and bunk must be earned. Fully customizable: any block can be broken or placed, so the Ship can be expanded anywhere.
+The small wreck at the world origin — a rounded hull with broken wings — split into sealable Compartments: a forward cockpit (its Chest), a central hall, a Save Room whose stern Door is the wreck's only opening to the outside, a water compartment, and a regulator room. On a Phase 1 Start the hall and regulator room hold a working Storm Breaker and Heat Regulator; on a Phase 0 Start they hold only their Husks; a Phase 2 Start ships flight-capable — lit wingtip Thrusters, a Yoke in the cockpit, an Engine Core in the hall, Panel and Battery wired in. It holds no Crafting Bench and no Bed — bench and bunk must be earned. Fully customizable: any block can be broken or placed, so the Ship can be expanded anywhere.
 
 **Save Room**:
 The wreck's Compartment containing the starting Save Beacon, reachable only through the hall — the safest room in the crash site.
@@ -332,7 +332,7 @@ A passing state of the open desert: wind-borne sand that amplifies whatever the 
 _Avoid_: dust storm, weather (there is nothing else)
 
 **Sandstorm Breaker**:
-A humming red pylon block. Standing within its radius, the Sandstorm loses all teeth on the body: no amplification, no extra Water drain, no scouring. The Ship's hall holds a working one on Easy Start, and only its Husk on Hard Start; more are craftable at a Crafting Bench, and each new one extends the calm. A Breaker's calm is visible as a faint red dome and a "STORM BROKEN" chip. The housing only comes down for an Alloy Disassembler.
+A humming red pylon block. Standing within its radius, the Sandstorm loses all teeth on the body: no amplification, no extra Water drain, no scouring. The Ship's hall holds a working one on a Phase 1 Start, and only its Husk on a Phase 0 Start; more are craftable at a Crafting Bench, and each new one extends the calm. A Breaker's calm is visible as a faint red dome and a "STORM BROKEN" chip. The housing only comes down for an Alloy Disassembler.
 _Avoid_: windmill, storm lantern (it is not a light)
 
 **Engine Core**:
@@ -452,8 +452,8 @@ Menu with units (Celsius/Fahrenheit), controls, and rendering options.
 a Sealed Space that holds at least one anchor — a Campfire, a Bed, a Storm Breaker, or a Power Panel. Only then does the desert call it home: muffled wind, warm light, a hearth that tends itself.
 _Avoid_: home, shelter (as a mechanic), camp
 
-**Easy Start / Hard Start**:
-the two beginnings a world is made with, chosen at world creation and fixed for the run. Easy's wreck still works — a living Heat Regulator and Storm Breaker; Hard offers only their Husks. Both are stripped of Bench and bunk.
+**Phase Start**:
+the beginnings a world is made with, chosen at world creation and fixed for the run. **Phase 0 (Hard)**: the wreck is dead — only Husks of a Regulator and Storm Breaker. **Phase 1 (Easy, recommended)**: a living Heat Regulator and Storm Breaker. **Phase 2**: the wreck is already flight-capable — Frame braced, all four wingtip Thrusters lit, Yoke, Engine Core (its fuel ports loaded) and a wired Panel and Battery standing inside. Phase 0 and 1 are stripped of Bench and bunk; nothing else changes between Phases.
 _Avoid_: easy/hard mode (nothing else changes)
 
 **Husk**:

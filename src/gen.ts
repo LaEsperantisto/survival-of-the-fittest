@@ -6,7 +6,7 @@ import {
   STORM_BREAKER, STORM_BREAKER_HUSK,
   POWER_PANEL, POWER_POLE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
   CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, COAL_ORE, THRUSTER,
-  OIL, OIL_SANDS, FRAME_CORNER,
+  OIL, OIL_SANDS, FRAME_CORNER, THRUSTER_LIT, FLIGHT_CONTROLS,
 } from "./blocks";
 import { fbm2, ridge2, value2, hash2, Rng } from "./noise";
 
@@ -15,6 +15,10 @@ export const B_DUNES = 0, B_ROCKY = 1, B_SALT = 2, B_MESA = 3, B_CANYON = 4;
 export const BIOME_NAMES = ["Dunes", "Rocky Desert", "Salt Flats", "Badlands", "Canyons"];
 
 const SP = 1e6; // structure id salt
+
+/** The Engine Core a Phase 2 wreck ships with: hall cell, where Game seeds
+ *  its fuel ports and Game's fresh-world check reads the same cell. */
+export const PHASE2_CORE: [number, number, number] = [0, 31, -2];
 
 export interface Oasis { x: number; z: number; r: number; key: string; }
 /** An Oil Seep: the same bowl an oasis cuts, running black instead of blue. */
@@ -682,7 +686,7 @@ export function dungeonEntrance(seed: number, townX: number, townZ: number): { x
  *  All bulkhead doors are Inside Doors and start closed: open one and the two
  *  spaces behind it share one temperature. The wreck is plated — Metal Plating
  *  floors and skin, never rods. */
-function paintShip(set: (x: number, y: number, z: number, id: number) => void, hard: boolean) {
+function paintShip(set: (x: number, y: number, z: number, id: number) => void, hard: boolean, phase2 = false) {
   const Y0 = 30, Y1 = 34;
   // solid shell outline in plan view (rounded corners, tapered bow/stern tips)
   const outline = (x: number, z: number): boolean => {
@@ -763,6 +767,17 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void, h
   for (const [lx, lz] of [[3, 0], [0, 0], [-4, 3], [-4, -3], [-5, 0]] as const) set(lx, Y1, lz, LAMP);
   // scattered plating salvage — kept clear of every doorway approach
   for (const [sx, sz] of [[0, 3], [0, 4], [-1, 4], [2, 2]] as const) set(sx, 31, sz, METAL_PLATING);
+  // Phase 2 Start: the wreck is already flight-capable — the drive's nozzles
+  // never died, and a full flight fit stands inside the braced Frame: a yoke
+  // in the cockpit, the Engine Core in the hall, Panel + Battery in the water
+  // compartment. Fuel waits in the Core's ports (seeded by Game, not gen).
+  if (phase2) {
+    for (const x of [-1, 0]) { set(x, 32, 11, THRUSTER_LIT); set(x, 32, -11, THRUSTER_LIT); }
+    set(3, 31, 0, FLIGHT_CONTROLS);
+    set(PHASE2_CORE[0], PHASE2_CORE[1], PHASE2_CORE[2], ENGINECORE);
+    set(-4, 31, 3, BATTERY);
+    set(-5, 31, 3, POWER_PANEL);
+  }
   // the wreck ships half-assembled: a Ship Frame already braced around it, one
   // Frame Corner at each of the eight corners of x -6..4, y 30..35, z -11..11.
   // That cuboid swallows the hull shell, both wings with their four Thrusters
@@ -1414,7 +1429,7 @@ function paintOutpost(set: (x: number, y: number, z: number, id: number) => void
   for (let y = f + 1; y <= f + 7; y++) set(c.x + 16, y, c.z, POWER_POLE);
   set(c.x + 16, f + 8, c.z, ELEC_LAMP);
 }
-export function genChunk(seed: number, st: Structures, cx: number, cz: number, worldMode: "easy" | "hard" = "easy"): Uint8Array {
+export function genChunk(seed: number, st: Structures, cx: number, cz: number, worldMode: "easy" | "hard" | "phase2" = "easy"): Uint8Array {
   const c = new Uint8Array(CS * CS * CH);
   const setW = (wx: number, wy: number, wz: number, id: number) => {
     const x = wx - cx * CS, z = wz - cz * CS;
@@ -1559,7 +1574,7 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number, w
     }
   }
 
-  if (cx >= -1 && cx <= 0 && cz >= -1 && cz <= 0) paintShip(setW, worldMode === "hard");
+  if (cx >= -1 && cx <= 0 && cz >= -1 && cz <= 0) paintShip(setW, worldMode === "hard", worldMode === "phase2");
   // Oases on an unbounded lattice: centers jitter ±80, the painted footprint
   // reaches r+24, so the scan window adds a cell of slack on each side.
   const ox0 = Math.floor((cx * CS - 104) / OASIS_L), ox1 = Math.floor((cx * CS + CS - 1 + 104) / OASIS_L);
