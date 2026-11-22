@@ -1549,7 +1549,7 @@ export class Game {
       }
       if (ke.code === "KeyG" && !this.ui && !this.paused && !this.cine && !this.piloting) this.dropHeld();
       if (ke.code === "Escape") {
-        if (this.piloting) { this.exitPiloting(); return; } // hands off the yoke; the Ship settles itself
+        if (this.piloting) { this.exitPiloting(); return; } // hands off the yoke; the Ship holds while anyone is aboard
         if (this.tut && !this.ui) { this.tut.finish(true); return; }
         this.escape();
       }
@@ -5030,10 +5030,13 @@ export class Game {
         }
       }
       // a piloted Ship's engines hold its altitude for free; it sinks when
-      // unpowered (no lit Thruster, dry tanks), over-mass — or uncrewed:
-      // leave the controls and the Ship settles to the ground beneath you
+      // unpowered (no lit Thruster, dry tanks), over-mass — or truly
+      // uncrewed: nobody on board at all. A crew member standing inside the
+      // hull (away from the yoke) keeps the Ship hovering where it is.
       const canFly = crew && lit > 0 && (sh.fuel[0] + sh.fuel[1] > 0) && !over;
-      let vx = 0, vy = canFly ? 0 : -SHIP.sinkSpeed * (over ? 3 : 1), vz = 0;
+      const manned = this.isAboard(sh);
+      const willSink = !canFly && !(manned && lit > 0 && (sh.fuel[0] + sh.fuel[1] > 0) && !over);
+      let vx = 0, vy = willSink ? -SHIP.sinkSpeed * (over ? 3 : 1) : 0, vz = 0;
       if (powered) {
         // thrust pushes along the hull's forward (the facing captured at
         // takeoff), spun by the current heading
