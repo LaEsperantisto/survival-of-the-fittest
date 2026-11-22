@@ -184,7 +184,6 @@ export const BLOCKS: BlockDef[] = [
   // deepest stone — the Ship's repair hangs on them. Raw Ore is a material:
   // what comes out of the ground never goes back in as a block.
   def({ id: IRON_ORE, name: "Iron Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 2.6, tool: "pickaxe", minTier: 1, placeable: false, color: [0.62, 0.52, 0.42] }),
-  def({ id: COAL_ORE, name: "Coal Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 2.4, tool: "pickaxe", minTier: 1, placeable: false, color: [0.26, 0.24, 0.23] }),
   def({ id: COPPER_ORE, name: "Copper Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 2.6, tool: "pickaxe", minTier: 1, placeable: false, color: [0.72, 0.42, 0.26] }),
   def({ id: ALABASTER, name: "Alabaster", solid: true, opaque: true, transparent: false, emissive: false, R: 1.4, breakTime: 1.8, tool: "pickaxe", minTier: 0, placeable: true, color: [0.86, 0.83, 0.74] }),
   def({ id: COBALT_ORE, name: "Cobalt Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.6, breakTime: 4.2, tool: "pickaxe", minTier: 3, placeable: false, color: [0.36, 0.46, 0.68] }),
@@ -218,7 +217,6 @@ export const BLOCKS: BlockDef[] = [
   def({ id: INSERTER, name: "Inserter", solid: true, opaque: false, transparent: false, emissive: false, R: 0.2, breakTime: 1, tool: "disassembler", minTier: 1, placeable: true, color: [0.3, 0.5, 0.55] }),
   def({ id: PLANTER, name: "Planter", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 1, tool: "disassembler", minTier: 1, placeable: true, color: [0.3, 0.5, 0.28] }),
   def({ id: HARVESTER, name: "Harvester", solid: true, opaque: false, transparent: false, emissive: false, R: 0.3, breakTime: 1, tool: "disassembler", minTier: 1, placeable: true, color: [0.55, 0.42, 0.2] }),
-  def({ id: REFINERY, name: "Refinery", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.4, 0.38, 0.42] }),
   // Alabaster masonry: the Cave's pale stone cut into building kit. Bricks and
   // panels stand full blocks; Pillars and Fences are real geometry — a rail
   // fence you can lean into but never hop, a gate you open with E.
@@ -252,6 +250,10 @@ export const BLOCKS: BlockDef[] = [
   // updateTrees mirrors); its canopy bears Apple fruit blocks that re-ripen.
   def({ id: APPLE_SAPLING, name: "Apple Pip", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: true, color: [0.32, 0.55, 0.3] }),
   def({ id: APPLE_FRUIT, name: "Apple", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: false, color: [0.75, 0.2, 0.2] }),
+  // Coal Ore veins the Cave crust (id 91); the Refinery (92) cooks it into
+  // Rocket Fuel. Keep this array in id order — BLOCKS is indexed by position.
+  def({ id: COAL_ORE, name: "Coal Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 2.4, tool: "pickaxe", minTier: 1, placeable: false, color: [0.26, 0.24, 0.23] }),
+  def({ id: REFINERY, name: "Refinery", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.4, 0.38, 0.42] }),
 ];
 
 /** Everything that lives on the Grid: Panel..Harvester (ADR-0007). */
