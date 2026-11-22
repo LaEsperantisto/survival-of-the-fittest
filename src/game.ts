@@ -281,8 +281,8 @@ export class Game {
       if (!this.ships.size) return null;
       for (const sh of this.ships.values()) {
         const b = sh.worldAABB();
-        if (x < b.min[0] || x >= b.max[0] || y < b.min[1] || y >= b.max[1] || z < b.min[2] || z >= b.max[2]) continue;
-        const c = sh.cellAtWorld(x, y, z);
+        if (x + 0.5 < b.min[0] || x + 0.5 >= b.max[0] || y + 0.5 < b.min[1] || y + 0.5 >= b.max[1] || z + 0.5 < b.min[2] || z + 0.5 >= b.max[2]) continue;
+        const c = sh.cellAtWorld(x + 0.5, y + 0.5, z + 0.5);
         if (c) return c.id;
       }
       return null;
@@ -4695,20 +4695,18 @@ export class Game {
   private shipHitsTerrain(sh: Ship): boolean {
     const b = sh.getBox();
     if (!b) return false;
-    const [cos, sin] = sh.rot();
     const c = sh.centerLocal();
-    const px = sh.pos.x, py = sh.pos.y, pz = sh.pos.z;
+    const [px, py, pz] = sh.anchor();
     for (let ix = b.min[0]; ix <= b.max[0]; ix++)
       for (let iy = b.min[1]; iy <= b.max[1]; iy++)
         for (let iz = b.min[2]; iz <= b.max[2]; iz++) {
-          if (sh.getCell(ix, iy, iz) || !sh.claimsLocal(ix, iy, iz)) continue;
-          const dx = ix + 0.5 - c[0], dy = iy + 0.5 - c[1], dz = iz + 0.5 - c[2];
-          if (isSolid(this.terrainAt(
-            Math.floor(px + cos * dx + sin * dz),
-            Math.floor(py + dy),
-            Math.floor(pz - sin * dx + cos * dz),
-          ))) return true;
-        }
+        if (sh.getCell(ix, iy, iz) || !sh.claimsLocal(ix, iy, iz)) continue;
+        if (isSolid(this.terrainAt(
+          Math.floor(px + ix + 0.5 - c[0]),
+          Math.floor(py + iy + 0.5 - c[1]),
+          Math.floor(pz + iz + 0.5 - c[2]),
+        ))) return true;
+      }
     return false;
   }
 
@@ -4924,9 +4922,8 @@ export class Game {
   /** the flying Ship's cells go back to chunks, at the Ship's current pose. */
   private performLanding(sh: Ship) {
     if (this.piloting === sh) this.exitPiloting();
-    // square up before the cells are written: a diagonal footprint would
-    // scatter the grid over wrong cells and clip its own blocks
-    sh.yaw = Math.round(sh.yaw / (Math.PI / 2)) * (Math.PI / 2);
+    // geometry never rotated with heading, so the footprint is already a
+    // plain axis-aligned copy at the Ship's pose — cells land where they fly
     const g = this.shipGroups.get(sh.id);
     if (g) {
       this.renderer.removeEntityGroup(g);
@@ -4968,8 +4965,8 @@ export class Game {
       this.shipDirty.clear();
     }
     for (const sh of [...this.ships.values()]) {
-      sh.prevPos = { x: sh.pos.x, y: sh.pos.y, z: sh.pos.z };
-      sh.prevYaw = sh.yaw;
+      const a0 = sh.anchor();
+      sh.prevPos = { x: a0[0], y: a0[1], z: a0[2] };
       const crew = this.piloting === sh;
       const lit = this.litThrusters(sh);
       const over = sh.mass() > lit * SHIP.liftCapacity;
@@ -4997,9 +4994,10 @@ export class Game {
           this.flightBump = 8;
         }
       }
-      // the engines hold the Ship's altitude for free; it only sinks when
-      // unpowered (no lit Thruster, dry tanks) or over-mass
-      const canFly = lit > 0 && (sh.fuel[0] + sh.fuel[1] > 0) && !over;
+      // a piloted Ship's engines hold its altitude for free; it sinks when
+      // unpowered (no lit Thruster, dry tanks), over-mass — or uncrewed:
+      // leave the controls and the Ship settles to the ground beneath you
+      const canFly = crew && lit > 0 && (sh.fuel[0] + sh.fuel[1] > 0) && !over;
       let vx = 0, vy = canFly ? 0 : -SHIP.sinkSpeed * (over ? 3 : 1), vz = 0;
       if (powered) {
         const fwd = thrust * SHIP.speed;
@@ -5030,19 +5028,12 @@ export class Game {
           if (this.pilotLand || climbCmd < 0 || !canFly) { this.performLanding(sh); continue; }
         }
       }
-      const d = { x: sh.pos.x - sh.prevPos.x, y: sh.pos.y - sh.prevPos.y, z: sh.pos.z - sh.prevPos.z };
-      const dyaw = sh.yaw - sh.prevYaw;
+      const a = sh.anchor();
+      const d = { x: a[0] - sh.prevPos.x, y: a[1] - sh.prevPos.y, z: a[2] - sh.prevPos.z };
       this.updateShipGroup(sh);
       if (d.x || d.y || d.z) {
         if (this.isAboard(sh)) {
-          // the crew rides with the deck: turn with the hull, slide with it
-          if (dyaw) {
-            const c = Math.cos(dyaw), s = Math.sin(dyaw);
-            const px = this.player.pos.x - sh.pos.x, pz = this.player.pos.z - sh.pos.z;
-            this.player.pos.x = sh.pos.x + c * px + s * pz;
-            this.player.pos.z = sh.pos.z - s * px + c * pz;
-            this.player.yaw += dyaw;
-          }
+          // the crew rides with the deck: the hull slides, and so do they
           this.player.pos.x += d.x;
           this.player.pos.y += d.y;
           this.player.pos.z += d.z;
@@ -5063,7 +5054,6 @@ export class Game {
       }
     } else {
       g = new THREE.Group();
-      g.rotation.order = "YXZ";
       this.shipGroups.set(sh.id, g);
       this.renderer.addEntityGroup(g);
     }
@@ -5079,8 +5069,8 @@ export class Game {
   private updateShipGroup(sh: Ship) {
     const g = this.shipGroups.get(sh.id);
     if (!g) return;
-    g.position.set(sh.pos.x, sh.pos.y, sh.pos.z);
-    g.rotation.set(0, sh.yaw, 0);
+    const [ax, ay, az] = sh.anchor();
+    g.position.set(ax, ay, az);
   }
 
   /** E at an Engine Core: Rocket Fuel Canisters pour into the two ports. */
