@@ -8,7 +8,7 @@ import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, sackUnits, sackFree, type It
 import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_GROUP, ALAB_GATE, ALAB_GATE_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, CHEST_INTERFACE, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, INSERTER, PLANTER, HARVESTER, REFINERY, POLE_LINK, DEVICE_REACH, isPowerBlock, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable,
   COOKPOT, WATER_CAGE, WATER_CAGE_FULL, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING, APPLE_FRUIT,
   FRAME_CORNER, FLIGHT_CONTROLS, OIL, isFluid } from "./blocks";
-import { Ship, SHIP, massOf } from "./ship";
+import { Ship, SHIP, FWD_DIR, massOf } from "./ship";
 import { computeFrame, type Box3, type FrameResult } from "./shipframe";
 import { meshShipCells } from "./renderer";
 
@@ -4886,6 +4886,10 @@ export class Game {
     for (const [x, y, z, id, rot] of captured) sh.setCell(x, y, z, id, rot);
     sh.pos = { x: (bb.min[0] + bb.max[0] + 1) / 2, y: (bb.min[1] + bb.max[1] + 1) / 2, z: (bb.min[2] + bb.max[2] + 1) / 2 };
     sh.grounded = false;
+    // the Ship's forward is the way the pilot faced the moment the deck
+    // left the ground, rounded to a cardinal; it is fixed to the hull from
+    // there on and turns with the Ship
+    sh.fwd = ((Math.round(this.player.yaw / (Math.PI / 2)) % 4) + 4) % 4;
     const coreCell = captured.find((c) => c[3] === ENGINECORE);
     if (coreCell) {
       const pk = `${coreCell[0]},${coreCell[1]},${coreCell[2]}`;
@@ -4980,12 +4984,30 @@ export class Game {
     for (const sh of [...this.ships.values()]) {
       sh.prevPos = { x: sh.pos.x, y: sh.pos.y, z: sh.pos.z };
       sh.prevYaw = sh.yaw;
+      if (sh.spinTo !== null) {
+        // touchdown turn: the hull rotates to its lattice-aligned heading
+        // (mesh, rider and all), and only then do the cells go back
+        const d = sh.spinTo - sh.yaw;
+        const step = SHIP.settleRate * dt;
+        sh.yaw = Math.abs(d) <= step ? sh.spinTo : sh.yaw + Math.sign(d) * step;
+        const dyaw = sh.yaw - sh.prevYaw;
+        this.updateShipGroup(sh);
+        if (dyaw && this.isAboard(sh)) {
+          const c = Math.cos(dyaw), s = Math.sin(dyaw);
+          const px = this.player.pos.x - sh.pos.x, pz = this.player.pos.z - sh.pos.z;
+          this.player.pos.x = sh.pos.x + c * px + s * pz;
+          this.player.pos.z = sh.pos.z - s * px + c * pz;
+          this.player.yaw += dyaw;
+        }
+        if (sh.yaw === sh.spinTo) { sh.spinTo = null; this.performLanding(sh); }
+        continue;
+      }
       const crew = this.piloting === sh;
       const lit = this.litThrusters(sh);
       const over = sh.mass() > lit * SHIP.liftCapacity;
       let thrust = 0, climbCmd = 0, powered = false;
       if (crew) {
-        const yawIn = (this.keys.has("KeyD") ? 1 : 0) - (this.keys.has("KeyA") ? 1 : 0);
+        const yawIn = (this.keys.has("KeyA") ? 1 : 0) - (this.keys.has("KeyD") ? 1 : 0);
         thrust = (this.keys.has("KeyW") ? 1 : 0) - (this.keys.has("KeyS") ? 1 : 0);
         climbCmd = (this.keys.has("Space") ? 1 : 0) - ((this.keys.has("ControlLeft") || this.keys.has("ControlRight")) ? 1 : 0);
         if (this.pilotLand) climbCmd = -1;
@@ -5013,9 +5035,13 @@ export class Game {
       const canFly = crew && lit > 0 && (sh.fuel[0] + sh.fuel[1] > 0) && !over;
       let vx = 0, vy = canFly ? 0 : -SHIP.sinkSpeed * (over ? 3 : 1), vz = 0;
       if (powered) {
+        // thrust pushes along the hull's forward (the facing captured at
+        // takeoff), spun by the current heading
         const fwd = thrust * SHIP.speed;
-        vx = Math.sin(sh.yaw) * fwd;
-        vz = Math.cos(sh.yaw) * fwd;
+        const c = Math.cos(sh.yaw), s = Math.sin(sh.yaw);
+        const [lx, lz] = FWD_DIR[sh.fwd];
+        vx = (lx * c + lz * s) * fwd;
+        vz = (-lx * s + lz * c) * fwd;
         vy = climbCmd * SHIP.climb;
       }
       sh.vel = { x: vx, y: vy, z: vz };
@@ -5037,8 +5063,12 @@ export class Game {
         if (vy < 0 && !slidY) {
           // the deck met the ground: a held Ctrl (or the Set-down button)
           // makes it a landing, and an unpowered Ship settles wherever it
-          // came down
-          if (this.pilotLand || climbCmd < 0 || !canFly) { this.performLanding(sh); continue; }
+          // came down. A smooth landing first turns the hull to the nearest
+          // right angle, then writes the cells back to the lattice.
+          if (this.pilotLand || climbCmd < 0 || !canFly) {
+            sh.spinTo = Math.round(sh.yaw / (Math.PI / 2)) * (Math.PI / 2);
+            continue;
+          }
         }
       }
       const d = { x: sh.pos.x - sh.prevPos.x, y: sh.pos.y - sh.prevPos.y, z: sh.pos.z - sh.prevPos.z };

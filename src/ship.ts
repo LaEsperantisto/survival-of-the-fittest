@@ -30,6 +30,8 @@ export const SHIP = {
   climb: 4,           // m/s
   ceiling: CH,        // world height
   yawRate: (25 * Math.PI) / 180, // ~25°/s at the controls
+  /** smooth-landing spin: the hull settles to the nearest right angle at this rate */
+  settleRate: (40 * Math.PI) / 180,
   /** one Rocket Fuel Canister banks this many charges; ~1 canister per
    *  2 flight-minutes at 4 lit Thrusters */
   canisterCharges: 60,
@@ -53,6 +55,7 @@ export interface ShipSnapshot {
   id: number;
   pos: { x: number; y: number; z: number };
   yaw: number;
+  fwd?: number;
   vel: { x: number; y: number; z: number };
   grounded: boolean;
   fuel: number[];
@@ -64,11 +67,17 @@ export function massOf(id: number): number {
   return SHIP.defaultMass;
 }
 
+/** local forward vectors by facing index: 0 -Z, 1 -X, 2 +Z, 3 +X */
+export const FWD_DIR: [number, number][] = [[0, -1], [-1, 0], [0, 1], [1, 0]];
+
 export class Ship {
   cells = new Map<string, ShipCell>();
   /** world position of the Frame bbox centre (yaw pivot) */
   pos = { x: 0, y: 0, z: 0 };
   yaw = 0;
+  /** "forward" for thrust: a FWD_DIR index picked from the pilot's facing
+   *  at takeoff, fixed to the hull (it turns with the Ship) */
+  fwd = 0;
   vel = { x: 0, y: 0, z: 0 };
   grounded = true;
   /** the two Engine Core Rocket Fuel ports, in charges */
@@ -76,6 +85,9 @@ export class Ship {
   /** last frame's pose, so riding entities can follow the delta */
   prevPos = { x: 0, y: 0, z: 0 };
   prevYaw = 0;
+  /** smooth landing: while set, the hull is turning to this yaw before
+   *  its cells are written back to the lattice; not saved */
+  spinTo: number | null = null;
   private bbox: Box3 | null = null;
   private shell: Set<string> | null = null;
 
@@ -321,7 +333,7 @@ export class Ship {
 
   snapshot(): ShipSnapshot {
     return {
-      id: this.id, pos: { ...this.pos }, yaw: this.yaw,
+      id: this.id, pos: { ...this.pos }, yaw: this.yaw, fwd: this.fwd,
       vel: { ...this.vel }, grounded: this.grounded, fuel: [...this.fuel],
       cells: [...this.cells.entries()],
     };
@@ -331,6 +343,7 @@ export class Ship {
     const sh = new Ship(s.id);
     sh.pos = { ...s.pos };
     sh.yaw = s.yaw;
+    sh.fwd = ((s.fwd ?? 0) % 4 + 4) % 4;
     sh.vel = { ...s.vel };
     sh.grounded = s.grounded;
     sh.fuel = (s.fuel ?? [0, 0]).slice(0, SHIP.fuelPorts);

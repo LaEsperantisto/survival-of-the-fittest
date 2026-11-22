@@ -73,7 +73,10 @@ export class Player {
       this.vel.y *= 1 - Math.min(0.9, 2.2 * dt);
     } else {
       this.vel.y -= 24 * dt;
-      if (jump && this.onGround) { this.vel.y = 8.2; this.onGround = false; }
+      // trapped inside a block (a Ship landed on you, a misplaced wall):
+      // jump always works there, so the way out is always up
+      const stuck = !this.onGround && this.collides(this.pos.x, this.pos.y + 0.02, this.pos.z);
+      if (jump && (this.onGround || stuck)) { this.vel.y = 8.2; this.onGround = false; }
     }
 
     this.moveAxis(this.vel.x * dt, 0);
