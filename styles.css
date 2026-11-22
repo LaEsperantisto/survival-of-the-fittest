@@ -155,7 +155,8 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 .invcell { width: var(--cell, 64px); height: var(--cell, 64px); background: #2a2f39; border: 1px solid #444b58; border-radius: 4px;
   position: relative; cursor: grab; background-size: 100% 100%; image-rendering: pixelated; }
 .invcell.span { width: 100%; height: auto; }
-.invcell.active { outline: 2px solid #d8b74f; }
+/* the outline overhangs the cell box: raise it above the neighbours it now overlaps */
+.invcell.active { outline: 2px solid #d8b74f; z-index: 1; }
 /* touching slots: squared corners, or the radii open concave notches at cell joins */
 #inv-grid .invcell, #chest-grid .invcell,
 #fire-input-grid .invcell, #fire-output-grid .invcell,
