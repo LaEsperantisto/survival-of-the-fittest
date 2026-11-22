@@ -1401,14 +1401,18 @@ export class Game {
     on("keydown", (e) => {
       const ke = e as KeyboardEvent;
       if (ke.repeat) return;
+      // while focus sits in a text field (the Chest Interface search box),
+      // the letters belong to the field: nothing but Escape keeps its game meaning
+      const ae = document.activeElement;
+      if (ke.code !== "Escape" &&
+          (ae instanceof HTMLInputElement || ae instanceof HTMLTextAreaElement)) return;
       this.keys.add(ke.code);
       if (ke.code === "KeyE") this.act();
       if (ke.code === "KeyQ") this.useItem();
       if (ke.code === "KeyX") this.surge();
       if (ke.code === "KeyT") this.toggleLantern();
       if (ke.code === "KeyM" && this.equip.head?.itemId === "visor" &&
-          !this.ui && !this.paused && !this.cine && !this.liftoff &&
-          !(document.activeElement instanceof HTMLInputElement)) {
+          !this.ui && !this.paused && !this.cine && !this.liftoff) {
         this.mapMax = !this.mapMax;
         this.renderPinPanel();
         this.drawMap();

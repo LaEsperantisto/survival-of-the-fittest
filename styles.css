@@ -146,8 +146,8 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 .panel h3 { margin-bottom: 14px; font-size: 19px; letter-spacing: 1px; text-transform: uppercase; }
 .close-x { position: absolute; top: 10px; right: 12px; z-index: 5; margin: 0;
   min-width: 34px; padding: 4px 10px; font-size: 18px; line-height: 1.2; }
-#inv-grid { display: grid; gap: 6px; }
-#chest-grid { display: grid; gap: 6px; margin-bottom: 16px; }
+#inv-grid { display: grid; gap: 0; }
+#chest-grid { display: grid; gap: 0; margin-bottom: 16px; }
 #chest-section h3 { margin-bottom: 10px; }
 .inv-ghost { position: fixed; pointer-events: none; z-index: 300; border-radius: 4px;
   border: 1px solid #d8b74f; opacity: 0.75; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
@@ -156,6 +156,10 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
   position: relative; cursor: grab; background-size: 100% 100%; image-rendering: pixelated; }
 .invcell.span { width: 100%; height: auto; }
 .invcell.active { outline: 2px solid #d8b74f; }
+/* touching slots: squared corners, or the radii open concave notches at cell joins */
+#inv-grid .invcell, #chest-grid .invcell,
+#fire-input-grid .invcell, #fire-output-grid .invcell,
+#pot-input-grid .invcell, #pot-output-grid .invcell { border-radius: 0; }
 .invcell .icon { position: absolute; right: 3px; bottom: 0; font-size: 13px; font-weight: 700;
   color: #fff; text-shadow: 0 1px 2px #000, 0 0 4px #000; pointer-events: none; }
 /* Open Sack panel: two pockets under the side buttons */
@@ -207,7 +211,7 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 .sort-btn { margin: 2px 0 8px; padding: 4px 16px; font-size: 12px; }
 .fire-sort { margin-top: 2px; align-self: flex-start; }
 .fire-lab { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #9aa0aa; }
-#fire-input-grid, #fire-output-grid, #pot-input-grid, #pot-output-grid { display: grid; gap: 6px; }
+#fire-input-grid, #fire-output-grid, #pot-input-grid, #pot-output-grid { display: grid; gap: 0; }
 #fire-coals, #pot-coals { min-width: 150px; min-height: 44px; display: flex; align-items: center;
 font-size: 12px; color: #c9c2b4; background: #22262e; border: 1px solid #3a4150; border-radius: 6px;
 padding: 6px 10px; }
