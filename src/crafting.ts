@@ -178,6 +178,8 @@ export function potConsume(inv: Inventory, r: PotRecipe): boolean {
 
 /** What a fuel item feeds a Campfire, in charges (a lit fire drips 1 charge per 10 real minutes). */
 export const FIRE_FUEL: Record<string, number> = { kindling: 0.5, wood_log: 2, deadwood: 1, coal_ore: 6 };
+/** Wood Generator burn seconds banked per fuel item fed through its panel. */
+export const GEN_FUEL: Record<string, number> = { wood_log: 30, deadwood: 6 };
 
 export function canCraft(inv: Inventory, r: Recipe): boolean {
   return Object.entries(r.needs).every(([id, n]) => inv.has(id, n));

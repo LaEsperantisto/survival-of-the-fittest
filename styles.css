@@ -198,25 +198,25 @@ input[type=text] { background: #22262e; color: #e8e0d0; border: 1px solid #6b728
 #inv-craft-bar button.on { background: #d8b74f; border-color: #d8b74f; color: #14161c; }
 #inv-craft { margin-top: 8px; max-height: 40vh; overflow-y: auto; }
 /* Campfire cooking station: art + control row, then Fuel / Input / Output grids */
-#fire-section, #pot-section { margin-top: 18px; border-top: 1px solid #333a45; padding-top: 14px; }
-#fire-section h3, #pot-section h3 { margin-bottom: 10px; }
-#fire-gauge, #pot-gauge { font-size: 13px; color: #9aa0aa; text-transform: none; letter-spacing: 0; }
+#fire-section, #pot-section, #gen-section { margin-top: 18px; border-top: 1px solid #333a45; padding-top: 14px; }
+#fire-section h3, #pot-section h3, #gen-section h3 { margin-bottom: 10px; }
+#fire-gauge, #pot-gauge, #gen-gauge { font-size: 13px; color: #9aa0aa; text-transform: none; letter-spacing: 0; }
 #fire-row, #pot-row { display: flex; align-items: center; gap: 16px; margin-bottom: 14px; }
 #fire-art, #pot-art { width: 96px; height: 96px; flex: 0 0 auto; background-size: 100% 100%;
   image-rendering: pixelated; border-radius: 6px; filter: grayscale(0.9) brightness(0.45); }
 #fire-art.lit, #pot-art.lit { filter: grayscale(0.35) brightness(0.95); }
 #btn-fire, #btn-pot { flex: 0 0 auto; }
 #fire-lamp-wrap { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #c9c2b4; }
-#fire-grids, #pot-grids { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+#fire-grids, #pot-grids, #gen-grids { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
 .fire-col { display: flex; flex-direction: column; gap: 6px; }
 .sort-btn { margin: 2px 0 8px; padding: 4px 16px; font-size: 12px; }
 .fire-sort { margin-top: 2px; align-self: flex-start; }
 .fire-lab { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #9aa0aa; }
 #fire-input-grid, #fire-output-grid, #pot-input-grid, #pot-output-grid { display: grid; gap: 0; }
-#fire-coals, #pot-coals { min-width: 150px; min-height: 44px; display: flex; align-items: center;
+#fire-coals, #pot-coals, #gen-coals { min-width: 150px; min-height: 44px; display: flex; align-items: center;
 font-size: 12px; color: #c9c2b4; background: #22262e; border: 1px solid #3a4150; border-radius: 6px;
 padding: 6px 10px; }
-#fire-coals.hot, #pot-coals.hot { border-color: #d8b74f; color: #f2e9c9; }
+#fire-coals.hot, #pot-coals.hot, #gen-coals.hot { border-color: #d8b74f; color: #f2e9c9; }
 .fire-hint { margin-top: 12px; font-size: 12px; color: #8a93a5; }
 .cook-bar { position: absolute; left: 0; bottom: 0; height: 5px; max-width: 100%;
   background: #d8b74f; border-radius: 0 3px 3px 0; pointer-events: none;

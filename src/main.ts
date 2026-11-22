@@ -528,6 +528,7 @@ $("btn-catalog-title").onclick = renderCatalog;
 // Catalog also opens from the pack, the Campfire panel and the Bench/Armoury panel
 $("btn-catalog-inv").onclick = renderCatalog;
 $("btn-catalog-fire").onclick = renderCatalog;
+$("btn-catalog-gen").onclick = renderCatalog;
 $("btn-catalog-craft").onclick = renderCatalog;
 $("btn-chronicle").onclick = renderChronicle;
 

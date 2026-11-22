@@ -18,7 +18,7 @@ import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
 import { heightAt, biomeAt, TOWN_L, CAMP_L, CAVE_MOUTH_L, OUTPOST_L, OASIS_L, CANISTER_L, treePlan, appleTreePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
 import { offersFor, Offer } from "./trades";
-import { RECIPES, SMELT, canCraft, doCraft, FIRE_FUEL, POT_RECIPES, potHas, potConsume, type PotRecipe } from "./crafting";
+import { RECIPES, SMELT, canCraft, doCraft, FIRE_FUEL, GEN_FUEL, POT_RECIPES, potHas, potConsume, type PotRecipe } from "./crafting";
 import { QUESTS, currentQuest, loadQuestState, questEvent, recordDeed, reconcile, type QuestDef, type QuestState } from "./quests";
 import { LESSON_BY_ID, LESSONS, loadIdSet } from "./chronicle";
 import { Tutorial, INTRO_CINE, type CineSeg } from "./tutorial";
@@ -119,6 +119,8 @@ export class Game {
   pots = new Map<string, PotState>();
   pot: PotState | null = null; // the pot whose panel is open
   openPot: [number, number, number] | null = null;
+  /** the Wood Generator whose panel is open (world coords; the station itself is the genFuel bank under its power key). */
+  openGen: [number, number, number] | null = null;
   beaconMarks: { x: number; y: number; z: number }[] = [];
   // ---- the Map kit and the lessons (save v2) ----
   worldMode: "easy" | "hard" = "easy";
@@ -1754,10 +1756,23 @@ export class Game {
     return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom;
   }
 
-  /** The Campfire panel's Coals box, under the cursor? (fuel dropped there burns away) */
+  /** The id of the open station's burn box, if any. */
+  private coalsId(): string | null {
+    if (this.pot) return "pot-coals";
+    if (this.fire) return "fire-coals";
+    if (this.openGen) return "gen-coals";
+    return null;
+  }
+  /** Would this item bank in the open station's box? */
+  private boxFuel(itemId: string): boolean {
+    return ((this.openGen && !this.fire && !this.pot) ? GEN_FUEL : FIRE_FUEL)[itemId] !== undefined;
+  }
+  /** The Campfire/Cooking Pot panel's Coals box or the Generator's Fuel Charges box, under the cursor? */
   private overCoals(ev: MouseEvent): boolean {
-    const el = document.getElementById(this.pot ? "pot-coals" : "fire-coals");
-    if (!(this.fire || this.pot) || !el) return false;
+    const id = this.coalsId();
+    if (!id) return false;
+    const el = document.getElementById(id);
+    if (!el) return false;
     const r = el.getBoundingClientRect();
     return ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
   }
@@ -3161,6 +3176,7 @@ export class Game {
         this.audio.door();
         return;
       }
+      if (id === GEN_WOOD) { this.openGenPanel(x, y, z); return; }
       if (id === WATER_CAGE || id === WATER_CAGE_FULL) {
         const full = id === WATER_CAGE_FULL;
         const sel = this.inv.selectedSlot();
@@ -3614,9 +3630,13 @@ export class Game {
   }
 
   /** A hungry Wood Generator eats one Log (30 s) or Dead Wood stick (6 s)
-   *  out of a Chest standing right beside it — adjacency, no vacuum. */
+   *  out of a Chest standing right beside it — adjacency, no vacuum. Only
+   *  once its hand-fed Fuel Charges bank (the panel) has run dry. */
   private refuelGen(k: string) {
-    const [x, y, z] = k.split(",").map(Number);
+    const sh = this.shipOfPowerKey(k);
+    let x: number, y: number, z: number;
+    if (!sh) [x, y, z] = Game.keyPos(k);
+    else { const l = Game.keyPos(k.slice(k.indexOf(",") + 1)); [x, y, z] = sh.cellToWorld(l[0], l[1], l[2]); }
     for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const) {
       const slots = this.chestSlotsAt(x + dx, y + dy, z + dz);
       if (!slots?.length) continue;
@@ -3630,11 +3650,67 @@ export class Game {
     }
   }
 
+  /** the genFuel/Battery power key of the block at world x,y,z: ship-local
+   *  "s<id>,lx,ly,lz" aboard a Ship, plain "x,y,z" on the ground (same rule
+   *  as chestKey, so panel keys match the Grid's own cell keys). */
+  private powerKeyAt(x: number, y: number, z: number): string {
+    const sh = this.claimShip(x, y, z);
+    if (!sh) return `${x},${y},${z}`;
+    const l = sh.worldToLocal(x + 0.5, y + 0.5, z + 0.5);
+    return `s${sh.id},${Math.floor(l.x)},${Math.floor(l.y)},${Math.floor(l.z)}`;
+  }
+
+  /** Bank a dragged fuel item's burn seconds in the open generator. */
+  private feedGen(s: Slot): boolean {
+    if (!this.openGen) return false;
+    const burn = GEN_FUEL[s.itemId];
+    if (burn === undefined) return false;
+    const k = this.powerKeyAt(...this.openGen);
+    this.genFuel.set(k, (this.genFuel.get(k) ?? 0) + burn * (s.stack?.count ?? 1));
+    return true;
+  }
+
+  /** Open a Wood Generator's panel in the Inventory window — all station
+   *  panels are exclusive; the bank itself lives in genFuel. */
+  private openGenPanel(x: number, y: number, z: number) {
+    this.closeUI();
+    this.openGen = [x, y, z];
+    this.ui = "inv";
+    document.getElementById("ui-inventory")!.classList.remove("hidden");
+    document.getElementById("ui-craft")!.classList.add("hidden");
+    document.getElementById("btn-inv-craft")!.classList.toggle("on", false);
+    this.gridFocus = "inv";
+    this.unlockPointer();
+    this.audio.door();
+    this.renderInv();
+  }
+
+  private renderGen() {
+    const sec = document.getElementById("gen-section")!;
+    if (!this.openGen) { sec.classList.add("hidden"); return; }
+    sec.classList.remove("hidden");
+    this.paintGenStatus();
+  }
+
+  /** Live gauge + Fuel Charges box for the open generator. */
+  private paintGenStatus() {
+    if (!this.openGen) return;
+    const sec = document.getElementById("gen-section")!;
+    if (sec.classList.contains("hidden")) return;
+    const bank = Math.max(0, this.genFuel.get(this.powerKeyAt(...this.openGen)) ?? 0);
+    const s = Math.ceil(bank);
+    document.getElementById("gen-gauge")!.textContent =
+      bank > 0 ? `burning — ${s} s of charge left` : "idle — no charge banked";
+    document.getElementById("gen-coals")!.textContent =
+      bank > 0 ? `${s} s of burn banked` : "No fuel banked — drop wood here";
+  }
+
   private updatePower(dt: number) {
     this.powerAcc += dt;
     if (this.powerAcc < 0.25) return;
     const step = this.powerAcc;
     this.powerAcc = 0;
+    if (this.openGen) this.paintGenStatus(); // the bank is visibly burning down
     if (this.powerDirty) { this.powerDirty = false; this.rebuildPower(); }
     for (const g of this.grids) {
       const on = g.panels === 1 && !g.tripped;
@@ -5075,7 +5151,7 @@ export class Game {
     if (this.flyPending) { this.flyPending = null; this.renderer.setFrameOutline(null); if (!this.piloting) this.relock(); }
     if (!this.piloting) document.getElementById("ui-flight")!.classList.add("hidden");
     this.chestInv = null; this.ifcMode = false; this.fire = null; this.openFire = null;
-    this.pot = null; this.openPot = null; this.gridFocus = "inv";
+    this.pot = null; this.openPot = null; this.openGen = null; this.gridFocus = "inv";
     for (const id of ["ui-inventory", "ui-craft", "ui-cache", "ui-trade"]) document.getElementById(id)!.classList.add("hidden");
     // closing any in-game menu also drops the pause menu, if one was open
     if (this.paused) {
@@ -5151,6 +5227,7 @@ export class Game {
     } else is.classList.add("hidden");
     this.renderFire();
     this.renderPot();
+    this.renderGen();
 
     // temporary storage: the slot an item sits in while being moved
     const tempEl = document.getElementById("inv-temp")!;
@@ -5777,7 +5854,7 @@ export class Game {
       ghost.style.left = ev.clientX - D.gx + "px";
       ghost.style.top = ev.clientY - D.gy + "px";
       document.getElementById("inv-bin")!.classList.toggle("hot", this.overBin(ev.clientX, ev.clientY));
-      document.getElementById(this.pot ? "pot-coals" : "fire-coals")?.classList.toggle("hot", FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev));
+      { const cid = this.coalsId(); if (cid) document.getElementById(cid)!.classList.toggle("hot", this.boxFuel(s.itemId) && this.overCoals(ev)); }
       document.getElementById("ifc-list")?.classList.toggle("hot", !!this.chestInv && this.ifcMode && this.overIfcList(ev));
     };
     const up = (ev: MouseEvent) => {
@@ -5787,11 +5864,13 @@ export class Game {
       document.getElementById("inv-bin")!.classList.remove("hot");
       document.getElementById("fire-coals")?.classList.remove("hot");
       document.getElementById("pot-coals")?.classList.remove("hot");
+      document.getElementById("gen-coals")?.classList.remove("hot");
       document.getElementById("ifc-list")?.classList.remove("hot");
       if (this.overBin(ev.clientX, ev.clientY)) { this.binDiscard(); return; } // the item is already in temp
-      if (FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev)) { // onto the Coals box: burned away, charges banked
+      if (this.overCoals(ev) && this.boxFuel(s.itemId) && (!this.openGen || this.feedGen(s))) { // onto the burn box: burned away, charge banked
         if (this.pot) { this.feedFire(this.pot, s); this.syncPot(this.openPot!.join(",")); }
-        else { this.feedFire(this.fire!, s); this.syncFire(this.openFire!.join(",")); }
+        else if (this.fire) { this.feedFire(this.fire, s); this.syncFire(this.openFire!.join(",")); }
+        else this.paintGenStatus();
         this.temp = null;
         this.audio.place();
         this.renderInv(); this.renderHeld();
@@ -5850,6 +5929,15 @@ export class Game {
       src.slots.splice(src.slots.indexOf(s), 1);
       if (this.pot) { this.feedFire(this.pot, s); this.syncPot(this.openPot!.join(",")); }
       else { this.feedFire(this.fire!, s); this.syncFire(this.openFire!.join(",")); }
+      this.audio.place();
+      this.renderInv();
+      this.renderHeld();
+      return;
+    }
+    // same law for the Wood Generator: its burn bank grows, the item is gone
+    if (this.openGen && GEN_FUEL[s.itemId] !== undefined) {
+      src.slots.splice(src.slots.indexOf(s), 1);
+      this.feedGen(s);
       this.audio.place();
       this.renderInv();
       this.renderHeld();
@@ -5931,7 +6019,7 @@ export class Game {
       ghost.style.left = ev.clientX - d.w * STEP / 2 + "px";
       ghost.style.top = ev.clientY - d.h * STEP / 2 + "px";
       document.getElementById("inv-bin")!.classList.toggle("hot", this.overBin(ev.clientX, ev.clientY));
-      document.getElementById(this.pot ? "pot-coals" : "fire-coals")?.classList.toggle("hot", FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev));
+      { const cid = this.coalsId(); if (cid) document.getElementById(cid)!.classList.toggle("hot", this.boxFuel(s.itemId) && this.overCoals(ev)); }
       document.getElementById("ifc-list")?.classList.toggle("hot", !!this.chestInv && this.ifcMode && this.overIfcList(ev));
     };
     const up = (ev: MouseEvent) => {
@@ -5941,11 +6029,13 @@ export class Game {
       document.getElementById("inv-bin")!.classList.remove("hot");
       document.getElementById("fire-coals")?.classList.remove("hot");
       document.getElementById("pot-coals")?.classList.remove("hot");
+      document.getElementById("gen-coals")?.classList.remove("hot");
       document.getElementById("ifc-list")?.classList.remove("hot");
       if (this.overBin(ev.clientX, ev.clientY)) { this.binDiscard(); return; } // the item is already in temp
-      if (FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev)) { // onto the Coals box: burned away, charges banked
+      if (this.overCoals(ev) && this.boxFuel(s.itemId) && (!this.openGen || this.feedGen(s))) { // onto the burn box: burned away, charge banked
         if (this.pot) { this.feedFire(this.pot, s); this.syncPot(this.openPot!.join(",")); }
-        else { this.feedFire(this.fire!, s); this.syncFire(this.openFire!.join(",")); }
+        else if (this.fire) { this.feedFire(this.fire, s); this.syncFire(this.openFire!.join(",")); }
+        else this.paintGenStatus();
         this.temp = null;
         this.audio.place();
         this.renderInv(); this.renderHeld();
