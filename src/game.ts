@@ -3487,7 +3487,7 @@ export class Game {
   /** A connected component of Poles (linked within POLE_LINK) with devices
    *  attached at DEVICE_REACH; one Panel per component or the Grid has no power. */
   // ---------- ship-space plumbing ----------
-  // the only sanctioned way to change a cell: a grounded Ship owning the
+  // the only sanctioned way to change a cell: an airborne Ship owning the
   // coordinate gets the write routed ship-local instead of to the chunk
   private wset(x: number, y: number, z: number, id: number): void {
     const sh = this.claimShip(x, y, z);
@@ -4695,18 +4695,20 @@ export class Game {
   private shipHitsTerrain(sh: Ship): boolean {
     const b = sh.getBox();
     if (!b) return false;
+    const [cos, sin] = sh.rot();
     const c = sh.centerLocal();
-    const [px, py, pz] = sh.anchor();
+    const px = sh.pos.x, py = sh.pos.y, pz = sh.pos.z;
     for (let ix = b.min[0]; ix <= b.max[0]; ix++)
       for (let iy = b.min[1]; iy <= b.max[1]; iy++)
         for (let iz = b.min[2]; iz <= b.max[2]; iz++) {
-        if (sh.getCell(ix, iy, iz) || !sh.claimsLocal(ix, iy, iz)) continue;
-        if (isSolid(this.terrainAt(
-          Math.floor(px + ix + 0.5 - c[0]),
-          Math.floor(py + iy + 0.5 - c[1]),
-          Math.floor(pz + iz + 0.5 - c[2]),
-        ))) return true;
-      }
+          if (sh.getCell(ix, iy, iz) || !sh.claimsLocal(ix, iy, iz)) continue;
+          const dx = ix + 0.5 - c[0], dy = iy + 0.5 - c[1], dz = iz + 0.5 - c[2];
+          if (isSolid(this.terrainAt(
+            Math.floor(px + cos * dx + sin * dz),
+            Math.floor(py + dy),
+            Math.floor(pz - sin * dx + cos * dz),
+          ))) return true;
+        }
     return false;
   }
 
@@ -4922,8 +4924,19 @@ export class Game {
   /** the flying Ship's cells go back to chunks, at the Ship's current pose. */
   private performLanding(sh: Ship) {
     if (this.piloting === sh) this.exitPiloting();
-    // geometry never rotated with heading, so the footprint is already a
-    // plain axis-aligned copy at the Ship's pose — cells land where they fly
+    // the flight was continuous; the world grid is not. Snap heading to a
+    // right angle and pose to the block lattice before writing cells back,
+    // so the footprint lands exactly where the Ship stands
+    sh.yaw = Math.round(sh.yaw / (Math.PI / 2)) * (Math.PI / 2);
+    const c = sh.centerLocal();
+    // never snap downward: the soft-stop pose may hang a hair below the
+    // lattice, and pushing cells down into the dirt would bury the hull
+    const sy = Math.round(sh.pos.y - c[1]);
+    sh.pos = {
+      x: Math.round(sh.pos.x - c[0]) + c[0],
+      y: (sy < sh.pos.y - c[1] ? sy + 1 : sy) + c[1],
+      z: Math.round(sh.pos.z - c[2]) + c[2],
+    };
     const g = this.shipGroups.get(sh.id);
     if (g) {
       this.renderer.removeEntityGroup(g);
@@ -4965,8 +4978,8 @@ export class Game {
       this.shipDirty.clear();
     }
     for (const sh of [...this.ships.values()]) {
-      const a0 = sh.anchor();
-      sh.prevPos = { x: a0[0], y: a0[1], z: a0[2] };
+      sh.prevPos = { x: sh.pos.x, y: sh.pos.y, z: sh.pos.z };
+      sh.prevYaw = sh.yaw;
       const crew = this.piloting === sh;
       const lit = this.litThrusters(sh);
       const over = sh.mass() > lit * SHIP.liftCapacity;
@@ -5028,12 +5041,19 @@ export class Game {
           if (this.pilotLand || climbCmd < 0 || !canFly) { this.performLanding(sh); continue; }
         }
       }
-      const a = sh.anchor();
-      const d = { x: a[0] - sh.prevPos.x, y: a[1] - sh.prevPos.y, z: a[2] - sh.prevPos.z };
+      const d = { x: sh.pos.x - sh.prevPos.x, y: sh.pos.y - sh.prevPos.y, z: sh.pos.z - sh.prevPos.z };
+      const dyaw = sh.yaw - sh.prevYaw;
       this.updateShipGroup(sh);
-      if (d.x || d.y || d.z) {
+      if (d.x || d.y || d.z || dyaw) {
         if (this.isAboard(sh)) {
-          // the crew rides with the deck: the hull slides, and so do they
+          // the crew rides with the deck: turn with the hull, slide with it
+          if (dyaw) {
+            const c = Math.cos(dyaw), s = Math.sin(dyaw);
+            const px = this.player.pos.x - sh.pos.x, pz = this.player.pos.z - sh.pos.z;
+            this.player.pos.x = sh.pos.x + c * px + s * pz;
+            this.player.pos.z = sh.pos.z - s * px + c * pz;
+            this.player.yaw += dyaw;
+          }
           this.player.pos.x += d.x;
           this.player.pos.y += d.y;
           this.player.pos.z += d.z;
@@ -5069,8 +5089,8 @@ export class Game {
   private updateShipGroup(sh: Ship) {
     const g = this.shipGroups.get(sh.id);
     if (!g) return;
-    const [ax, ay, az] = sh.anchor();
-    g.position.set(ax, ay, az);
+    g.position.set(sh.pos.x, sh.pos.y, sh.pos.z);
+    g.rotation.set(0, sh.yaw, 0);
   }
 
   /** E at an Engine Core: Rocket Fuel Canisters pour into the two ports. */

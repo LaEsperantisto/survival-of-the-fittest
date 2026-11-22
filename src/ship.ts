@@ -7,11 +7,13 @@
  * cuboids declared by Frame Corner cells (shipframe.ts), always ship-local,
  * so a yaw turn never changes membership.
  *
- * pos is the continuous physics pose; every voxel consumer (mesh, collision,
- * mining, chunk writes) uses `anchor()` — pos snapped to the block lattice —
- * so cells, outlines and collision always coincide exactly at any heading.
- * Block geometry never rotates: `yaw` is heading only — it steers the
- * velocity vector and the Flight HUD; landings keep any heading.
+ * pos is the yaw pivot (the Frame bbox centre at takeoff) and follows a
+ * continuous flight path. While airborne the Ship flies and turns as a
+ * whole: the mesh, collision and cell lookups all use the live pose and
+ * yaw, so the Ship feels like an object, not a stamp. Only on landing is
+ * the pose snapped — heading to a right angle, position to the block
+ * lattice — and only then are cells written back to the world grid.
+ * There is no pitch or roll: the Ship flies flat.
  */
 
 import { AIR, CH, THRUSTER, THRUSTER_LIT, ENGINECORE, FRAME_CORNER, FLIGHT_CONTROLS } from "./blocks";
@@ -73,6 +75,7 @@ export class Ship {
   fuel: number[] = [0, 0];
   /** last frame's pose, so riding entities can follow the delta */
   prevPos = { x: 0, y: 0, z: 0 };
+  prevYaw = 0;
   private bbox: Box3 | null = null;
   private shell: Set<string> | null = null;
 
@@ -121,49 +124,45 @@ export class Ship {
     return [(b.min[0] + b.max[0] + 1) / 2, (b.min[1] + b.max[1] + 1) / 2, (b.min[2] + b.max[2] + 1) / 2];
   }
 
-  private anchCache: [number, number, number] | null = null;
-  private anchPx = NaN;
-  private anchPy = NaN;
-  private anchPz = NaN;
-  /** the pose every voxel consumer uses: `pos` snapped to the block lattice
-   *  (the lattice passes through the Frame centre, so a Ship's cells always
-   *  cover whole world cells). The mesh and collision step one block at a
-   *  time along the continuous flight path — the only honest way a voxel
-   *  polycube can occupy the world grid. */
-  anchor(): [number, number, number] {
-    if (this.anchCache && this.anchPx === this.pos.x && this.anchPy === this.pos.y && this.anchPz === this.pos.z) return this.anchCache;
-    const c = this.centerLocal();
-    const a: [number, number, number] = [
-      Math.round(this.pos.x - c[0]) + c[0],
-      Math.round(this.pos.y - c[1]) + c[1],
-      Math.round(this.pos.z - c[2]) + c[2],
-    ];
-    this.anchPx = this.pos.x; this.anchPy = this.pos.y; this.anchPz = this.pos.z;
-    return (this.anchCache = a);
+  private rotYaw = NaN;
+  private rotC = 0;
+  private rotS = 0;
+  rot(): [number, number] {
+    if (this.rotYaw === this.yaw) return [this.rotC, this.rotS];
+    // at right-angle headings (the landing snap) cos/sin must be exactly
+    // 0 and ±1, or cell maps drift by a cell
+    let cos = Math.cos(this.yaw), sin = Math.sin(this.yaw);
+    if (Math.abs(cos) < 1e-9) cos = 0; else if (Math.abs(cos - 1) < 1e-9) cos = 1; else if (Math.abs(cos + 1) < 1e-9) cos = -1;
+    if (Math.abs(sin) < 1e-9) sin = 0; else if (Math.abs(sin - 1) < 1e-9) sin = 1; else if (Math.abs(sin + 1) < 1e-9) sin = -1;
+    this.rotYaw = this.yaw; this.rotC = cos; this.rotS = sin;
+    return [cos, sin];
   }
 
   localToWorld(ix: number, iy: number, iz: number): { x: number; y: number; z: number } {
     const c = this.centerLocal();
-    const [ax, ay, az] = this.anchor();
+    const dx = ix - c[0], dy = iy - c[1], dz = iz - c[2];
+    const [cos, sin] = this.rot();
     return {
-      x: ax + (ix - c[0]),
-      y: ay + (iy - c[1]),
-      z: az + (iz - c[2]),
+      x: this.pos.x + cos * dx + sin * dz,
+      y: this.pos.y + dy,
+      z: this.pos.z - sin * dx + cos * dz,
     };
   }
 
   worldToLocal(x: number, y: number, z: number): { x: number; y: number; z: number } {
     const c = this.centerLocal();
-    const [ax, ay, az] = this.anchor();
+    const dx = x - this.pos.x, dy = y - this.pos.y, dz = z - this.pos.z;
+    const [cos, sin] = this.rot();
     return {
-      x: c[0] + (x - ax),
-      y: c[1] + (y - ay),
-      z: c[2] + (z - az),
+      x: c[0] + cos * dx - sin * dz,
+      y: c[1] + dy,
+      z: c[2] + sin * dx + cos * dz,
     };
   }
 
-  /** world cell containing the local cell (exact at every pose: the anchor
-   *  keeps the footprint locked to the world cell grid) */
+  /** world cell containing the local cell (exact at a landing-snap pose;
+   *  cell-centre map mid-flight — the honest quantisation of a turning
+   *  polycube onto the world grid) */
   cellToWorld(ix: number, iy: number, iz: number): [number, number, number] {
     const w = this.localToWorld(ix + 0.5, iy + 0.5, iz + 0.5);
     return [Math.floor(w.x), Math.floor(w.y), Math.floor(w.z)];
@@ -171,12 +170,13 @@ export class Ship {
 
   /** local cell holding a world point */
   cellAtWorld(x: number, y: number, z: number): ShipCell | undefined {
+    const [cos, sin] = this.rot();
     const c = this.centerLocal();
-    const [ax, ay, az] = this.anchor();
+    const dx = x - this.pos.x, dy = y - this.pos.y, dz = z - this.pos.z;
     return this.getCell(
-      Math.floor(c[0] + (x - ax)),
-      Math.floor(c[1] + (y - ay)),
-      Math.floor(c[2] + (z - az)),
+      Math.floor(c[0] + cos * dx - sin * dz),
+      Math.floor(c[1] + dy),
+      Math.floor(c[2] + sin * dx + cos * dz),
     );
   }
 
@@ -233,13 +233,13 @@ export class Ship {
 
   /** world AABB of all block cells (cheap broad phase); cached per pose+cells,
    *  because World's cellProvider consults it on every cell read */
-  private aabbKey: [number, number, number] | null = null;
+  private aabbKey: [number, number, number, number] | null = null;
   private aabb: Box3 | null = null;
   worldAABB(): Box3 {
     const b = this.getBox();
     if (this.aabb && this.aabbKey && this.aabbKey[0] === this.pos.x && this.aabbKey[1] === this.pos.y &&
-        this.aabbKey[2] === this.pos.z) return this.aabb;
-    this.aabbKey = [this.pos.x, this.pos.y, this.pos.z];
+        this.aabbKey[2] === this.pos.z && this.aabbKey[3] === this.yaw) return this.aabb;
+    this.aabbKey = [this.pos.x, this.pos.y, this.pos.z, this.yaw];
     if (!b) return (this.aabb = { min: [this.pos.x, this.pos.y, this.pos.z], max: [this.pos.x, this.pos.y, this.pos.z] });
     const pts = [
       this.localToWorld(b.min[0], b.min[1], b.min[2]),
@@ -337,6 +337,7 @@ export class Ship {
     while (sh.fuel.length < SHIP.fuelPorts) sh.fuel.push(0);
     for (const [k, c] of s.cells) sh.cells.set(k, c);
     sh.prevPos = { ...sh.pos };
+    sh.prevYaw = sh.yaw;
     return sh;
   }
 }
