@@ -5,12 +5,13 @@ import {
   WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING,
-  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT, STORM_BREAKER, ARMORY, STORM_BREAKER_R,
+  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, COAL_ORE, THRUSTER, THRUSTER_LIT, STORM_BREAKER, ARMORY, STORM_BREAKER_R,
   REGULATOR_HUSK, STORM_BREAKER_HUSK,
   POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
-  INSERTER, PLANTER, HARVESTER,
+  INSERTER, PLANTER, HARVESTER, REFINERY,
   ALAB_BRICK, ALAB_POLISHED, ALAB_CHISELLED, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_GATE_OPEN,
   ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN, CHEST_INTERFACE,
+  COOKPOT, WATER_CAGE, WATER_CAGE_FULL, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING, APPLE_FRUIT,
   isSolid, isWater, waterStrength,
 } from "./blocks";
 import { World, ckey, faceVisible } from "./world";
@@ -22,7 +23,7 @@ import { SkyLighting, MAX_LIGHT, lidx } from "./light";
 const DOOR_BLOCKS = new Set([DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER,
   DOOR_INNER_OPEN, ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN]);
 /** blocks that render as crossed blade quads instead of cubes */
-const CROSS_BLOCKS = new Set([WHEAT_1, WHEAT_2, SAPLING]);
+const CROSS_BLOCKS = new Set([WHEAT_1, WHEAT_2, SAPLING, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING]);
 /** ground material that looks soaked while a water cell stands on it */
 const SOIL_BLOCKS = new Set([DIRT, FARMLAND, SAND, SANDSTONE, GRAVEL, SALT]);
 
@@ -221,12 +222,13 @@ export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, G
   WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, BED, BED_EXT, GRASS, WOOD, LEAVES, SAPLING,
-  IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, THRUSTER, THRUSTER_LIT, STORM_BREAKER, ARMORY,
+  IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, COAL_ORE, THRUSTER, THRUSTER_LIT, STORM_BREAKER, ARMORY,
   REGULATOR_HUSK, STORM_BREAKER_HUSK,
   POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
-  INSERTER, PLANTER, HARVESTER,
+  INSERTER, PLANTER, HARVESTER, REFINERY,
   ALAB_BRICK, ALAB_POLISHED, ALAB_CHISELLED, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_GATE_OPEN,
-  ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN, CHEST_INTERFACE];
+  ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN, CHEST_INTERFACE,
+  COOKPOT, WATER_CAGE, WATER_CAGE_FULL, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING, APPLE_FRUIT];
 
 // extra face tiles, appended after the base tiles; each recipe is shaded with
 // the named block's base colour
@@ -235,7 +237,7 @@ const VARIANTS: [string, number][] = [
   ["farmland_side", FARMLAND], ["sandstone_top", SANDSTONE], ["hull_top", HULL],
   ["water_side", WATER], ["bed_side", BED], ["chest_top", CHEST],
   ["bench_top", BENCH], ["bench_ext_top", BENCH_EXT], ["campfire_top", CAMPFIRE],
-  ["campfire_cold", CAMPFIRE],
+  ["campfire_cold", CAMPFIRE], ["cookpot_cold", COOKPOT],
   ["cactus_top", CACTUS],
 ];
 const VI: Record<string, number> = {};
@@ -534,6 +536,95 @@ export function getAtlasCanvas(): HTMLCanvasElement {
       const a = (i / 8) * Math.PI * 2 + r * 0.4;
       px(8 + Math.round(Math.cos(a) * r * 1.5), 8 + Math.round(Math.sin(a) * r * 1.5), col(0.2 + (3 - r) * 0.12, 1, 0.5, -0.05, -0.35));
     }
+  });
+  R(String(COOKPOT), () => {
+    // iron pot on a tripod, flame licking the belly — lit variant
+    fbmFill((x, y, n) => n * 0.05 - 0.1);                                    // ashy base like the campfire
+    for (let i = 0; i < 5; i++) pebble(2 + i * 3, 14, 1, -0.05);             // pebble ring
+    g.strokeStyle = "rgba(38,38,44,1)"; g.lineWidth = 2;                     // three legs
+    g.beginPath(); g.moveTo(tx + 4, ty + 15); g.lineTo(tx + 6, ty + 10); g.stroke();
+    g.beginPath(); g.moveTo(tx + 12, ty + 15); g.lineTo(tx + 10, ty + 10); g.stroke();
+    for (let y = 4; y <= 10; y++) {                                          // round belly
+      const w = 5 - Math.abs(y - 7);
+      for (let dx = -w; dx <= w; dx++) px(8 + dx, y, "rgba(30,30,36,1)");
+      px(8 - w, y, "rgba(64,66,74,1)");                                      // rim light
+    }
+    for (let x = 3; x <= 13; x++) px(x, 4, "rgba(58,60,68,1)");              // lid line
+    px(7, 3, "rgba(80,82,92,1)"); px(8, 3, "rgba(96,98,110,1)"); px(9, 3, "rgba(80,82,92,1)"); // lid knob
+    for (let y = 9; y < 13; y++) {                                           // flame under the belly
+      const w = Math.max(0, 4 - (y - 9) * 2);
+      for (let dx = -w; dx <= w; dx++) px(8 + dx, y, col(0.05, 1, 0.8 - Math.abs(dx) * 0.15, 0.3, -0.45));
+    }
+    px(8, 12, col(0.2, 1, 0.75, 0.2, -0.4));
+  });
+  R("cookpot_cold", () => {
+    // unlit pot: cold ash, same ironwork, no flame
+    fbmFill((x, y, n) => n * 0.04 - 0.22);
+    for (let i = 0; i < 5; i++) pebble(2 + i * 3, 14, 1, -0.05);
+    g.strokeStyle = "rgba(34,32,30,1)"; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(tx + 4, ty + 15); g.lineTo(tx + 6, ty + 10); g.stroke();
+    g.beginPath(); g.moveTo(tx + 12, ty + 15); g.lineTo(tx + 10, ty + 10); g.stroke();
+    for (let y = 4; y <= 10; y++) {
+      const w = 5 - Math.abs(y - 7);
+      for (let dx = -w; dx <= w; dx++) px(8 + dx, y, "rgba(26,26,30,1)");
+      px(8 - w, y, "rgba(52,52,58,1)");
+    }
+    for (let x = 3; x <= 13; x++) px(x, 4, "rgba(48,50,56,1)");
+    px(8, 3, "rgba(80,82,92,1)");
+    for (let i = 0; i < 4; i++) pebble(6 + (i % 2) * 4, 12 + ((i / 2) | 0), 1, 0.06); // cold embers
+  });
+  R(String(WATER_CAGE), () => {
+    // empty cage: steel frame, open lattice, dry floor plate
+    fbmFill((x, y, n) => n * 0.03 - 0.16);
+    for (let i = 0; i < 16; i++) { px(i, 0, "rgba(150,156,168,1)"); px(i, 15, "rgba(120,126,138,1)"); px(0, i, "rgba(140,146,158,1)"); px(15, i, "rgba(140,146,158,1)"); }
+    for (let i = 3; i <= 12; i += 3) { for (let y = 1; y < 15; y++) px(i, y, "rgba(110,116,128,1)"); for (let x = 1; x < 15; x++) px(x, i, "rgba(96,102,114,1)"); }
+    for (const [rx, ry] of [[2, 2], [13, 2], [2, 13], [13, 13]] as const) px(rx, ry, "rgba(200,205,215,1)"); // corner bolts
+    px(8, 14, "rgba(70,76,88,1)"); px(7, 14, "rgba(70,76,88,1)");            // dry sump
+  });
+  R(String(WATER_CAGE_FULL), () => {
+    // same cage, water sealed inside: meniscus at the top, blue depth below
+    fbmFill((x, y, n) => n * 0.03 - 0.16);
+    for (let y = 3; y <= 13; y++) for (let x = 2; x <= 13; x++) px(x, y, y === 3 ? "rgba(150,190,220,1)" : `rgba(${52 + (y - 3) * 6},${100 + (y - 3) * 5},${150 - (y - 3) * 4},1)`);
+    px(4, 3, "rgba(190,225,245,1)"); px(5, 3, "rgba(170,205,235,1)");        // highlight on the surface
+    for (let i = 0; i < 16; i++) { px(i, 0, "rgba(150,156,168,1)"); px(i, 15, "rgba(120,126,138,1)"); px(0, i, "rgba(140,146,158,1)"); px(15, i, "rgba(140,146,158,1)"); }
+    for (let i = 3; i <= 12; i += 3) for (let y = 1; y < 15; y++) px(i, y, "rgba(110,116,128,0.55)");
+    for (let i = 3; i <= 12; i += 3) for (let x = 1; x < 15; x++) px(x, i, "rgba(96,102,114,0.45)");
+    for (const [rx, ry] of [[2, 2], [13, 2], [2, 13], [13, 13]] as const) px(rx, ry, "rgba(200,205,215,1)");
+  });
+  R(String(SUGARCANE_1), () => {
+    fill("rgba(0,0,0,0)");                                                   // crossed-quad shoot
+    for (const sx of [5, 10]) {
+      for (let y = 11; y <= 15; y++) px(sx, y, col(y < 13 ? 0.1 : -0.02));
+      px(sx + 1, 12, col(0.16)); px(sx - 1, 11, col(0.12));                  // two lean leaves
+    }
+  });
+  R(String(SUGARCANE_2), () => {
+    fill("rgba(0,0,0,0)");                                                   // full cane stand
+    for (const sx of [3, 7, 11, 14]) {
+      for (let y = 1; y <= 15; y++) {
+        px(sx, y, y % 4 === 2 ? col(-0.12) : col(0.02));                     // jointed stalks
+      }
+      px(sx + 1, 2 + (sx % 3), col(0.18)); px(sx - 1, 6 + (sx % 4), col(0.12)); // blade leaves
+      px(sx, 0, col(0.24));                                                  // green tip
+    }
+  });
+  R(String(APPLE_SAPLING), () => {
+    fill("rgba(0,0,0,0)");                                                   // pip sprout
+    for (let y = 10; y <= 15; y++) px(8, y, "rgba(90,64,40,1)");             // stub stem
+    px(6, 9, "rgba(60,110,55,1)"); px(5, 8, "rgba(75,130,65,1)"); px(6, 8, "rgba(75,130,65,1)"); // left leaf
+    px(10, 9, "rgba(60,110,55,1)"); px(11, 8, "rgba(75,130,65,1)"); px(10, 8, "rgba(75,130,65,1)"); // right leaf
+    px(8, 8, "rgba(70,120,60,1)"); px(8, 7, "rgba(85,140,70,1)");            // bud
+  });
+  R(String(APPLE_FRUIT), () => {
+    fill("rgba(0,0,0,0)");                                                   // apple hangs inside the cell
+    for (let y = 5; y <= 13; y++) for (let x = 4; x <= 11; x++) {
+      const dx = x - 7.5, dy = y - 9.5, d = dx * dx + dy * dy * 1.1;
+      if (d > 15) continue;
+      px(x, y, d > 10 ? "rgba(120,22,22,1)" : x < 6 && y < 9 ? "rgba(220,70,55,1)" : "rgba(178,38,34,1)");
+    }
+    px(7, 4, "rgba(90,64,40,1)"); px(8, 3, "rgba(90,64,40,1)");              // stem
+    px(9, 4, "rgba(70,120,60,1)"); px(10, 3, "rgba(85,140,70,1)");           // one leaf
+    px(6, 7, "rgba(235,110,85,1)");                                          // glint
   });
   for (const w of [WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1, WATER])
     R(String(w), () => {
@@ -886,6 +977,15 @@ export function getAtlasCanvas(): HTMLCanvasElement {
       }
     }
   });
+  R(String(COAL_ORE), () => {
+    fbmFill((x, y, n) => n * 0.08 - 0.3);                                                                 // black seam in pale host rock
+    crack(9, 0.05, -0.22); crack(5, 0.05, -0.18);
+    for (let i = 0; i < 4; i++) {                                                                         // dull vitrain bands
+      const y0 = rng.int(2, 13);
+      for (let x = 2; x <= 13; x++) px(x, y0 + (x % 3 === 0 ? 1 : 0), col(-0.12));
+    }
+    for (let i = 0; i < 6; i++) speckle(rng.int(3, 12), 0.3);                                            // coal's dull lustre
+  });
   R(String(ALABASTER), () => {
     const n = fbm();
     for (let y = 0; y < 16; y++) {                                                                        // pale drifting strata
@@ -1022,6 +1122,20 @@ export function getAtlasCanvas(): HTMLCanvasElement {
     }
     px(7, 7, col(0.25)); px(8, 7, col(0.25)); px(7, 8, col(0.15)); px(8, 8, col(0.15));                 // hub
     for (let x = 0; x < 16; x += 2) px(x, 14 + (x % 4 === 0 ? 0 : 1), col(0.1, 1, -0.2, 0.12, 0.5));    // current at the foot
+  });
+  R(String(REFINERY), () => {
+    fbmFill((x, y, nn) => nn * 0.04 - 0.06);                                                           // plated steel body
+    for (let x = 1; x <= 14; x++) { px(x, 1, col(-0.16)); px(x, 14, col(-0.18)); }                     // top and base rails
+    for (let y = 2; y <= 13; y++) { px(1, y, col(-0.12)); px(14, y, col(-0.12)); }                     // corner stiles
+    for (let y = 3; y <= 12; y++)                                                                     // boil tank
+      for (let x = 3; x <= 9; x++)
+        px(x, y, col(Math.abs(x - 6) + Math.abs(y - 7.5) < 4.2 ? 0.14 : -0.1));
+    for (let y = 5; y <= 10; y++) px(6, y, col(0.24));                                                // weld gleam on the tank
+    px(6, 7, col(-0.25)); px(6, 8, col(-0.25));                                                       // sight glass, dark with oil
+    for (let y = 3; y <= 12; y++) px(11, y, col(0.06));                                               // condenser column
+    px(10, 3, col(0.1)); px(9, 2, col(0.1)); px(10, 2, col(0.1));                                     // steam pipe to the column
+    for (let d = -1; d <= 1; d++) px(11, 12 + Math.abs(d), col(0.2, 1, 0.45, -0.25, -0.5));           // burner flame at the foot
+    px(13, 6, col(-0.2)); px(13, 7, col(0.3, 1, 0.5, -0.3, -0.4));                                    // valve wheel
   });
   R(String(WIND_TURBINE), () => {
     fbmFill((x, y, nn) => nn * 0.03 - 0.04);                                                            // pale sky plate
@@ -2147,7 +2261,7 @@ export class Renderer {
       const dampSoil = (id === DIRT || id === GRASS) && damp[(x * CS + z) * CH + y];
       // a campfire only glows while it has fuel charges; empty ones are cold
       // charcoal — dark tile, opaque pass, no point light
-      const coldFire = id === CAMPFIRE && (this.fires.get(wx + "," + y + "," + wz) ?? 0) <= 0;
+      const coldFire = (id === CAMPFIRE || id === COOKPOT) && (this.fires.get(wx + "," + y + "," + wz) ?? 0) <= 0;
       const useE = def.emissive && !coldFire, useT = def.transparent;
       const P = useT ? tpos : useE ? epos : pos;
       const C = useT ? tcol : useE ? ecol : col;
@@ -2160,7 +2274,7 @@ export class Renderer {
         const nx = x + fd[0], ny = y + fd[1], nz = z + fd[2];
         if (!faceVisible(world, cx * CS + nx, ny, cz * CS + nz, id)) continue;
         // cold fires draw their charcoal tile instead of the flame tile
-        const ft = coldFire ? VI.campfire_cold : FACE_T[id * 6 + fi];
+        const ft = coldFire ? (id === COOKPOT ? VI.cookpot_cold : VI.campfire_cold) : FACE_T[id * 6 + fi];
         const tx0 = (ft % ATLAS_COLS) * TILE_PX, ty0 = ((ft / ATLAS_COLS) | 0) * TILE_PX;
         const base = P.length / 3;
         const sh = useE ? 1 : wet ? f.shade * 0.78 : dampSoil ? f.shade * 0.7 : f.shade;

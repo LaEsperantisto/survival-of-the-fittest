@@ -201,12 +201,6 @@ A rare material required to craft Insulating Glass; found in Town and second-shi
 **Strength Hormones**:
 An inventory mass boost. Contraband (loot-only) crashes afterward; Synthesized (craftable) does not.
 
-**Vehicle**:
-Not in scope for M1 or M2; a definite later addition.
-
-**Score**:
-Two parts: days survived and Main Quest progress. Completing the game scores higher with fewer days. Best score persists across deaths.
-
 **Water Canister**:
 A drinkable item (1×2 in the Inventory Grid). Buried sites dot the desert on a recurring spacing — containers, not water, so finding them never makes drinking easy. Refilling at an Oasis or the ship's tank costs nothing; a late-game method synthesizes water. A buried site marks the Map only once one of its canisters is dug up.
 
@@ -240,6 +234,37 @@ The first crop found — wild at Oases. Eaten raw: a big drink with a little hea
 
 **Desert Wheat**:
 The harder crop, discovered in Town loot: it tolerates cold but not the midday, and its cooked food heals more than anything else on the farm.
+
+**Bread**:
+Desert Wheat baked at a Cooking Pot — the farm's best healing.
+_Avoid_: Cooked Wheat (old name), loaf
+
+**Apple Tree**:
+The fruiting tree species: an Apple Pip planted in Dirt grows it stage by stage while moisture stays near, and while it stands its canopy bears Apples — a picked fruit spot re-ripens. A felled tree gives Wood like any tree; fruit is the tree's while it lives.
+_Avoid_: orchard tree (an orchard is a plantation of them, not a species)
+
+**Apple Pip**:
+What eating an Apple leaves in hand; planted in Dirt it starts an Apple Tree.
+_Avoid_: apple seed (seeds are the grasses' planted form)
+
+**Sugar Cane**:
+The thirstiest crop — it grows on Sand, Dirt or Farm Land but only with Water very close. Its yield is cooked down to Sugar for the Pot.
+
+**Sugar**:
+Refined Sugar Cane; the sweetening in the Apple Tart.
+_Avoid_: sugar cane (that's the plant)
+
+**Cooking Pot**:
+The kitchen station: it keeps Coals like a Campfire, but recipes decide whether the fire is touched at all — a Stew spends charges, a Fruit Salad needs no heat at all. Every multi-ingredient Dish has its home here, never at a Campfire.
+_Avoid_: cauldron, stove, kitchen
+
+**Dish**:
+A cooked food of two or more ingredients, made only at a Cooking Pot — Stew, Fruit Salad, Apple Tart.
+_Avoid_: meal, recipe (a recipe is the instruction, a Dish is the thing)
+
+**Water Cage**:
+A closed vessel holding one Source block of Water: solid, never flowing, yet Water to every Crop and Tree that can reach it. Breaking it drops the Cage and lets the Water run free; a Bucket scoops it out instead.
+_Avoid_: tank, cistern, reservoir
 
 **Inventory Grid**:
 A rectangular grid of slots; items occupy footprints (Water Canister 1×2). Expandable via Backpacks. Every item instance claims its own cells — duplicates never share a slot, so more of something means more space taken. A Sort button on every Grid (pack, Chests, each Campfire slot) arranges items alphabetically, identical items adjacent.

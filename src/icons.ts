@@ -544,11 +544,81 @@ function drawArt(id: string, w: number, h: number, color: string, tier = ""): HT
       g.strokeStyle = "#7a5a30"; g.lineWidth = 1; g.beginPath(); g.moveTo(2, 12); g.lineTo(14, 12); g.stroke();
       return cv;
     }
-    case "cooked_wheat": // baked flatbread loaf
+    case "bread": // baked flatbread loaf
       g.fillStyle = "#a8712e"; g.beginPath(); g.ellipse(8, 10, 6.5, 4.5, 0, 0, Math.PI * 2); g.fill();
       g.strokeStyle = "#74501f"; g.lineWidth = 1; g.beginPath(); g.ellipse(8, 10, 6.5, 4.5, 0, 0, Math.PI * 2); g.stroke();
       g.fillStyle = "#d8a860"; g.fillRect(5, 8, 6, 1); g.fillRect(6, 7, 4, 1);
       return cv;
+    case "apple": { // round red fruit, stem and leaf
+      g.fillStyle = "#b42a26"; g.beginPath(); g.arc(8, 9.5, 5.5, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#d8554a"; g.beginPath(); g.arc(6, 7.5, 2, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#5a4028"; g.lineWidth = 1; g.beginPath(); g.moveTo(8, 4); g.lineTo(8, 2); g.stroke();
+      g.fillStyle = "#4a8a44"; g.beginPath(); g.ellipse(10, 3, 2, 1, 0.4, 0, Math.PI * 2); g.fill();
+      return cv;
+    }
+    case "apple_pip": { // two pips and a sprout leaf
+      g.fillStyle = "#7a5a34"; g.beginPath(); g.ellipse(6, 11, 2, 3, -0.3, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.ellipse(10, 12, 1.8, 2.6, 0.25, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#4a8a44"; g.lineWidth = 1; g.beginPath(); g.moveTo(9, 8); g.lineTo(9, 4); g.stroke();
+      g.fillStyle = "#5fa052"; g.beginPath(); g.ellipse(11, 4, 2.5, 1.5, 0.5, 0, Math.PI * 2); g.fill();
+      return cv;
+    }
+    case "sugar_cane": { // jointed green stalks
+      for (const dx of [5, 9, 12]) {
+        g.fillStyle = "#5c8f3a"; g.fillRect(dx - 1, 2, 2, 13);
+        g.fillStyle = "#7ab050"; g.fillRect(dx - 1, 3, 2, 2); g.fillRect(dx - 1, 8, 2, 2);
+      }
+      g.strokeStyle = "#3f6a2c"; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(6, 4); g.lineTo(10, 2); g.stroke();
+      g.beginPath(); g.moveTo(10, 10); g.lineTo(13, 8); g.stroke();
+      return cv;
+    }
+    case "sugar": { // pale heap with grain sparkle
+      g.fillStyle = "#e8e2d0"; g.beginPath(); g.ellipse(8, 11, 6, 3.5, 0, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(8, 8, 3.5, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#ffffff"; g.fillRect(6, 7, 1, 1); g.fillRect(9, 9, 1, 1); g.fillRect(5, 11, 1, 1);
+      return cv;
+    }
+    case "stew": { // pot with handle, ladle of stew
+      g.fillStyle = "#3a3a42"; g.beginPath(); g.arc(8, 10, 6, Math.PI, 0); g.fill();
+      g.fillStyle = "#a86a30"; g.beginPath(); g.ellipse(8, 10, 6, 2, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#c47a3a"; g.fillRect(5, 9, 2, 1); g.fillRect(9, 10, 2, 1);
+      g.strokeStyle = "#8a8a94"; g.lineWidth = 1; g.beginPath(); g.moveTo(14, 4); g.lineTo(10, 8); g.stroke();
+      g.fillStyle = "#8a8a94"; g.beginPath(); g.arc(9, 9, 1.5, 0, Math.PI * 2); g.fill();
+      return cv;
+    }
+    case "fruit_salad": { // bowl of chopped fruit
+      g.fillStyle = "#c8d2da"; g.beginPath(); g.arc(8, 10, 6, Math.PI, 0); g.fill();
+      g.beginPath(); g.ellipse(8, 10, 6, 2, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#c03434"; g.fillRect(4, 8, 2, 2); g.fillStyle = "#c8a844"; g.fillRect(7, 8, 2, 2);
+      g.fillStyle = "#7ab050"; g.fillRect(10, 9, 2, 2); g.fillStyle = "#c47ab0"; g.fillRect(6, 10, 2, 1);
+      return cv;
+    }
+    case "apple_pie": { // lattice-topped pie, one apple on the crust
+      g.fillStyle = "#a8712e"; g.beginPath(); g.ellipse(8, 11, 7, 3, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#e0c888"; g.beginPath(); g.ellipse(8, 9.5, 6, 2.5, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#c89a50"; g.lineWidth = 1;
+      for (const dx of [-4, -1, 2, 5]) { g.beginPath(); g.moveTo(8 + dx - 2, 8); g.lineTo(8 + dx + 3, 11); g.stroke(); }
+      g.fillStyle = "#b42a26"; g.beginPath(); g.arc(8, 6, 2, 0, Math.PI * 2); g.fill();
+      return cv;
+    }
+    case "cooking_pot": { // iron pot over small flame
+      g.fillStyle = "#2e2e36"; g.beginPath(); g.arc(8, 9, 5.5, Math.PI * 0.85, Math.PI * 0.15); g.fill();
+      g.fillStyle = "#3c3c46"; g.beginPath(); g.ellipse(8, 6, 5.5, 1.8, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#60606c"; g.fillRect(3, 4, 10, 1); // lid rim
+      g.strokeStyle = "#e08030"; g.lineWidth = 1.5;
+      g.beginPath(); g.moveTo(6, 15); g.quadraticCurveTo(8, 12.5, 8, 14.5); g.quadraticCurveTo(9, 12, 10, 15); g.stroke();
+      return cv;
+    }
+    case "water_cage": { // steel cage with water sealed inside
+      g.fillStyle = "#3a6ea0"; g.fillRect(4, 5, 8, 8);
+      g.fillStyle = "#8fc0e0"; g.fillRect(4, 5, 8, 1);
+      g.strokeStyle = "#98a2b0"; g.lineWidth = 1;
+      g.strokeRect(3.5, 3.5, 9, 11);
+      g.beginPath(); g.moveTo(7, 4); g.lineTo(7, 14); g.moveTo(10, 4); g.lineTo(10, 14); g.stroke();
+      g.fillStyle = "#d0d6de"; g.fillRect(3, 3, 1, 1); g.fillRect(12, 3, 1, 1); g.fillRect(3, 14, 1, 1); g.fillRect(12, 14, 1, 1);
+      return cv;
+    }
     case "bucket": case "bucket_full": {
       const full = id === "bucket_full";
       rect(g, 4, 6, 8, 9, full ? "#2f7fd6" : color);

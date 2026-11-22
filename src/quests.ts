@@ -3,7 +3,7 @@
 
 export interface QuestDef {
   id: string;
-  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "wreck" | "core" | "finish" | "grid" | "factory" | "thruster";
+  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "bread" | "dish" | "wreck" | "core" | "finish" | "grid" | "factory" | "thruster";
   title: string;
   desc: string;
   goal: number;
@@ -44,6 +44,16 @@ export const QUESTS: QuestDef[] = [
     id: "supplies", kind: "supplies", title: "The Dwellers' Leftovers",
     desc: "The desert was lived in before you. Reach a Town and open a Chest — the first chest of a cluster holds the loot.", goal: 1,
     reward: { item: "canister_full", n: 1 },
+  },
+  {
+    id: "bread", kind: "bread", title: "Bread from the Pot",
+    desc: "Craft a Cooking Pot, then bake Wheat into Bread at it.", goal: 1,
+    reward: { item: "seed_wheat", n: 2 },
+  },
+  {
+    id: "dish", kind: "dish", title: "A Warm Meal",
+    desc: "Make any Dish at a Cooking Pot — Stew, Fruit Salad or Apple Pie.", goal: 1,
+    reward: { item: "apple_pip", n: 2 },
   },
   {
     id: "wreck", kind: "wreck", title: "The Second Wreck",

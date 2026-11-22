@@ -227,6 +227,29 @@ repos (root + `dist/`).
   Copper y≥12 @0.878; Alabaster y 8–24). `FIRE_FUEL`: kindling .5, wood_log 2,
   deadwood 3.
 
+### Progress (2026-11-22, landed in tree)
+
+- **Done — Step A1 (Score):** `win()`, `screen-win`, `scoreDays`,
+  `bestScore`/`submitBest`/`K_BEST` all deleted; the death screen and world list
+  no longer mention days. The Lift-Off cinematic ends by re-grabbing the pointer —
+  flight continues on the ground. `won` is set at cinematic end (save field kept),
+  so the quest epilogue text still fires.
+- **Done — Step A2 (Water Wheel):** block, item, recipe, art, `genOutput` case,
+  visor marker, Grid lesson text and Codex entry all deleted. Block id 65 stays
+  reserved: it renders as the tombstone "Rusted Machine" (no item, unplaceable),
+  so old saves keep their relic gaps. Load-time migration quietly drops inventory
+  slots, drops, equip slots and Chest contents whose item no longer exists.
+- **Mostly — Step A5 (Coal):** id 91, cave-crust veins (y≥6, noise > 0.842,
+  placed after Copper but before Alabaster so coal claims cells the others skip),
+  item `coal_ore`, `FIRE_FUEL.coal_ore = 6`, renderer art, Catalog shelf entry.
+  **Missing:** Badlands surface outcrops.
+- **Mostly — Step B8 (Refinery):** id 92 + item; build recipe 3 Metal Plating +
+  2 Copper Rod + 1 Glass at the Crafting Bench; `Recipe.returns` hands the Bucket
+  back after `oil_bucket + coal_ore → rocket_fuel`; station interaction opens the
+  generalized Bench modal (mode `"refinery"`), not a Campfire-style staging panel.
+  **Missing:** Oil fluid family + Oil Sands + Oil Seeps (step 6/7), so the
+  Refinery currently has no supply chain.
+
 ### Step A — removals and rebalances (no new systems; land first)
 
 1. **Delete Score**: remove `scoreDays`, `submitBest`/`bestScore`/`K_BEST`, score

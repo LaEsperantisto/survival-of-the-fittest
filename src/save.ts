@@ -4,7 +4,7 @@
 
 export interface WorldMeta { id: string; name: string; seedStr: string; updated: number; mode?: "easy" | "hard"; }
 
-const K_INDEX = "sotf:index", K_SET = "sotf:settings", K_BEST = "sotf:best";
+const K_INDEX = "sotf:index", K_SET = "sotf:settings";
 
 export interface Settings {
   sens: number; invertY: boolean; fov: number; renderDist: number;
@@ -24,11 +24,6 @@ export function getSettings(): Settings {
   catch { return { ...DEFAULT_SETTINGS }; }
 }
 export function setSettings(s: Settings) { localStorage.setItem(K_SET, JSON.stringify(s)); }
-
-export function bestScore(): number { return Number(localStorage.getItem(K_BEST) || 0); }
-export function submitBest(days: number) {
-  if (days > bestScore()) localStorage.setItem(K_BEST, String(days));
-}
 
 export function listWorlds(): WorldMeta[] {
   try { return JSON.parse(localStorage.getItem(K_INDEX) || "[]"); } catch { return []; }
@@ -57,6 +52,14 @@ export interface FireSave {
   output: { itemId: string; x: number; y: number; rot?: boolean; charges?: number; stack?: { itemId: string; count: number } }[];
 }
 
+export interface PotSave {
+  lit: boolean; drip?: number;
+  charge?: number; // fuel charges banked in the coals
+  input: { itemId: string; x: number; y: number; rot?: boolean; charges?: number; stack?: { itemId: string; count: number } }[];
+  output: { itemId: string; x: number; y: number; rot?: boolean; charges?: number; stack?: { itemId: string; count: number } }[];
+  jobs?: { out: string; cook: number }[]; // dishes mid-simmer, by their output item id
+}
+
 export interface RunSave {
   v: 1 | 2;
   seedStr: string;
@@ -82,6 +85,9 @@ export interface RunSave {
   trippedPanels?: string[];          // Power Panel cells latched off (ADR-0007)
   crops?: [string, number][]; // planted crop key -> accumulated good seconds
   trees?: [string, number][]; // planted Living Tree key -> growth seconds
+  appleTrees?: [string, number][]; // planted Apple Pip key -> growth seconds
+  fruitRegrow?: [string, number][]; // picked bough leaf key -> seconds until re-ripe
+  pots?: Record<string, PotSave>;   // Cooking Pot key -> state (fires ride campfires)
   lastSleep?: number;         // timeSec of the last bed sleep
   deltas: Record<string, number[]>;
   rots?: Record<string, number>; // cell "x,y,z" -> quarter-turn for player-placed blocks

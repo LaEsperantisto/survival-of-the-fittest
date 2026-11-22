@@ -74,7 +74,6 @@
 <div id="screen-title" class="screen">
   <h1>Survival of the Fittest</h1>
   <p class="sub">You woke up in the wreckage. The desert wants you dead. Don't be.</p>
-  <p id="best-score" class="sub"></p>
   <div id="worldlist"></div>
   <div id="newworld">
     <input id="seed-input" type="text" placeholder="seed (blank = random)">
@@ -122,13 +121,6 @@
 </div>
 
 <div id="lift-fx" class="hidden"></div>
-
-<div id="screen-win" class="screen hidden">
-  <h2 id="win-title">Lift-Off</h2>
-  <p id="win-stats"></p>
-  <button id="btn-win-continue">Keep Surviving</button>
-  <button id="btn-win-title">Quit to Title</button>
-</div>
 
 <div id="screen-pause" class="screen hidden">
   <button class="close-btn close-x" aria-label="Close">✕</button>
@@ -226,6 +218,21 @@
       <div class="fire-col"><div class="fire-lab">Output Slot</div><div id="fire-output-grid"></div><button class="sort-btn fire-sort" data-grid="output">Sort</button></div>
     </div>
     <div class="fire-hint">Drag fuel onto the Coals box — it burns away on the way in and its charges stay banked in the fire; cookables go to the Input Slot, finished cooking lands in the Output Slot. Each cooking job costs one fuel charge; a lit fire also burns one charge every 10 minutes.</div>
+  </div>
+  <div id="pot-section" class="hidden">
+    <h3>Cooking Pot <span id="pot-gauge"></span></h3>
+    <div id="pot-row">
+      <div id="pot-art"></div>
+      <button id="btn-pot">Light fire</button>
+    </div>
+    <div id="pot-grids">
+      <div class="fire-col"><div class="fire-lab">Coals</div><div id="pot-coals">No fuel banked — drop fuel here</div></div>
+      <div class="fire-col"><div class="fire-lab">Input Grid</div><div id="pot-input-grid"></div><button class="sort-btn fire-sort" data-grid="input">Sort</button></div>
+      <div class="fire-col"><div class="fire-lab">Output Grid</div><div id="pot-output-grid"></div><button class="sort-btn fire-sort" data-grid="output">Sort</button></div>
+    </div>
+    <div class="fire-hint">Fuel burns away into charges the same way as a Campfire. Stage ingredients on the Input Grid and press Cook on a Dishes row — the recipe decides whether the fire is touched at all. Finished dishes land in the Output Grid.</div>
+    <div class="fire-lab" style="margin-top:12px">Dishes</div>
+    <div id="pot-dishes"></div>
   </div>
   <div id="inv-craft-bar"><button id="btn-inv-craft">Craft by hand</button></div>
   <div id="inv-craft" class="hidden"></div>

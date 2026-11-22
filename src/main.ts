@@ -1,5 +1,5 @@
 import { Game } from "./game";
-import { DAY_SECONDS, BLOCKS, isWater, type BlockDef } from "./blocks";
+import { BLOCKS, isWater, type BlockDef } from "./blocks";
 import { Audio } from "./audio";
 import { ITEMS, BLOCK_TO_ITEM } from "./items";
 import { MOB_DEFS } from "./mobs";
@@ -9,14 +9,14 @@ import { RECIPES, SMELT } from "./crafting";
 import { itemArtUrl, blockTileUrl } from "./icons";
 import {
   WorldMeta, RunSave, Settings, listWorlds, createWorld, loadRun, deleteWorld,
-  getSettings, setSettings, bestScore, exportRun, importRun,
+  getSettings, setSettings, exportRun, importRun,
 } from "./save";
 import * as hud from "./hud";
 
 const $ = (id: string) => document.getElementById(id)!;
 const $v = (id: string) => ($(id) as HTMLInputElement).value;
 const show = (id: string, on = true) => $(id).classList.toggle("hidden", !on);
-const SCREENS = ["screen-title", "screen-settings", "screen-instructions", "screen-chronicle", "screen-pause", "screen-death", "screen-win", "screen-catalog", "ui-inventory", "ui-craft", "ui-cache"];
+const SCREENS = ["screen-title", "screen-settings", "screen-instructions", "screen-chronicle", "screen-pause", "screen-death", "screen-catalog", "ui-inventory", "ui-craft", "ui-cache"];
 const hideAll = () => SCREENS.forEach((s) => show(s, false));
 
 const audio = new Audio();
@@ -31,7 +31,6 @@ document.addEventListener("touchstart", () => audio.resume(), { once: true });
 function renderTitle() {
   hideAll();
   show("screen-title");
-  $("best-score").textContent = bestScore() > 0 ? `Best run: ${bestScore().toFixed(1)} days` : "";
   const list = $("worldlist");
   list.innerHTML = "";
   const worlds = listWorlds();
@@ -41,7 +40,7 @@ function renderTitle() {
     row.className = "world-row";
     const run = loadRun(w.id);
     const label = document.createElement("span");
-    label.textContent = `${w.name} — seed “${w.seedStr}” — ${run ? `day ${run.days}, survived ${(run.playSec / DAY_SECONDS).toFixed(1)} days` : "never played"}`;
+    label.textContent = `${w.name} — seed “${w.seedStr}” — ${run ? `day ${run.days}` : "never played"}`;
     const load = document.createElement("button");
     load.textContent = "Load";
     load.onclick = () => startGame(w, run);
@@ -183,18 +182,19 @@ let catalogSearch = "";
 // The Codex's five shelves, listed alphabetically (the shelf order IS the alphabet here).
 const CAT_SECTIONS = ["Food & Water", "Machines & Power", "Materials & Building", "Oddities", "Tools & Gear"] as const;
 const FOOD_IDS: Record<string, true> = { canister_full: true, canister_empty: true, bucket: true, bucket_full: true,
-  hot_water_pouch: true, prickly_pear: true, dune_melon: true, wheat: true, cooked_wheat: true, rat_raw: true,
-  rat_cooked: true, vulture_raw: true, vulture_cooked: true };
+  hot_water_pouch: true, prickly_pear: true, dune_melon: true, wheat: true, bread: true, apple: true, sugar_cane: true,
+  rat_raw: true, rat_cooked: true, vulture_raw: true, vulture_cooked: true };
 const TOOL_IDS: Record<string, true> = { wood_pickaxe: true, wood_shovel: true, wood_axe: true, stone_pickaxe: true,
   stone_shovel: true, stone_axe: true, metal_pickaxe: true, metal_shovel: true, metal_axe: true,
   metal_disassembler: true, alloy_pickaxe: true, alloy_shovel: true, alloy_axe: true, alloy_disassembler: true,
   voidbreaker: true, sword: true, stinger_blade: true, reptile_armor: true, tortoise_cuirass: true, wurmsuit: true,
   backpack1: true, backpack2: true, visor: true, body_regulator: true, head_lantern: true, coolant_cell: true };
-const ODD_IDS: Record<string, true> = { catalyst: true, engine_core: true, beacon: true, surveyor_pin: true, tracker: true };
+const ODD_IDS: Record<string, true> = { catalyst: true, engine_core: true, beacon: true, surveyor_pin: true, tracker: true, apple_pip: true };
 const MACHINE_IDS: Record<string, true> = { lamp: true, regulator: true, regulator_broken: true, storm_breaker: true,
-  storm_breaker_broken: true, power_pole: true, power_panel: true, gen_wood: true, water_wheel: true,
+  storm_breaker_broken: true, power_pole: true, power_panel: true, gen_wood: true,
   wind_turbine: true, solar_panel: true, battery: true, elec_lamp: true, inserter: true, planter: true,
-  harvester: true, thruster_nozzle: true, thruster_broken: true, thruster_lit: true, bench: true, armory: true, campfire: true };
+  harvester: true, refinery: true, thruster_nozzle: true, thruster_broken: true, thruster_lit: true, bench: true, armory: true, campfire: true,
+  cooking_pot: true, water_cage: true };
 
 function itemSection(id: string): string {
   if (id in FOOD_IDS) return "Food & Water";
@@ -600,8 +600,6 @@ for (const b of Array.from($("cheats").querySelectorAll<HTMLButtonElement>("butt
 
 $("btn-respawn").onclick = () => { if (game) game.respawn(); };
 $("btn-death-title").onclick = () => toTitle();
-$("btn-win-continue").onclick = () => { if (game) { game.paused = false; show("screen-win", false); game.relock(); } };
-$("btn-win-title").onclick = () => toTitle();
 
 document.addEventListener("keydown", (e) => {
   if (e.code === "Escape" && game && !game.paused && !$("screen-catalog").classList.contains("hidden")) {

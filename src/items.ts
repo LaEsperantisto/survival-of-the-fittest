@@ -3,12 +3,13 @@ import {
   DOOR_CLOSED, DOOR_UPPER, LAMP, BEACON, BENCH, CAMPFIRE, ADOBE, ENGINECORE, REGULATOR, CHEST, CACTUS,
   FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, CACTUS_FRUIT, CHEST_CONNECTOR, CHEST_INTERFACE, METAL_PLATING,
   DOOR_INNER, DOOR_INNER_UPPER, BED, BED_EXT, GRASS, LEAVES, WOOD, SAPLING,
-  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, STORM_BREAKER, THRUSTER, THRUSTER_LIT, ARMORY,
+  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, COAL_ORE, STORM_BREAKER, THRUSTER, THRUSTER_LIT, ARMORY,
   REGULATOR_HUSK, STORM_BREAKER_HUSK,
-  POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
-  INSERTER, PLANTER, HARVESTER,
+  POWER_PANEL, POWER_POLE, GEN_WOOD, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
+  INSERTER, PLANTER, HARVESTER, REFINERY,
   ALAB_BRICK, ALAB_POLISHED, ALAB_CHISELLED, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_DOOR,
   ALAB_DOOR_UPPER, ALAB_GATE_OPEN,
+  COOKPOT, WATER_CAGE, SUGARCANE_1, APPLE_SAPLING, APPLE_FRUIT, WATER_CAGE_FULL, SUGARCANE_2,
 } from "./blocks";
 
 export interface ItemDef {
@@ -95,8 +96,11 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "seed_melon", name: "Melon Seed", desc: "Plant on Farm Land within 10 blocks of water. Loves heat (22-45 C air); stalls in the cold.", w: 1, h: 1, mass: 0.1, block: MELON_1, color: "#c8b060" }),
   I({ id: "seed_wheat", name: "Wheat Seed", desc: "Plant on Farm Land within 6 blocks of water. Comfortable across 2-42 C — the one crop that does not mind the heat.", w: 1, h: 1, mass: 0.1, block: WHEAT_1, color: "#d8c878" }),
   I({ id: "dune_melon", name: "Dune Melon", desc: "Harvested from a ripe Melon. Eat it: +30 Water, +5 Health.", w: 2, h: 1, mass: 2, eat: { water: 30, health: 5 }, color: "#7a9a3a" }),
-  I({ id: "wheat", name: "Desert Wheat", desc: "Cut from ripe Wheat. Too tough raw - smelt it at a Campfire into Cooked Wheat.", w: 1, h: 1, mass: 0.2, color: "#d8b048" }),
-  I({ id: "cooked_wheat", name: "Cooked Wheat", desc: "Plain but dense. Eat it: +35 Health.", w: 1, h: 1, mass: 0.2, eat: { health: 35 }, color: "#b8853a" }),
+  I({ id: "wheat", name: "Desert Wheat", desc: "Cut from ripe Wheat. Too tough raw - bake it at a Cooking Pot into Bread.", w: 1, h: 1, mass: 0.2, color: "#d8b048" }),
+  I({ id: "bread", name: "Bread", desc: "Wheat baked at a Cooking Pot. Plain but dense. Eat it: +35 Health.", w: 1, h: 1, mass: 0.2, eat: { health: 35 }, color: "#b8853a" }),
+  I({ id: "stew", name: "Stew", desc: "Fruit, Wheat and meat simmered in a full Canister at a Cooking Pot. The Canister comes back empty. Eat it: +25 Water, +35 Health.", w: 1, h: 2, mass: 1.2, eat: { water: 25, health: 35 }, color: "#a86a30" }),
+  I({ id: "fruit_salad", name: "Fruit Salad", desc: "Two Fruits and a full Canister chopped together at a Cooking Pot - no fire touched. The Canister comes back empty. Eat it: +15 Water, +10 Health.", w: 1, h: 1, mass: 0.6, eat: { water: 15, health: 10 }, color: "#c47ab0" }),
+  I({ id: "apple_pie", name: "Apple Pie", desc: "Apples, Wheat and Sugar baked at a Cooking Pot. Eat it: +45 Health.", w: 2, h: 1, mass: 0.8, eat: { health: 45 }, color: "#c78a4a" }),
   // ---- trees ----
   I({ id: "wood_log", name: "Wood Log", desc: "Trunk of a Living Tree - the renewable counterpart of Dead Wood. Fuel and crafting.", w: 1, h: 1, mass: 0.5, block: WOOD, color: "#7a5c3a" }),
   I({ id: "kindling", name: "Kindling", desc: "Leaf scraps. Campfire fuel that burns fast and small.", w: 1, h: 1, mass: 0.1, color: "#9a8a5a" }),
@@ -104,6 +108,12 @@ const ITEM_LIST: ItemDef[] = [
   // ---- water carrying ----
   I({ id: "bucket", name: "Bucket", desc: "Scoop a water Source with it, pour it back anywhere: moves water instead of drinking it.", w: 1, h: 1, mass: 1.0, color: "#9aa0aa" }),
   I({ id: "bucket_full", name: "Bucket (full)", desc: "Water to pour. Right-click ground to place it as a new Source.", w: 1, h: 1, mass: 3.0, color: "#3f8fe0" }),
+  I({ id: "water_cage", name: "Water Cage", desc: "A closed vessel for one Source: solid, never flowing, yet Water to every crop and tree that reaches it. Fill it with a full Bucket (E), scoop it out with an empty one; breaking it drops the Cage and lets the Water run free.", w: 1, h: 1, mass: 2.0, block: WATER_CAGE, color: "#8fa4b4" }),
+  I({ id: "cooking_pot", name: "Cooking Pot", desc: "The kitchen station. Keeps Coals like a Campfire, but the recipe decides whether the fire is touched at all — a Stew spends charges, a Fruit Salad needs no heat.", w: 1, h: 2, mass: 4.0, block: COOKPOT, color: "#c86a38" }),
+  I({ id: "apple", name: "Apple", desc: "Picked from an Apple Tree. Eating it leaves an Apple Pip in hand two times out of three. Eat it: +6 Water, +4 Health.", w: 1, h: 1, mass: 0.2, eat: { water: 6, health: 4 }, color: "#c03434" }),
+  I({ id: "apple_pip", name: "Apple Pip", desc: "Plant it in Dirt. Grows an Apple Tree stage by stage over ~8 minutes while water stays within 10 blocks; a full-grown tree bears Apples, and picked spots re-ripen.", w: 1, h: 1, mass: 0.05, block: APPLE_SAPLING, color: "#8a6b3f" }),
+  I({ id: "sugar_cane", name: "Sugar Cane", desc: "Cut from ripe Sugar Cane - it only grows with Water within 2 blocks. Refine it into Sugar at a Cooking Pot.", w: 1, h: 1, mass: 0.3, block: SUGARCANE_1, color: "#5c8f3a" }),
+  I({ id: "sugar", name: "Sugar", desc: "Sugar Cane boiled down at a Cooking Pot. The sweetening in an Apple Tart.", w: 1, h: 1, mass: 0.2, color: "#e8e2d0" }),
   // ---- building ----
   I({ id: "chest_connector", name: "Chest Connector", desc: "Steel rail between Chests: links their grids into one bigger Inventory Grid. Stores nothing itself.", w: 1, h: 1, mass: 1, block: CHEST_CONNECTOR, color: "#8a744a" }),
   I({ id: "chest_interface", name: "Chest Interface", desc: "A door onto a Chest cluster: it links the Chests like a Connector rail, but adds no grid space of its own and stores nothing. Stand at it and press E for a list of everything the cluster holds — take items one by one, or stow what you hold. Inserters and generators can work through it.", w: 1, h: 1, mass: 2, block: CHEST_INTERFACE, color: "#6f7f95" }),
@@ -114,6 +124,7 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "bed", name: "Bed", desc: "Curtained sleep for 8 game hours, then the cool morning. One long sleep every 8 hours; press E at the bed. Takes a 2x1 floor span.", w: 2, h: 1, mass: 6, block: BED, color: "#a84a42" }),
   // ---- underground: minerals ----
   I({ id: "iron_ore", name: "Iron Ore", desc: "Dense ore from Cave walls. Smelt it at a Campfire: one ore bakes two Iron Rods.", w: 1, h: 1, mass: 1.6, block: IRON_ORE, color: "#9e8468" }),
+  I({ id: "coal_ore", name: "Coal Ore", desc: "A seam of black carbon from the Cave walls. Feed it to a Campfire: one ore banks six charges of hot, steady burn.", w: 1, h: 1, mass: 1.6, block: COAL_ORE, color: "#3a3734" }),
   I({ id: "copper_ore", name: "Copper Ore", desc: "Reddened Cave stone. Smelts into Copper Rods - the heart of tier-4 Alloy gear.", w: 1, h: 1, mass: 1.6, block: COPPER_ORE, color: "#b86b42" }),
   I({ id: "alabaster", name: "Alabaster", desc: "Pale Cave stone. Cuts soft, decorates well, and takes a Lamp's light like nothing else. Placeable as-is — the Bench cuts it into prettier shapes.", w: 1, h: 1, mass: 1.2, block: ALABASTER, color: "#dcd5bd" }),
   // ---- Alabaster masonry: bench-cut building kit, no catalyst ----
@@ -150,7 +161,6 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "power_pole", name: "Power Pole", desc: "Carries the Grid: links to other Poles within 16 blocks and feeds anything powered within 10.", w: 1, h: 1, mass: 2.0, block: POWER_POLE, color: "#8a7455" }),
   I({ id: "power_panel", name: "Power Panel", desc: "The heart of a Grid — exactly one per Pole network. When draw outruns supply it trips and the whole Grid goes dark until you press E to reset it.", w: 1, h: 1, mass: 4.0, block: POWER_PANEL, color: "#586270" }),
   I({ id: "gen_wood", name: "Wood Generator", desc: "Burns Wood Logs and Dead Wood fed from a Chest right beside it. Steady 4 units, day and night, until the wood runs out.", w: 1, h: 1, mass: 6.0, block: GEN_WOOD, color: "#755540" }),
-  I({ id: "water_wheel", name: "Water Wheel", desc: "3 units while water runs past any side of it. Oasis-current or your own channel — it never sleeps.", w: 1, h: 1, mass: 5.0, block: WATER_WHEEL, color: "#70664d" }),
   I({ id: "wind_turbine", name: "Wind Turbine", desc: "Up to 8 units, scaling with the Sandstorm — the storm that punishes you powers the base. Needs open sky above.", w: 1, h: 1, mass: 5.0, block: WIND_TURBINE, color: "#b3b3bc" }),
   I({ id: "solar_panel", name: "Solar Panel", desc: "Up to 4 units in direct sun; roofs and Sandstorms cut it hard. Dead silent at night.", w: 1, h: 1, mass: 4.0, block: SOLAR_PANEL, color: "#33405f" }),
   I({ id: "battery", name: "Battery", desc: "Stores 120 units of the Grid. Sips surplus by day, hands it back when generation falls short — until it is dry and the Panel trips.", w: 1, h: 1, mass: 8.0, block: BATTERY, color: "#4d7059" }),
@@ -158,6 +168,9 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "inserter", name: "Inserter", desc: "Powered: pulls one item per second out of the block in front of it and pushes it into the block behind — Chests, or a Campfire's coals. No filters, no reach; aim it with R before placing.", w: 1, h: 1, mass: 1.5, block: INSERTER, color: "#4d808c" }),
   I({ id: "planter", name: "Planter", desc: "Powered: sits under Farm Land, takes a seed from the Chest beneath it, and plants the empty cell two above. Melon and Wheat seeds.", w: 1, h: 1, mass: 2.0, block: PLANTER, color: "#4d8047" }),
   I({ id: "harvester", name: "Harvester", desc: "Powered: reaps the ripe crop directly beneath it (Melon, Wheat, Cactus) and spills the yield into the Chest directly above.", w: 1, h: 1, mass: 1.5, block: HARVESTER, color: "#8c6b33" }),
+  I({ id: "refinery", name: "Refinery", desc: "Where oil meets fire: press E and cook a Bucket of oil with Coal Ore into a sealed canister of Rocket Fuel. The bucket comes back.", w: 1, h: 1, mass: 8.0, block: REFINERY, color: "#66606b" }),
+  I({ id: "oil_bucket", name: "Bucket of Oil", desc: "A bucket of thick black oil — slippery, foul-smelling, and worth far more than it smells.", w: 1, h: 1, mass: 4.0, color: "#2c2620" }),
+  I({ id: "rocket_fuel", name: "Rocket Fuel", desc: "A sealed canister of refined rocket fuel: oil cooked with coal at a Refinery. Burn it in the Ship's engines.", w: 1, h: 2, mass: 4.0, color: "#c8552b" }),
   I({ id: "thruster_nozzle", name: "Thruster Nozzle", desc: "Cobalt-and-Copper replacement engine part. Press E at a Broken Thruster to wake it. All four wake the Ship.", w: 1, h: 2, mass: 3.0, color: "#c88a50" }),
   // ---- salvaged engine modules: a Disassembler pulls thrusters off their pylons ----
   I({ id: "thruster_broken", name: "Broken Thruster", desc: "A dead wingtip engine torn off its pylon. Heavy, inert — set it down anywhere and it waits for a Thruster Nozzle.", w: 2, h: 2, mass: 22.0, block: THRUSTER, color: "#6b707c" }),
@@ -189,6 +202,11 @@ BLOCK_TO_ITEM[MELON_2] = "dune_melon";
 BLOCK_TO_ITEM[WHEAT_1] = "seed_wheat";
 BLOCK_TO_ITEM[WHEAT_2] = "wheat";
 BLOCK_TO_ITEM[CACTUS_FRUIT] = "cactus";
+// new crop/fruit/cage fallbacks (explicit handlers give the real drops)
+BLOCK_TO_ITEM[SUGARCANE_1] = "sugar_cane";
+BLOCK_TO_ITEM[SUGARCANE_2] = "sugar_cane";
+BLOCK_TO_ITEM[APPLE_FRUIT] = "apple";
+BLOCK_TO_ITEM[WATER_CAGE_FULL] = "water_cage";
 // Husks drop their broken frame — the item, not a placeable husk block
 BLOCK_TO_ITEM[REGULATOR_HUSK] = "regulator_broken";
 BLOCK_TO_ITEM[STORM_BREAKER_HUSK] = "storm_breaker_broken";

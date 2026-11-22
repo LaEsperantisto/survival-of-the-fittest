@@ -5,19 +5,20 @@ import { Survival, REGULATOR_ROOM_MAX, SAFE_HI } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, sackUnits, sackFree, type ItemDef, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, DOOR_GROUP, ALAB_GATE, ALAB_GATE_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, CHEST_INTERFACE, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WATER_WHEEL, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, INSERTER, PLANTER, HARVESTER, POLE_LINK, DEVICE_REACH, isPowerBlock, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable } from "./blocks";
+import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, HULL, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, DOOR_GROUP, ALAB_GATE, ALAB_GATE_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, CHEST_INTERFACE, METAL_PLATING, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, CURVED_HULL, HULL_SLOPE, INSGLASS, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, INSERTER, PLANTER, HARVESTER, REFINERY, POLE_LINK, DEVICE_REACH, isPowerBlock, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable,
+  COOKPOT, WATER_CAGE, WATER_CAGE_FULL, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING, APPLE_FRUIT } from "./blocks";
 
 /** One Battery stores this many Grid-units. */
 const POWER_BATT_CAP = 120;
 import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
-import { heightAt, biomeAt, TOWN_L, CAMP_L, CAVE_MOUTH_L, OUTPOST_L, OASIS_L, CANISTER_L, treePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
+import { heightAt, biomeAt, TOWN_L, CAMP_L, CAVE_MOUTH_L, OUTPOST_L, OASIS_L, CANISTER_L, treePlan, appleTreePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
 import { offersFor, Offer } from "./trades";
-import { RECIPES, SMELT, canCraft, doCraft, FIRE_FUEL } from "./crafting";
+import { RECIPES, SMELT, canCraft, doCraft, FIRE_FUEL, POT_RECIPES, potHas, potConsume, type PotRecipe } from "./crafting";
 import { QUESTS, currentQuest, loadQuestState, questEvent, recordDeed, reconcile, type QuestDef, type QuestState } from "./quests";
 import { LESSON_BY_ID, LESSONS, loadIdSet } from "./chronicle";
 import { Tutorial, INTRO_CINE, type CineSeg } from "./tutorial";
-import { WorldMeta, RunSave, FireSave, saveRun, exportRun, bestScore, submitBest, Settings } from "./save";
+import { WorldMeta, RunSave, FireSave, PotSave, saveRun, exportRun, Settings } from "./save";
 import { itemArtUrl } from "./icons";
 import * as hud from "./hud";
 
@@ -40,6 +41,20 @@ export interface FireState {
 // a lit fire drips one fuel charge per 10 real minutes; one cooking job takes 6s and costs 1 charge
 const FIRE_DRIP = 600;
 const COOK_SECONDS = 6;
+
+/** One Cooking Pot's whole station: staging grids (input/output 3×2 each), the
+ *  charge bank in the coals, the lit flag, the idle-burn accumulator, and the
+ *  row-pressed dish jobs (up to 6 simmer at once). */
+export interface PotJob { r: PotRecipe; cook: number; done: boolean; }
+export interface PotState {
+  input: Inventory;
+  output: Inventory;
+  charge: number; // fuel charges banked in the coals — fuel items burn away on the way in
+  lit: boolean;
+  drip: number; // seconds banked toward the next idle charge
+  jobs: PotJob[];
+}
+const POT_MAX_JOBS = 6;
 
 // Falls: the first 4 blocks are free, ~16 without armour is lethal.
 const FALL_GRACE = 4, FALL_DMG_PER_BLOCK = 8.5;
@@ -83,13 +98,17 @@ export class Game {
   // plus its search filter
   ifcMode = false;
   ifcQuery = "";
-  private gridFocus: "inv" | "chest" | "fire-in" | "fire-out" = "inv";
+  private gridFocus: "inv" | "chest" | "fire-in" | "fire-out" | "pot-in" | "pot-out" = "inv";
   /** Campfire cooking stations keyed by "x,y,z" — the staging grids are live Inventory instances. */
   fires = new Map<string, FireState>();
   /** The renderer's fire gauges: 0 = cold charcoal tile, >0 = flame (a lit fire only). */
   gauges = new Map<string, number>();
   fire: FireState | null = null; // the station whose panel is open
   openFire: [number, number, number] | null = null;
+  /** Cooking Pot stations keyed by "x,y,z" (the kitchen half of the campfire family). */
+  pots = new Map<string, PotState>();
+  pot: PotState | null = null; // the pot whose panel is open
+  openPot: [number, number, number] | null = null;
   beaconMarks: { x: number; y: number; z: number }[] = [];
   // ---- the Map kit and the lessons (save v2) ----
   worldMode: "easy" | "hard" = "easy";
@@ -134,11 +153,16 @@ export class Game {
   crops = new Map<string, number>();
   private cropAcc = 0;
   private treeAcc = 0;
+  private appleAcc = 0;
   /** One-time Codex-free nudge about where Melon Seeds come from. */
   melonHintShown = false;
   /** Living Trees planted by the player: "x,y,z" of the planted cell → growth seconds. */
   private trees = new Map<string, number>();
   private treePlanCache = new Map<string, TreePart[]>();
+  // Apple Trees ride the same staged-growth machinery, their own map
+  private appleTrees = new Map<string, number>();
+  // picked APPLE_FRUIT cell -> good seconds banked toward re-ripening (60s)
+  private fruitRegrow = new Map<string, number>();
   private sprintOn = false;
   private lastPrick = -9;
   private tempOrigin: Inventory | null = null;
@@ -376,13 +400,14 @@ export class Game {
     const items: { itemId: string; count: number }[] = [{ itemId: "canister_empty", count: 2 }];
     if (r(11) < 0.7) items.push({ itemId: "seed_wheat", count: 1 + (r(12) < 0.5 ? 1 : 0) });
     if (r(13) < 0.7) items.push({ itemId: "seed_melon", count: 1 + (r(14) < 0.4 ? 1 : 0) });
-    if (r(15) < 0.6) items.push({ itemId: "cooked_wheat", count: 1 + (r(16) < 0.35 ? 1 : 0) });
+    if (r(15) < 0.6) items.push({ itemId: "bread", count: 1 + (r(16) < 0.35 ? 1 : 0) });
     if (r(17) < 0.5) items.push({ itemId: "metal", count: 1 + Math.floor(r(18) * 3) });
     if (r(19) < 0.45) items.push({ itemId: "chest_connector", count: 1 + Math.floor(r(20) * 2) });
     if (r(21) < 0.3) items.push({ itemId: "door_inner", count: 1 });
     if (r(22) < 0.25) items.push({ itemId: "bed", count: 1 });
     if (r(23) < 0.5) items.push({ itemId: "seed_tree", count: 1 + (r(24) < 0.4 ? 1 : 0) + (r(25) < 0.2 ? 1 : 0) });
     if (r(26) < 0.35) items.push({ itemId: "sack1", count: 1 });
+    if (r(27) < 0.7) items.push({ itemId: "apple_pip", count: 1 + (r(28) < 0.4 ? 1 : 0) });
     return items;
   }
 
@@ -480,9 +505,11 @@ export class Game {
     this.survival.water = run.survival.water;
     this.survival.body = run.survival.body;
     // Old saves may hold stacked slots; keep one instance per slot in place and
-    // give the extra copies back so nothing occupies a stack.
+    // give the extra copies back so nothing occupies a stack. Slots for items the
+    // game no longer has (a removed Water Wheel) are quietly dropped on load.
+    const known = (id: string) => !!ITEMS[id];
     const legacyExtras: { itemId: string }[] = [];
-    this.inv.slots = run.inventory.slots.map((s) => {
+    this.inv.slots = run.inventory.slots.filter((s) => known(s.itemId)).map((s) => {
       const n = s.count ?? 1;
       for (let i = 1; i < n; i++) legacyExtras.push({ itemId: s.itemId });
       return { itemId: s.itemId, x: s.x, y: s.y, rot: s.rot, charges: s.charges, blockRot: s.blockRot, stack: s.stack };
@@ -495,7 +522,7 @@ export class Game {
     // Armour Slots: restore gear without touching grid sizes (the saved w/h already encode them)
     for (const slot of ["backpack", "head", "body", "regulator", "light"] as const) {
       const id = run.equip?.[slot];
-      if (id) this.equip[slot] = { itemId: id, x: 0, y: 0, charges: run.equip?.charges?.[slot as "regulator" | "light"] };
+      if (id && known(id)) this.equip[slot] = { itemId: id, x: 0, y: 0, charges: run.equip?.charges?.[slot as "regulator" | "light"] };
     }
     this.beaconMarks = run.beaconMarks ?? [];
     this.worldMode = run.worldMode ?? "easy";
@@ -512,6 +539,7 @@ export class Game {
     for (const e of run.entities) {
       // old saves may hold stacked drops; split them — one item per entity
       const n = e.count ?? 1;
+      if (!known(e.itemId)) continue; // a removed item's drop is quietly gone
       for (let i = 0; i < n; i++) fresh.push({ id: this.entitySeq++, x: e.x, y: e.y, z: e.z, itemId: e.itemId, age: e.age, stack: e.stack });
     }
     this.entities = fresh;
@@ -519,6 +547,7 @@ export class Game {
     this.chests = new Map((run.chests ?? []).map((c) => {
       const ci = this.emptyChestGrid(c.cells.split("|").length);
       for (const s of c.slots) {
+        if (!known(s.itemId)) continue; // a removed item in a Chest is quietly gone
         ci.slots.push({ itemId: s.itemId, x: s.x, y: s.y, rot: s.rot, blockRot: s.blockRot, charges: s.charges, stack: s.stack });
         for (let i = 1; i < (s.count ?? 1); i++) {
           const extra: Slot = { itemId: s.itemId, x: 0, y: 0 };
@@ -555,12 +584,29 @@ export class Game {
       this.gauges.set(k, f.lit ? Game.fireFuel(f) : 0);
       this.fires.set(k, f);
     }
+    this.pots.clear();
+    for (const [k, v] of Object.entries(run.pots ?? {})) {
+      const p = Game.newPot();
+      p.lit = !!v.lit;
+      p.drip = v.drip ?? 0;
+      p.charge = v.charge ?? 0;
+      for (const s of v.input ?? []) p.input.addSlot({ ...s });
+      for (const s of v.output ?? []) p.output.addSlot({ ...s });
+      for (const j of v.jobs ?? []) {
+        const r = POT_RECIPES.find((r) => r.out === j.out);
+        if (r) p.jobs.push({ r, cook: j.cook, done: j.cook >= r.seconds });
+      }
+      this.pots.set(k, p);
+      this.gauges.set(k, this.potLit(k) ? p.charge : 0);
+    }
     this.batteryCharge = new Map(run.battery ?? []);
     this.genFuel = new Map(run.genFuel ?? []);
     this.trippedPanels = new Set(run.trippedPanels ?? []);
     this.renderer.fires = this.gauges;
     this.world.loadRots(run.rots ?? {});
     this.crops = new Map(run.crops ?? []);
+    this.appleTrees = new Map(run.appleTrees ?? []);
+    this.fruitRegrow = new Map(run.fruitRegrow ?? []);
     if (run.lastSleep) this.lastSleep = run.lastSleep;
     if (run.melonHint) this.melonHintShown = true;
     for (const c of legacyChests) this.adoptLegacyChest(c);
@@ -577,12 +623,13 @@ export class Game {
       const [cx, cz] = k.split(",").map(Number);
       for (const [i, id] of m) {
         const isPower = isPowerBlock(id);
-        if (id !== LAMP && id !== CAMPFIRE && !isPower) continue;
+        if (id !== LAMP && id !== CAMPFIRE && id !== COOKPOT && !isPower) continue;
         const lx = Math.floor(i / (CS * CH)), rem = i % (CS * CH);
         const wx = cx * CS + lx, wy = rem % CH, wz = cz * CS + Math.floor(rem / CH);
         if (isPower) { this.powerCells.set(`${wx},${wy},${wz}`, id); continue; }
         if (id === LAMP) continue; // the power tick relights it if a live Panel feeds it
         if (id === CAMPFIRE && !this.fireLit(`${wx},${wy},${wz}`)) continue;
+        if (id === COOKPOT && !this.potLit(`${wx},${wy},${wz}`)) continue;
         this.renderer.addPointLight(wx, wy, wz, "fire");
       }
     }
@@ -625,11 +672,19 @@ export class Game {
         input: f.input.slots.map((s) => ({ ...s })),
         output: f.output.slots.map((s) => ({ ...s })),
       } satisfies FireSave])),
+      pots: Object.fromEntries([...this.pots].map(([k, p]) => [k, {
+        lit: p.lit, drip: Math.floor(p.drip), charge: p.charge,
+        input: p.input.slots.map((s) => ({ ...s })),
+        output: p.output.slots.map((s) => ({ ...s })),
+        jobs: p.jobs.map((j) => ({ out: j.r.out, cook: j.cook })),
+      } satisfies PotSave])),
       battery: [...this.batteryCharge],
       genFuel: [...this.genFuel],
       trippedPanels: [...this.trippedPanels],
       crops: [...this.crops],
       trees: [...this.trees],
+      appleTrees: [...this.appleTrees],
+      fruitRegrow: [...this.fruitRegrow],
       lastSleep: this.lastSleep > 0 ? this.lastSleep : undefined,
       melonHint: this.melonHintShown || undefined,
       deltas: this.world.serializeDeltas(),
@@ -1563,7 +1618,7 @@ export class Game {
     on("visibilitychange", () => {
       if (!document.hidden || !this.running || this.paused || this.ui) return;
       const vis = (id: string) => !document.getElementById(id)!.classList.contains("hidden");
-      if (vis("screen-settings") || vis("screen-instructions") || vis("screen-death") || vis("screen-win")) return;
+      if (vis("screen-settings") || vis("screen-instructions") || vis("screen-death")) return;
       this.paused = true;
       document.getElementById("screen-pause")!.classList.remove("hidden");
     }, document);
@@ -1578,8 +1633,9 @@ export class Game {
       this.renderIfcList();
     };
     document.getElementById("btn-ifc-stow")!.onclick = () => this.ifcStow();
-    for (const b of document.querySelectorAll<HTMLButtonElement>(".fire-sort"))
+    for (const b of document.querySelectorAll<HTMLButtonElement>(".fire-sort, .pot-sort"))
       b.onclick = () => {
+        if (this.pot) { this.pot[b.dataset.grid as "input" | "output"].sort(); this.audio.place(); this.renderPot(); return; }
         const f = this.fire;
         if (!f) return;
         f[b.dataset.grid as "input" | "output"].sort();
@@ -1614,9 +1670,8 @@ export class Game {
 
   /** The Campfire panel's Coals box, under the cursor? (fuel dropped there burns away) */
   private overCoals(ev: MouseEvent): boolean {
-    if (!this.fire) return false;
-    const el = document.getElementById("fire-coals");
-    if (!el) return false;
+    const el = document.getElementById(this.pot ? "pot-coals" : "fire-coals");
+    if (!(this.fire || this.pot) || !el) return false;
     const r = el.getBoundingClientRect();
     return ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
   }
@@ -1643,9 +1698,9 @@ export class Game {
     if (this.pauseSubmenu) { this.closePauseSubmenu(); return; }
     if (this.ui) { this.closeUI(); return; }
     const hidden = (id: string) => document.getElementById(id)!.classList.contains("hidden");
-    // Settings / death / win / instructions own their own dismissal buttons;
+    // Settings / death / instructions own their own dismissal buttons;
     // Esc must not pause behind them.
-    if (!hidden("screen-settings") || !hidden("screen-death") || !hidden("screen-win")
+    if (!hidden("screen-settings") || !hidden("screen-death")
       || !hidden("screen-instructions")) return;
     // the only Esc that leaves fullscreen: one pressed while the pause menu is up
     if (!fromP && this.paused && document.fullscreenElement) {
@@ -1771,7 +1826,7 @@ export class Game {
       this.updatePickups();
     }
     // the Campfire's cooking job keeps running whether or not a panel is open
-    if (!this.cine) this.tickFires(dt);
+    if (!this.cine) { this.tickFires(dt); this.tickPots(dt); }
     this.audio.heartbeat(dt, this.survival.health);
 
     if (this.cine) this.cineFrame(dt);
@@ -1871,6 +1926,7 @@ export class Game {
     this.updateCrops(dt);
     this.updatePower(dt);
     this.updateTrees(dt);
+    this.updateApples(dt);
     if (!this.ui && !this.paused && !this.cine) this.cactusPrick();
     const surgeCool = this.survival.surgeCooldown > 0;
     for (const id of ["surge-btn", "m-surge"]) {
@@ -1956,7 +2012,12 @@ export class Game {
       if (id === BEACON) return "E: Save game (respawn point)";
       if (id === BENCH || id === BENCH_EXT) return "E: Craft";
       if (id === ARMORY) return "E: Forge armour and gear";
+      if (id === REFINERY) return "E: Cook rocket fuel";
       if (id === CAMPFIRE) return "E: Cook at the Campfire";
+      if (id === COOKPOT) return "E: Cook at the Cooking Pot";
+      if (id === MELON_2 || id === WHEAT_2 || id === CACTUS_FRUIT || id === SUGARCANE_2 || id === APPLE_FRUIT) return "E: Harvest";
+      if (id === WATER_CAGE_FULL) return this.inv.selectedSlot()?.itemId === "bucket" ? "E: Scoop Water from the Cage" : "E: The Cage is full of Water";
+      if (id === WATER_CAGE) return this.inv.selectedSlot()?.itemId === "bucket_full" ? "E: Fill the Cage with Water" : null;
       if (id === REGULATOR) return "E: Draw neutral air (37 °C)";
       if (id === POWER_PANEL) return this.trippedPanels.has(`${t.hit.x},${t.hit.y},${t.hit.z}`)
         ? "E: Reset the tripped Power Panel" : "E: Power Panel — check the meters";
@@ -2085,20 +2146,29 @@ export class Game {
       this.audio.blockBreak();
       return;
     }
-    if (id === SAPLING) {
+    if (id === SAPLING || id === APPLE_SAPLING) {
       this.world.set(x, y, z, AIR);
       this.trees.delete(`${x},${y},${z}`);
-      this.giveOrDrop("seed_tree", 1); // the seed comes back
+      this.appleTrees.delete(`${x},${y},${z}`);
+      this.giveOrDrop(id === SAPLING ? "seed_tree" : "apple_pip", 1); // the seed comes back
       this.audio.blockBreak();
       return;
     }
-    if (id === WOOD && this.trees.has(`${x},${y},${z}`)) {
+    if (id === WOOD && (this.trees.has(`${x},${y},${z}`) || this.appleTrees.has(`${x},${y},${z}`))) {
       // felling the trunk ends this tree: a seed replanted into the cell
       // must start from scratch, never inherit the felled one's progress
       this.trees.delete(`${x},${y},${z}`);
+      this.appleTrees.delete(`${x},${y},${z}`);
       this.treePlanCache.delete(`${x},${y},${z}`);
     }
-    if (id === MELON_2 || id === MELON_1 || id === WHEAT_2 || id === WHEAT_1) {
+    if (id === APPLE_FRUIT) {
+      // breaking the branch knocks the Apple loose but hurts nothing else
+      this.world.set(x, y, z, LEAVES);
+      this.giveOrDrop("apple", 1);
+      this.audio.blockBreak();
+      return;
+    }
+    if (id === MELON_2 || id === MELON_1 || id === WHEAT_2 || id === WHEAT_1 || id === SUGARCANE_2 || id === SUGARCANE_1) {
       // breaking a crop by hand or tool yields its harvest too — rougher than
       // picking it (E) but never a wasted plant
       this.world.set(x, y, z, AIR); // wheat sits ON farmland: breaking it must not stack a second tilled block
@@ -2107,6 +2177,8 @@ export class Game {
       if (id === WHEAT_2) { this.giveOrDrop("wheat", 1); this.giveOrDrop("seed_wheat", 1); if (this.seedLuck(x, z, 83)) this.giveOrDrop("seed_wheat", 1); }
       if (id === MELON_1) this.giveOrDrop("seed_melon", 1);
       if (id === WHEAT_1) this.giveOrDrop("seed_wheat", 1); // unripe wheat: just the seed
+      if (id === SUGARCANE_2) { this.giveOrDrop("sugar_cane", 2); if (this.seedLuck(x, z, 89)) this.giveOrDrop("sugar_cane", 1); }
+      if (id === SUGARCANE_1) this.giveOrDrop("sugar_cane", 1); // young shoot: just the stalk
       this.audio.blockBreak();
       return;
     }
@@ -2138,6 +2210,31 @@ export class Game {
         if (this.fire === f) this.closeUI();
       }
       this.syncFire(key);
+    }
+    if (id === COOKPOT) {
+      const key = `${x},${y},${z}`;
+      const p = this.pots.get(key);
+      if (p) {
+        // the staged ingredients and dishes scatter; simmering jobs stop with the pot
+        for (const g of [p.input, p.output])
+          for (const s of g.slots) this.dropEntity(s.itemId, 1, 2, s.charges);
+        this.pots.delete(key);
+        if (this.pot === p) this.closeUI();
+      }
+      this.syncPot(key);
+    }
+    if (id === WATER_CAGE_FULL) {
+      // the Cage drops, the Water it held does not: it stays in the world
+      this.world.set(x, y, z, WATER);
+      this.giveOrDrop("water_cage", 1);
+      this.audio.blockBreak();
+      return;
+    }
+    if (id === WATER_CAGE) {
+      this.world.set(x, y, z, AIR);
+      this.giveOrDrop("water_cage", 1);
+      this.audio.blockBreak();
+      return;
     }
     if (id === CHEST) {
       // breaking one chest of a linked cluster: the grid shrinks; contents that
@@ -2204,7 +2301,7 @@ export class Game {
       this.audio.blockBreak();
       return;
     }
-    if (id === LAMP || id === CAMPFIRE || id === THRUSTER_LIT) this.renderer.removePointLight(x, y, z);
+    if (id === LAMP || id === CAMPFIRE || id === COOKPOT || id === THRUSTER_LIT) this.renderer.removePointLight(x, y, z);
     if (id === STORM_BREAKER) this.breakers.delete(`${x},${y},${z}`);
     if (isPowerBlock(id)) {
       const pk = `${x},${y},${z}`;
@@ -2798,15 +2895,20 @@ export class Game {
     if (doorPlace && def.block === doorPlace.base) {
       if (!floorAt(bx, by, bz)) { hud.toast("A Door needs solid ground under it."); this.audio.error(); return; }
     }
-    if (def.block === MELON_1 || def.block === WHEAT_1 || def.block === CACTUS || def.block === SAPLING) {
+    if (def.block === MELON_1 || def.block === WHEAT_1 || def.block === CACTUS || def.block === SAPLING || def.block === SUGARCANE_1 || def.block === APPLE_SAPLING) {
       // seeds only take in tilled ground; a cactus pad also accepts loose sand;
-      // a Tree Seed wants real soil — Dirt or Farm Land
+      // a Tree Seed wants real soil — Dirt or Farm Land; Cane is hardy anywhere soft
       const under = this.world.get(bx, by - 1, bz);
-      const ok = def.block === SAPLING
+      const ok = def.block === SAPLING || def.block === APPLE_SAPLING
         ? (under === DIRT || under === FARMLAND || under === GRASS)
-        : under === FARMLAND || (def.block === CACTUS && (under === SAND || under === SANDSTONE || under === DIRT));
+        : def.block === SUGARCANE_1
+          ? (under === FARMLAND || under === SAND || under === SANDSTONE || under === DIRT)
+          : under === FARMLAND || (def.block === CACTUS && (under === SAND || under === SANDSTONE || under === DIRT));
       if (!ok) {
-        hud.toast(def.block === SAPLING ? "Tree Seeds go in Dirt — real soil, never sand." : "Plant on Farm Land (till with a shovel); a Cactus also accepts sand.");
+        hud.toast(def.block === SAPLING ? "Tree Seeds go in Dirt — real soil, never sand."
+          : def.block === APPLE_SAPLING ? "An Apple Pip goes in Dirt — real soil, never sand."
+          : def.block === SUGARCANE_1 ? "Sugarcane takes Farm Land — or soft sand, if you keep Water close."
+          : "Plant on Farm Land (till with a shovel); a Cactus also accepts sand.");
         this.audio.error(); return;
       }
     }
@@ -2822,8 +2924,9 @@ export class Game {
       this.world.set(bedPeer[0], bedPeer[1], bedPeer[2], BED_EXT);
       if (slot.blockRot) this.world.setRot(bedPeer[0], bedPeer[1], bedPeer[2], slot.blockRot);
     }
-    if (def.block === MELON_1 || def.block === WHEAT_1) { this.crops.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); }
+    if (def.block === MELON_1 || def.block === WHEAT_1 || def.block === SUGARCANE_1) { this.crops.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); }
     if (def.block === SAPLING) { this.trees.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); hud.toast("Seed in the soil. Keep water within 10 blocks and it climbs, stage by stage."); }
+    if (def.block === APPLE_SAPLING) { this.appleTrees.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); hud.toast("A Pip in the soil. Keep water within 10 blocks and an Apple Tree climbs, stage by stage."); }
     if (def.block === ENGINECORE) {
       // the Core beside a beacon wakes the wreck's power — the Ship still needs its wings
       if (this.beaconAdjacent(bx, by, bz)) {
@@ -2874,7 +2977,7 @@ export class Game {
     if (t.hit) {
       const { x, y, z } = t.hit;
       const id = this.world.get(x, y, z);
-      if (id === MELON_2 || id === WHEAT_2 || id === CACTUS_FRUIT) { this.harvest(x, y, z, id); return; }
+      if (id === MELON_2 || id === WHEAT_2 || id === CACTUS_FRUIT || id === SUGARCANE_2 || id === APPLE_FRUIT) { this.harvest(x, y, z, id); return; }
       if (id === POWER_PANEL) { this.panelAct(x, y, z); return; }
       if (id === BED || id === BED_EXT) { this.sleep(); return; }
       if (id === ALAB_GATE || id === ALAB_GATE_OPEN) {
@@ -2934,6 +3037,7 @@ export class Game {
       }
       if (id === BENCH || id === BENCH_EXT) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("bench"); return; }
       if (id === ARMORY) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("armory"); return; }
+      if (id === REFINERY) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("refinery"); return; }
       if (id === CAMPFIRE) {
         this.openFire = [x, y, z];
         this.fire = this.fireAt(x, y, z);
@@ -2945,6 +3049,38 @@ export class Game {
         // panel measures zero, so cells would keep their stale size on open
         document.getElementById("ui-inventory")!.classList.remove("hidden");
         this.renderInv();
+        return;
+      }
+      if (id === COOKPOT) {
+        this.openPotPanel(x, y, z);
+        this.gridFocus = "inv";
+        this.unlockPointer();
+        this.audio.door();
+        return;
+      }
+      if (id === WATER_CAGE || id === WATER_CAGE_FULL) {
+        const full = id === WATER_CAGE_FULL;
+        const sel = this.inv.selectedSlot();
+        if (full && sel?.itemId === "bucket") {
+          this.inv.removeItem("bucket", 1);
+          this.world.set(x, y, z, WATER_CAGE);
+          this.inv.addItem("bucket_full", 1);
+          this.audio.drink();
+          hud.toast("You ladle Water out of the Cage — the Water stays behind the Wire.");
+          this.renderHeld();
+          return;
+        }
+        if (!full && sel?.itemId === "bucket_full") {
+          this.inv.removeItem("bucket_full", 1);
+          this.world.set(x, y, z, WATER_CAGE_FULL);
+          this.inv.addItem("bucket", 1);
+          this.audio.place();
+          hud.toast("You pour a full Bucket into the Cage.");
+          this.renderHeld();
+          return;
+        }
+        this.audio.error();
+        hud.toast(full ? "The Cage holds Water — scoop it with an empty Bucket (E)." : "The Cage is empty — fill it with a full Bucket (E).");
         return;
       }
       if (id === THRUSTER) {
@@ -3017,6 +3153,20 @@ export class Game {
       this.questBump("farm");
       this.audio.pickup();
       hud.toast("Desert Wheat cut — the Farmland stays tilled.");
+    } else if (id === SUGARCANE_2) {
+      this.world.set(x, y, z, SUGARCANE_1);
+      this.crops.set(`${x},${y},${z}`, 30); // the stubble re-sprouts partway
+      this.giveOrDrop("sugar_cane", 2);
+      if (this.seedLuck(x, z, 89)) this.giveOrDrop("sugar_cane", 1);
+      this.questBump("farm");
+      this.audio.pickup();
+      hud.toast("Sugarcane cut — the stubble sprouts again.");
+    } else if (id === APPLE_FRUIT) {
+      this.world.set(x, y, z, LEAVES);
+      this.fruitRegrow.set(`${x},${y},${z}`, 0); // the same bough ripens another Apple
+      this.giveOrDrop("apple", 1);
+      this.audio.pickup();
+      hud.toast("Apple picked — the bough will fruit again.");
     } else {
       this.world.set(x, y, z, CACTUS);
       this.giveOrDrop("prickly_pear", 2);
@@ -3066,8 +3216,17 @@ export class Game {
     let cy = y;
     if (id === FARMLAND) {
       const up = world.get(x, y + 1, z);
-      if (up === MELON_1 || up === MELON_2 || up === WHEAT_1 || up === WHEAT_2) { id = up; cy = y + 1; }
+      if (up === MELON_1 || up === MELON_2 || up === WHEAT_1 || up === WHEAT_2 || up === SUGARCANE_1 || up === SUGARCANE_2) { id = up; cy = y + 1; }
     }
+    // a planted Apple Tree reads like its Living Tree cousin
+    if (id === APPLE_SAPLING || (id === WOOD && this.appleTrees.has(`${x},${y},${z}`))) {
+      const p = this.appleTrees.get(`${x},${y},${z}`);
+      if (p === undefined) return blockDisplayName(id);
+      const pct = Math.floor((p / 480) * 100);
+      if (p >= 480) return "Apple Tree — full grown, fruiting";
+      return `Apple Tree — ${pct}% — ${this.cropPause(x, y, z, 10, null, "")}`;
+    }
+    if (id === APPLE_FRUIT) return "Apple — ripe (E to pick)";
     // a planted Living Tree reads like a crop: percent + pause reason
     if (id === SAPLING || (id === WOOD && this.trees.has(`${x},${y},${z}`))) {
       const p = this.trees.get(`${x},${y},${z}`);
@@ -3076,14 +3235,19 @@ export class Game {
       if (p >= 480) return "Living Tree — full grown";
       return `Living Tree — ${pct}% — ${this.cropPause(x, y, z, 10, null, "")}`;
     }
-    if (id !== MELON_1 && id !== MELON_2 && id !== WHEAT_1 && id !== WHEAT_2) return blockDisplayName(id);
+    if (id !== MELON_1 && id !== MELON_2 && id !== WHEAT_1 && id !== WHEAT_2 && id !== SUGARCANE_1 && id !== SUGARCANE_2) return blockDisplayName(id);
     const name = blockDisplayName(id);
-    if (id === MELON_2 || id === WHEAT_2) return `${name} — ripe`;
+    if (id === MELON_2 || id === WHEAT_2 || id === SUGARCANE_2) return `${name} — ripe`;
     const p = this.crops.get(`${x},${cy},${z}`);
     if (p === undefined) return name;
-    const melon = id === MELON_1;
-    const pct = Math.min(99, Math.floor((p / (melon ? 60 : 90)) * 100));
-    const why = this.cropPause(x, cy, z, melon ? 10 : 6, melon ? [22, 45] : [2, 42], melon ? "Melon" : "Wheat");
+    const melon = id === MELON_1, cane = id === SUGARCANE_1;
+    const total = melon ? 60 : cane ? 60 : 90;
+    const pct = Math.min(99, Math.floor((p / total) * 100));
+    const why = melon
+      ? this.cropPause(x, cy, z, 10, [22, 45], "Melon")
+      : cane
+        ? this.cropPause(x, cy, z, 2, [15, 42], "Cane")
+        : this.cropPause(x, cy, z, 6, [2, 42], "Wheat");
     return `${name} — ${pct}% — ${why}`;
   }
 
@@ -3100,8 +3264,10 @@ export class Game {
   }
 
   private waterNear(x: number, y: number, z: number, reach: number): boolean {
-    for (let dx = -reach; dx <= reach; dx++) for (let dz = -reach; dz <= reach; dz++) for (let dy = -3; dy <= 1; dy++)
-      if (isWater(this.world.get(x + dx, y + dy, z + dz))) return true;
+    for (let dx = -reach; dx <= reach; dx++) for (let dz = -reach; dz <= reach; dz++) for (let dy = -3; dy <= 1; dy++) {
+      const id = this.world.get(x + dx, y + dy, z + dz);
+      if (isWater(id) || id === WATER_CAGE_FULL) return true;
+    }
     return false;
   }
 
@@ -3134,7 +3300,7 @@ export class Game {
   }
 
   /** Crops advance only while their cell has water in the species reach (Wheat 6,
-   *  Melon 10 blocks) and air in its temperature band. */
+   *  Melon 10, thirsty Cane 2 blocks) and air in its temperature band. */
   private updateCrops(dt: number) {
     this.cropAcc += dt;
     if (this.cropAcc < 2) return;
@@ -3143,16 +3309,17 @@ export class Game {
     for (const [key, p] of this.crops) {
       const [x, y, z] = key.split(",").map(Number);
       const id = this.world.get(x, y, z);
-      if (id !== MELON_1 && id !== MELON_2 && id !== WHEAT_1 && id !== WHEAT_2) { this.crops.delete(key); continue; }
-      if (id === MELON_2 || id === WHEAT_2) continue; // ripe, waiting
-      const melon = id === MELON_1;
-      const wet = this.waterNear(x, y, z, melon ? 10 : 6);
+      if (id !== MELON_1 && id !== MELON_2 && id !== WHEAT_1 && id !== WHEAT_2 && id !== SUGARCANE_1 && id !== SUGARCANE_2) { this.crops.delete(key); continue; }
+      if (id === MELON_2 || id === WHEAT_2 || id === SUGARCANE_2) continue; // ripe, waiting
+      const melon = id === MELON_1, cane = id === SUGARCANE_1;
+      const wet = this.waterNear(x, y, z, melon ? 10 : cane ? 2 : 6);
       const temp = this.cropAir(x, y, z);
-      const band = melon ? temp >= 22 && temp <= 45 : temp >= 2 && temp <= 42;
+      const band = melon ? temp >= 22 && temp <= 45 : cane ? temp >= 15 && temp <= 42 : temp >= 2 && temp <= 42;
       if (wet && band) {
         const np = p + dtc;
         this.crops.set(key, np);
-        if (np >= (melon ? 60 : 90)) this.world.set(x, y, z, melon ? MELON_2 : WHEAT_2);
+        const ripe = melon ? 60 : cane ? 60 : 90;
+        if (np >= ripe) this.world.set(x, y, z, melon ? MELON_2 : cane ? SUGARCANE_2 : WHEAT_2);
       }
     }
   }
@@ -3202,11 +3369,6 @@ export class Game {
     if (!gridOn) return 0;
     const [x, y, z] = k.split(",").map(Number);
     if (id === GEN_WOOD) return (this.genFuel.get(k) ?? 0) > 0 ? 4 : 0;
-    if (id === WATER_WHEEL) {
-      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const)
-        if (isWater(this.world.get(x + dx, y, z + dz))) return 3;
-      return 0;
-    }
     if (id === WIND_TURBINE) {
       for (let dy = 1; dy <= 8; dy++) if (BLOCKS[this.world.get(x, y + dy, z)].opaque) return 0; // roof kills it
       return 8 * (0.15 + 0.85 * this.survival.storm); // the storm is the fuel
@@ -3318,6 +3480,7 @@ export class Game {
           let k = "", s = 0;
           switch (this.world.get(x, y, z)) {
             case CAMPFIRE: if (this.fires.get(`${x},${y},${z}`)?.lit) k = "fire"; break;
+            case COOKPOT: if (this.pots.get(`${x},${y},${z}`)?.lit) k = "fire"; break;
             case THRUSTER_LIT: k = "jet"; break;
             case BEACON: k = "beacon"; break;
             case STORM_BREAKER: k = "breaker"; s = storm > 0.3 ? 1 : 0; break;
@@ -3329,12 +3492,6 @@ export class Game {
             case GEN_WOOD: if ((this.genFuel.get(`${x},${y},${z}`) ?? 0) > 0) k = "gen"; break;
             case REGULATOR: k = "reg"; break;
             case WIND_TURBINE: k = "turbine"; break;
-            case WATER_WHEEL:
-              k = "wheel";
-              s = isWater(this.world.get(x + 1, y, z)) || isWater(this.world.get(x - 1, y, z)) ||
-                  isWater(this.world.get(x, y, z + 1)) || isWater(this.world.get(x, y, z - 1)) ||
-                  isWater(this.world.get(x, y - 1, z)) ? 1 : 0;
-              break;
             default: continue;
           }
           if (!k) continue;
@@ -3565,6 +3722,47 @@ export class Game {
     }
   }
 
+  /** Apple Trees ride the Living Tree machinery at half size; picked fruit
+   *  cells (LEAVES now) re-ripen on their plan slot after a minute of good air. */
+  private updateApples(dt: number) {
+    if (!this.appleTrees.size && !this.fruitRegrow.size) return;
+    this.appleAcc += dt;
+    if (this.appleAcc < 2) return;
+    const dtc = this.appleAcc;
+    this.appleAcc = 0;
+    for (const [key, p] of this.appleTrees) {
+      const [x, y, z] = key.split(",").map(Number);
+      const id = this.world.get(x, y, z);
+      if (id !== APPLE_SAPLING && id !== WOOD) { this.appleTrees.delete(key); continue; } // chopped or buried: done
+      if (p >= 480) continue; // full grown is final
+      if (!this.waterNear(x, y, z, 10)) continue;
+      const np = Math.min(480, p + dtc); // ~8 real minutes pip to fruiting crown
+      this.appleTrees.set(key, np);
+      const upto = np >= 480 ? 3 : np >= 270 ? 2 : np >= 120 ? 1 : 0;
+      if (upto === 0) continue;
+      let plan = this.treePlanCache.get(key);
+      if (!plan) {
+        let s = Math.floor(hash2(x + 7 * z, y, this.seed + 133) * 1e9) + 1;
+        const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
+        plan = appleTreePlan(x, y, z, rnd);
+        this.treePlanCache.set(key, plan);
+      }
+      for (const part of plan) {
+        if (part.stage > upto) continue;
+        const cur = this.world.get(part.x, part.y, part.z);
+        if (cur === AIR || cur === APPLE_SAPLING) this.world.set(part.x, part.y, part.z, part.b); // the pip cell itself turns to trunk
+      }
+    }
+    // picked boughs: the plan's fruit slots turn back to Apple over a minute of good air
+    for (const [key, t] of this.fruitRegrow) {
+      const [x, y, z] = key.split(",").map(Number);
+      if (this.world.get(x, y, z) !== LEAVES) { this.fruitRegrow.delete(key); continue; }
+      const nt = t + dtc;
+      if (nt >= 60) { this.world.set(x, y, z, APPLE_FRUIT); this.fruitRegrow.delete(key); }
+      else this.fruitRegrow.set(key, nt);
+    }
+  }
+
   /** Solid cacti prick: pressing against or standing brushed by one draws blood. */
   private cactusPrick() {
     const p = this.player.pos;
@@ -3632,6 +3830,10 @@ export class Game {
     const bits: string[] = [];
     if (d.eat!.water) { this.survival.water = Math.min(100, this.survival.water + d.eat!.water); bits.push(`+${d.eat!.water} Water`); }
     if (d.eat!.health) { this.survival.health = Math.min(100, this.survival.health + d.eat!.health); bits.push(`+${d.eat!.health} Health`); }
+    if (sel.itemId === "apple" && Math.random() < 0.7) {
+      this.giveOrDrop("apple_pip", 1);
+      bits.push("an Apple Pip stays in your hand");
+    }
     this.audio.drink();
     hud.toast(`Ate ${d.name}: ${bits.join(", ")}`);
     this.renderHeld();
@@ -3667,9 +3869,9 @@ export class Game {
     return f;
   }
 
-  /** Fuel goes INTO a fire by burning away: the item is gone, what's left is
-   *  heat — its charges bank in the coals and outlive it. */
-  private feedFire(f: FireState, s: Slot): void {
+  /** Fuel goes INTO a fire or pot by burning away: the item is gone, what's
+   *  left is heat — its charges bank in the coals and outlive it. */
+  private feedFire(f: { charge: number }, s: Slot): void {
     f.charge += s.charges ?? (FIRE_FUEL[s.itemId] ?? 0) * (s.stack?.count ?? 1);
   }
 
@@ -3683,8 +3885,8 @@ export class Game {
     return !!f && f.lit && Game.fireFuel(f) > 0;
   }
 
-  /** Drain `amt` charges from the coals. */
-  private spendFuel(f: FireState, amt: number): boolean {
+  /** Drain `amt` charges from the coals (fire or pot). */
+  private spendFuel(f: { charge: number }, amt: number): boolean {
     if (f.charge < amt) return false;
     f.charge -= amt;
     return true;
@@ -3805,6 +4007,199 @@ export class Game {
         }
       } else if (bar) bar.remove();
     }
+  }
+
+  // ---------------- Cooking Pot ----------------
+
+  private static newPot(): PotState {
+    const p: PotState = { input: new Inventory(), output: new Inventory(), charge: 0, lit: false, drip: 0, jobs: [] };
+    p.input.w = 3; p.input.h = 2;
+    p.output.w = 3; p.output.h = 2;
+    return p;
+  }
+
+  private potAt(x: number, y: number, z: number): PotState {
+    const key = `${x},${y},${z}`;
+    let p = this.pots.get(key);
+    if (!p) { p = Game.newPot(); this.pots.set(key, p); }
+    return p;
+  }
+
+  /** Open a pot's panel in the Inventory window — fire and pot panels are exclusive. */
+  private openPotPanel(x: number, y: number, z: number) {
+    this.closeUI();
+    this.pot = this.potAt(x, y, z);
+    this.openPot = [x, y, z];
+    this.ui = "inv";
+    document.getElementById("ui-inventory")!.classList.remove("hidden");
+    document.getElementById("ui-craft")!.classList.add("hidden");
+    document.getElementById("btn-inv-craft")!.classList.toggle("on", false);
+    this.renderInv();
+  }
+
+  /** A pot warms and cooks only when lit and still holding fuel — same law as the fire. */
+  private potLit(key: string): boolean {
+    const p = this.pots.get(key);
+    return !!p && p.lit && p.charge > 0;
+  }
+
+  /** Keep the point light and the cold/lit pot tile in step. */
+  private syncPot(key: string) {
+    const [x, y, z] = key.split(",").map(Number);
+    const p = this.pots.get(key);
+    const lit = this.potLit(key);
+    const total = lit && p ? p.charge : 0;
+    if (this.gauges.get(key) !== total) {
+      this.gauges.set(key, total);
+      this.world.dirty.add(Math.floor(x / CS) + "," + Math.floor(z / CS)); // cold vs lit iron
+    }
+    if (lit && !this.renderer.hasPointLight(x, y, z)) this.renderer.addPointLight(x, y, z, "fire");
+    else if (!lit && this.renderer.hasPointLight(x, y, z)) this.renderer.removePointLight(x, y, z);
+  }
+
+  /** Press a Dishes row: pull the ingredients off the Input Grid, pay the
+   *  recipe's charge up front (0-charge recipes need no fire at all), start the job. */
+  private startPotJob(r: PotRecipe) {
+    if (!this.pot || !this.openPot) return;
+    const key = this.openPot.join(",");
+    const p = this.pot;
+    if (p.jobs.length >= POT_MAX_JOBS) { hud.toast("The pot holds six dishes at once."); this.audio.error(); return; }
+    if (!potHas(p.input, r)) { hud.toast(`Missing ingredients for ${ITEMS[r.out].name}.`); this.audio.error(); return; }
+    if (r.charges > 0) {
+      if (!this.potLit(key)) { hud.toast("That dish needs the fire burning — bank fuel in the Coals and light it."); this.audio.error(); return; }
+      if (p.charge < r.charges) { hud.toast(`Needs ${r.charges} fuel charge${r.charges === 1 ? "" : "s"} in the coals.`); this.audio.error(); return; }
+    }
+    potConsume(p.input, r);
+    if (r.charges > 0) this.spendFuel(p, r.charges);
+    p.jobs.push({ r, cook: 0, done: false });
+    this.audio.place();
+    this.syncPot(key);
+    this.renderInv();
+  }
+
+  /** Burn charges, run dish jobs, keep gauges honest — panel open or not. */
+  private tickPots(dt: number) {
+    for (const [key, p] of this.pots) {
+      if (p.lit && p.charge <= 0) {
+        p.lit = false;
+        this.syncPot(key);
+      }
+      if (p.lit) {
+        p.drip += dt;
+        while (p.lit && p.drip >= FIRE_DRIP) {
+          p.drip -= FIRE_DRIP;
+          if (p.charge < 1) { p.lit = false; break; }
+          this.spendFuel(p, 1);
+        }
+        this.syncPot(key);
+      }
+      for (const j of p.jobs) {
+        // charged dishes simmer only while the fire holds; the cold chops never stall
+        if (j.r.charges > 0 && !p.lit) continue;
+        if (j.done) { this.moveDished(p, key, j); continue; }
+        j.cook += dt;
+        if (j.cook >= j.r.seconds) { j.cook = j.r.seconds; j.done = true; this.moveDished(p, key, j); }
+      }
+      if (this.pot === p) this.paintPotStatus();
+    }
+  }
+
+  /** A finished dish walks to the Output Slot (with its side output, like the
+   *  Canister a Stew gives back); a full grid keeps it waiting on the pot. */
+  private moveDished(p: PotState, key: string, j: PotJob) {
+    const want = j.r.count;
+    const missing = p.output.addItem(j.r.out, want);
+    if (missing === want) return; // Output Slot full — the dish waits in the pot
+    if (missing > 0) this.dropEntity(j.r.out, missing, 2);
+    if (j.r.side) {
+      const sm = p.output.addItem(j.r.side.item, j.r.side.n);
+      if (sm > 0) this.dropEntity(j.r.side.item, sm, 2);
+    }
+    p.jobs.splice(p.jobs.indexOf(j), 1);
+    if (j.r.tag) this.questBump(j.r.tag);
+    this.syncPot(key);
+    if (this.pot === p) this.renderInv();
+  }
+
+  /** Light the pot / put it out (the panel button). */
+  private togglePot() {
+    if (!this.pot || !this.openPot) return;
+    const key = this.openPot.join(",");
+    const p = this.pot;
+    if (p.lit) {
+      p.lit = false;
+      hud.toast("You smother the coals — the cold pot still takes the no-heat dishes.");
+    } else {
+      if (p.charge <= 0) { hud.toast("No fuel in the fire box."); this.audio.error(); return; }
+      p.lit = true;
+      p.drip = 0;
+      hud.toast("The fuel catches under the pot.");
+    }
+    this.audio.place();
+    this.syncPot(key);
+    this.renderInv();
+  }
+
+  /** The Cooking Pot panel: coals, staging grids, and the live Dishes list. */
+  private renderPot() {
+    const fs = document.getElementById("pot-section")!;
+    if (!this.pot) { fs.classList.add("hidden"); return; }
+    fs.classList.remove("hidden");
+    const p = this.pot;
+    const art = document.getElementById("pot-art")!;
+    art.style.backgroundImage = `url(${itemArtUrl("cooking_pot", 0, p.charge)})`;
+    art.classList.toggle("lit", p.lit);
+    const btn = document.getElementById("btn-pot") as HTMLButtonElement;
+    btn.onclick = () => this.togglePot();
+    this.renderGrid(p.input, document.getElementById("pot-input-grid")!);
+    this.renderGrid(p.output, document.getElementById("pot-output-grid")!);
+    const list = document.getElementById("pot-dishes")!;
+    list.innerHTML = "";
+    for (const r of POT_RECIPES) {
+      const row = document.createElement("div");
+      row.className = "craft-row";
+      const needs = Object.entries(r.needs)
+        .map(([id, n]) => `${n}× ${id === "*fruit" ? "any Fruit" : id === "*meat" ? "any Meat" : ITEMS[id].name}`).join(", ");
+      const heat = r.charges > 0 ? `${r.charges} charge${r.charges === 1 ? "" : "s"}` : "no heat";
+      row.innerHTML = `<span class="what"><img class="craft-art" src="${itemArtUrl(r.out)}" alt="">${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""} <span class="needs">(${needs} — ${heat}, ${r.seconds}s)</span></span>`;
+      const b = document.createElement("button");
+      b.textContent = "Cook";
+      b.onclick = () => this.startPotJob(r);
+      row.appendChild(b);
+      list.appendChild(row);
+    }
+    this.paintPotStatus();
+  }
+
+  /** Cheap live refresh of the open pot panel's gauge, button, art and job bars. */
+  private paintPotStatus() {
+    if (!this.pot) return;
+    const sec = document.getElementById("pot-section")!;
+    if (sec.classList.contains("hidden")) return;
+    const p = this.pot;
+    document.getElementById("pot-art")!.classList.toggle("lit", p.lit);
+    const btn = document.getElementById("btn-pot") as HTMLButtonElement;
+    btn.textContent = p.lit ? "Put out the fire" : "Light fire";
+    btn.disabled = !p.lit && p.charge <= 0;
+    document.getElementById("pot-gauge")!.textContent = p.lit
+      ? `lit — ${p.charge} fuel charge${p.charge === 1 ? "" : "s"} burning`
+      : `${p.charge} fuel charge${p.charge === 1 ? "" : "s"} waiting`;
+    document.getElementById("pot-coals")!.textContent = p.charge > 0
+      ? `${p.charge} fuel charge${p.charge === 1 ? "" : "s"} banked`
+      : "No fuel banked — drop fuel here";
+    // the dish timers ride as bars on the Dishes rows
+    const rows = document.getElementById("pot-dishes")!.querySelectorAll(".craft-row");
+    POT_RECIPES.forEach((r, i) => {
+      const row = rows[i] as HTMLElement | undefined;
+      if (!row) return;
+      const job = p.jobs.find((j) => j.r === r && !j.done);
+      const frac = job ? Math.min(1, job.cook / r.seconds) : 0;
+      let bar = row.querySelector(".cook-bar") as HTMLElement | null;
+      if (frac > 0) {
+        if (!bar) { bar = document.createElement("div"); bar.className = "cook-bar"; row.appendChild(bar); }
+        bar.style.width = `${frac * 100}%`;
+      } else if (bar) bar.remove();
+    });
   }
 
   /** T: the Head Lantern — burns one fuel charge per 4 game hours. */
@@ -3941,8 +4336,6 @@ export class Game {
     }
   }
 
-  // ---------- victory ----------
-
   // ---------- liftoff ----------
   // All four wingtip engines lit: the Ship lifts off IN PLACE — hull rows blink
   // out top-down over ~2 s, hover in the sky as an afterimage, then re-stack
@@ -4017,23 +4410,12 @@ export class Game {
     }
     if (L.t >= LAND_END + 0.4) {
       this.liftoff = null;
+      this.won = true; // the Ship has lifted off: the beacon relay waits
       this.ui = null;
       fx.classList.add("hidden");
       this.saveNow(true);
-      this.win();
+      this.relock();
     }
-  }
-
-  private win() {
-    if (this.won) return;
-    this.won = true;
-    submitBest(this.scoreDays());
-    this.audio.win();
-    this.paused = true;
-    if (document.pointerLockElement) document.exitPointerLock();
-    document.getElementById("screen-win")!.classList.remove("hidden");
-    document.getElementById("win-stats")!.textContent =
-      `The Ship lifts off. All four engines burn. Survived ${this.scoreDays().toFixed(1)} days. Best: ${bestScore().toFixed(1)} days.`;
   }
 
   // ---------- death / respawn ----------
@@ -4062,7 +4444,6 @@ export class Game {
       this.inv.setBackpack(5, 4); // the worn pack is gone — the grid shrinks back with it
     }
     this.lanternOn = false;
-    submitBest(this.scoreDays());
     this.survival.health = 0; // stay dead until respawn button
     this.running = true;
     this.paused = true;
@@ -4070,13 +4451,10 @@ export class Game {
     if (document.pointerLockElement) document.exitPointerLock();
     document.getElementById("death-cause")!.textContent = `Cause: ${this.deathCause}.`;
     document.getElementById("death-stats")!.textContent =
-      `Survived ${this.scoreDays().toFixed(1)} days in this run. Best: ${bestScore().toFixed(1)} days.` +
-      (this.keepInventory ? " Your belongings stayed with you." : " Your belongings wait in a Death Cache where you fell.");
+      this.keepInventory ? " Your belongings stayed with you." : " Your belongings wait in a Death Cache where you fell.";
     this.saveNow();
     if (this.onDeathCb) this.onDeathCb();
   }
-
-  scoreDays() { return this.playSec / DAY_SECONDS; }
 
   respawn() {
     document.getElementById("screen-death")!.classList.add("hidden");
@@ -4108,7 +4486,8 @@ export class Game {
       this.tempOrigin = null;
     }
     this.ui = null; this.openStation = null; this.openCacheId = null;
-    this.chestInv = null; this.ifcMode = false; this.fire = null; this.openFire = null; this.gridFocus = "inv";
+    this.chestInv = null; this.ifcMode = false; this.fire = null; this.openFire = null;
+    this.pot = null; this.openPot = null; this.gridFocus = "inv";
     for (const id of ["ui-inventory", "ui-craft", "ui-cache", "ui-trade"]) document.getElementById(id)!.classList.add("hidden");
     // closing any in-game menu also drops the pause menu, if one was open
     if (this.paused) {
@@ -4183,6 +4562,7 @@ export class Game {
       this.renderIfcList();
     } else is.classList.add("hidden");
     this.renderFire();
+    this.renderPot();
 
     // temporary storage: the slot an item sits in while being moved
     const tempEl = document.getElementById("inv-temp")!;
@@ -4471,6 +4851,10 @@ export class Game {
       if (this.gridFocus === "fire-in") return this.fire.input;
       if (this.gridFocus === "fire-out") return this.fire.output;
     }
+    if (this.pot) {
+      if (this.gridFocus === "pot-in") return this.pot.input;
+      if (this.gridFocus === "pot-out") return this.pot.output;
+    }
     return this.inv;
   }
   private invGridId(inv: Inventory): string {
@@ -4479,6 +4863,10 @@ export class Game {
     if (this.fire) {
       if (inv === this.fire.input) return "fire-in";
       if (inv === this.fire.output) return "fire-out";
+    }
+    if (this.pot) {
+      if (inv === this.pot.input) return "pot-in";
+      if (inv === this.pot.output) return "pot-out";
     }
     return "";
   }
@@ -4752,6 +5140,7 @@ export class Game {
     const g: Inventory[] = [this.inv];
     if (this.chestInv) g.push(this.chestInv);
     if (this.fire) g.push(this.fire.input, this.fire.output);
+    if (this.pot) g.push(this.pot.input, this.pot.output);
     return g;
   }
 
@@ -4800,7 +5189,7 @@ export class Game {
       ghost.style.left = ev.clientX - D.gx + "px";
       ghost.style.top = ev.clientY - D.gy + "px";
       document.getElementById("inv-bin")!.classList.toggle("hot", this.overBin(ev.clientX, ev.clientY));
-      document.getElementById("fire-coals")?.classList.toggle("hot", FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev));
+      document.getElementById(this.pot ? "pot-coals" : "fire-coals")?.classList.toggle("hot", FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev));
       document.getElementById("ifc-list")?.classList.toggle("hot", !!this.chestInv && this.ifcMode && this.overIfcList(ev));
     };
     const up = (ev: MouseEvent) => {
@@ -4809,11 +5198,14 @@ export class Game {
       ghost.remove();
       document.getElementById("inv-bin")!.classList.remove("hot");
       document.getElementById("fire-coals")?.classList.remove("hot");
+      document.getElementById("pot-coals")?.classList.remove("hot");
       document.getElementById("ifc-list")?.classList.remove("hot");
       if (this.overBin(ev.clientX, ev.clientY)) { this.binDiscard(); return; } // the item is already in temp
       if (FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev)) { // onto the Coals box: burned away, charges banked
-        this.feedFire(this.fire!, s); this.temp = null;
-        this.syncFire(this.openFire!.join(",")); this.audio.place();
+        if (this.pot) { this.feedFire(this.pot, s); this.syncPot(this.openPot!.join(",")); }
+        else { this.feedFire(this.fire!, s); this.syncFire(this.openFire!.join(",")); }
+        this.temp = null;
+        this.audio.place();
         this.renderInv(); this.renderHeld();
         return;
       }
@@ -4857,18 +5249,19 @@ export class Game {
     if (src !== this.inv) return this.inv;
     if (this.chestInv) return this.chestInv;
     if (this.fire) return this.fire.input;
+    if (this.pot) return this.pot.input;
     return null;
   }
 
-  /** Shift-click quick-move: pack ⇄ open chest/fire zone; with nowhere to go,
+  /** Shift-click quick-move: pack ⇄ open chest/fire/pot zone; with nowhere to go,
    *  lift the item into temporary storage (a lifted item swaps into the vacated cell). */
   private shiftMove(s: Slot, src: Inventory) {
     const target = this.quickTarget(s, src);
-    // fuel headed for an open Campfire is consumed on the way: charges bank, item is gone
-    if (target === this.fire?.input && FIRE_FUEL[s.itemId] !== undefined) {
+    // fuel headed for an open Campfire or Cooking Pot is consumed on the way: charges bank, item is gone
+    if ((target === this.fire?.input || target === this.pot?.input) && FIRE_FUEL[s.itemId] !== undefined) {
       src.slots.splice(src.slots.indexOf(s), 1);
-      this.feedFire(this.fire!, s);
-      this.syncFire(this.openFire!.join(","));
+      if (this.pot) { this.feedFire(this.pot, s); this.syncPot(this.openPot!.join(",")); }
+      else { this.feedFire(this.fire!, s); this.syncFire(this.openFire!.join(",")); }
       this.audio.place();
       this.renderInv();
       this.renderHeld();
@@ -4887,7 +5280,7 @@ export class Game {
       src.slots.splice(i, 1);
       if (!Game.placeSlotFree(target, s)) {
         src.slots.splice(i, 0, s); // it would not fit — contents stay put
-        hud.toast(target === this.chestInv ? "No room in the chest." : target === this.inv ? "No room in your pack." : "No room at the fire.");
+        hud.toast(target === this.chestInv ? "No room in the chest." : target === this.inv ? "No room in your pack." : this.pot ? "No room in the pot." : "No room at the fire.");
         this.audio.error();
         this.renderInv();
         return;
@@ -4924,6 +5317,10 @@ export class Game {
       [document.getElementById("fire-input-grid")!, this.fire.input],
       [document.getElementById("fire-output-grid")!, this.fire.output],
     );
+    if (this.pot) els.push(
+      [document.getElementById("pot-input-grid")!, this.pot.input],
+      [document.getElementById("pot-output-grid")!, this.pot.output],
+    );
     return els;
   }
 
@@ -4946,7 +5343,7 @@ export class Game {
       ghost.style.left = ev.clientX - d.w * STEP / 2 + "px";
       ghost.style.top = ev.clientY - d.h * STEP / 2 + "px";
       document.getElementById("inv-bin")!.classList.toggle("hot", this.overBin(ev.clientX, ev.clientY));
-      document.getElementById("fire-coals")?.classList.toggle("hot", FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev));
+      document.getElementById(this.pot ? "pot-coals" : "fire-coals")?.classList.toggle("hot", FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev));
       document.getElementById("ifc-list")?.classList.toggle("hot", !!this.chestInv && this.ifcMode && this.overIfcList(ev));
     };
     const up = (ev: MouseEvent) => {
@@ -4955,11 +5352,14 @@ export class Game {
       ghost.remove();
       document.getElementById("inv-bin")!.classList.remove("hot");
       document.getElementById("fire-coals")?.classList.remove("hot");
+      document.getElementById("pot-coals")?.classList.remove("hot");
       document.getElementById("ifc-list")?.classList.remove("hot");
       if (this.overBin(ev.clientX, ev.clientY)) { this.binDiscard(); return; } // the item is already in temp
       if (FIRE_FUEL[s.itemId] !== undefined && this.overCoals(ev)) { // onto the Coals box: burned away, charges banked
-        this.feedFire(this.fire!, s); this.temp = null;
-        this.syncFire(this.openFire!.join(",")); this.audio.place();
+        if (this.pot) { this.feedFire(this.pot, s); this.syncPot(this.openPot!.join(",")); }
+        else { this.feedFire(this.fire!, s); this.syncFire(this.openFire!.join(",")); }
+        this.temp = null;
+        this.audio.place();
         this.renderInv(); this.renderHeld();
         return;
       }
@@ -5058,15 +5458,17 @@ export class Game {
     }
   }
 
-  renderCraft(mode: "bench" | "armory") {
+  renderCraft(mode: "bench" | "armory" | "refinery") {
     document.getElementById("ui-craft")!.classList.remove("hidden");
     document.getElementById("craft-title")!.textContent =
-      mode === "bench" ? "Crafting Bench" : "Armoury — gear that guards the body";
+      mode === "bench" ? "Crafting Bench"
+        : mode === "armory" ? "Armoury — gear that guards the body"
+        : "Refinery — oil and coal, cooked into flight";
     const list = document.getElementById("craft-list")!;
     list.innerHTML = "";
     for (const r of RECIPES) {
-      // each recipe has exactly one home: hand, Bench or Armoury — never two
-      if (mode === "armory" ? r.station !== "armory" : r.station !== "bench") continue;
+      // each recipe has exactly one home: hand, Bench, Armoury or Refinery — never two
+      if (r.station !== mode) continue;
       const row = document.createElement("div");
       row.className = "craft-row";
       const label = `${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""}`;
@@ -5080,6 +5482,7 @@ export class Game {
         const left = doCraft(this.inv, r);
         if (left === null) { this.audio.error(); return; }
         if (left > 0) this.giveOrDrop(r.out, left);
+        for (const [id, n] of Object.entries(r.returns ?? {})) this.giveOrDrop(id, n); // containers back: the oil bucket
         this.tut?.notify("craft");
         this.craftLesson(r.out);
         if (ITEMS[r.out]?.tool) this.questBump("tool");

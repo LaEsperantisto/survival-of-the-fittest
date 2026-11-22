@@ -74,7 +74,7 @@ export const LESSONS: Lesson[] = [
   {
     id: "grid", title: "The Grid",
     hint: "a Power Panel meters every Watt you draw",
-    text: "Power lives on one Grid: a Power Panel is its meter and switch. Generators (Wood, Water Wheel, Wind, Solar) feed it; Poles carry it — a device joins within 10 blocks of a Pole, Poles link 16 apart. If demand outruns supply the Panel trips and everything goes dark until the shortfall clears. A Battery sips the day's surplus and pays it back when the wind dies.",
+    text: "Power lives on one Grid: a Power Panel is its meter and switch. Generators (Wood, Wind, Solar) feed it; Poles carry it — a device joins within 10 blocks of a Pole, Poles link 16 apart. If demand outruns supply the Panel trips and everything goes dark until the shortfall clears. A Battery sips the day's surplus and pays it back when the wind dies.",
   },
   {
     id: "inserter", title: "The Inserter",

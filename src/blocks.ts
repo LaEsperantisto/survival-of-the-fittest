@@ -17,7 +17,10 @@ export const AIR = 0, SAND = 1, SANDSTONE = 2, ROCK = 3, GRAVEL = 4, DIRT = 5, S
   ALAB_BRICK = 73, ALAB_POLISHED = 74, ALAB_CHISELLED = 75, ALAB_PILLAR = 76,
   ALAB_FENCE = 77, ALAB_GATE = 78, ALAB_GATE_OPEN = 79,
   ALAB_DOOR = 80, ALAB_DOOR_UPPER = 81, ALAB_DOOR_OPEN = 82,
-  CHEST_INTERFACE = 83;
+  CHEST_INTERFACE = 83,
+  COOKPOT = 84, WATER_CAGE = 85, WATER_CAGE_FULL = 86,
+  SUGARCANE_1 = 87, SUGARCANE_2 = 88, APPLE_SAPLING = 89, APPLE_FRUIT = 90,
+  COAL_ORE = 91, REFINERY = 92;
 
 export type ToolType = "pickaxe" | "shovel" | "axe" | "disassembler";
 
@@ -53,6 +56,7 @@ export const BLOCK_DISPLAY: Record<number, string> = {
   [ALAB_DOOR_UPPER]: "Alabaster Door",
   [ALAB_DOOR_OPEN]: "Alabaster Door",
   [ALAB_GATE_OPEN]: "Alabaster Fence Gate",
+  [WATER_CAGE_FULL]: "Water Cage",
 };
 export function blockDisplayName(id: number): string { return BLOCK_DISPLAY[id] ?? BLOCKS[id].name; }
 
@@ -71,10 +75,12 @@ for (const g of DOORS) { DOOR_GROUP.set(g.base, g); DOOR_GROUP.set(g.upper, g); 
 // Natural terrain and self-orienting blocks (doors find their own wall, water
 // flows) never carry a rotation nibble; everything the player builds with can.
 const NATURAL = new Set<number>([SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, GRASS, DEADWOOD,
-  WOOD, LEAVES, SAPLING, CACTUS, CACTUS_FRUIT, MELON_1, MELON_2, WHEAT_1, WHEAT_2, FARMLAND,
-  IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER]);
+  WOOD, LEAVES, SAPLING, APPLE_SAPLING, APPLE_FRUIT, CACTUS, CACTUS_FRUIT, MELON_1, MELON_2, WHEAT_1, WHEAT_2,
+  SUGARCANE_1, SUGARCANE_2, FARMLAND,
+  IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, COAL_ORE]);
 const NO_ROT = new Set<number>([DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER,
   DOOR_INNER_OPEN, ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN, ALAB_GATE_OPEN,
+  COOKPOT, WATER_CAGE, WATER_CAGE_FULL,
   WATER, WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1]);
 export function rotatable(id: number): boolean { return BLOCKS[id].placeable && !NATURAL.has(id) && !NO_ROT.has(id); }
 
@@ -178,6 +184,7 @@ export const BLOCKS: BlockDef[] = [
   // deepest stone — the Ship's repair hangs on them. Raw Ore is a material:
   // what comes out of the ground never goes back in as a block.
   def({ id: IRON_ORE, name: "Iron Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 2.6, tool: "pickaxe", minTier: 1, placeable: false, color: [0.62, 0.52, 0.42] }),
+  def({ id: COAL_ORE, name: "Coal Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 2.4, tool: "pickaxe", minTier: 1, placeable: false, color: [0.26, 0.24, 0.23] }),
   def({ id: COPPER_ORE, name: "Copper Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 2.6, tool: "pickaxe", minTier: 1, placeable: false, color: [0.72, 0.42, 0.26] }),
   def({ id: ALABASTER, name: "Alabaster", solid: true, opaque: true, transparent: false, emissive: false, R: 1.4, breakTime: 1.8, tool: "pickaxe", minTier: 0, placeable: true, color: [0.86, 0.83, 0.74] }),
   def({ id: COBALT_ORE, name: "Cobalt Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.6, breakTime: 4.2, tool: "pickaxe", minTier: 3, placeable: false, color: [0.36, 0.46, 0.68] }),
@@ -201,7 +208,9 @@ export const BLOCKS: BlockDef[] = [
   def({ id: POWER_PANEL, name: "Power Panel", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 3, tool: "disassembler", minTier: 1, placeable: true, color: [0.34, 0.38, 0.42] }),
   def({ id: POWER_POLE, name: "Power Pole", solid: true, opaque: false, transparent: false, emissive: false, R: 0, breakTime: 1.5, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.5, 0.42, 0.3] }),
   def({ id: GEN_WOOD, name: "Wood Generator", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 3, tool: "disassembler", minTier: 1, placeable: true, color: [0.46, 0.34, 0.26] }),
-  def({ id: WATER_WHEEL, name: "Water Wheel", solid: true, opaque: true, transparent: false, emissive: false, R: 0.3, breakTime: 2.5, tool: "disassembler", minTier: 1, placeable: true, color: [0.44, 0.4, 0.3] }),
+  // Water Wheel was removed from the game (flight design, FUTURE_IDEAS.md); id 65
+  // is reserved as an inert relic so BLOCKS stays positional and old worlds load.
+  def({ id: WATER_WHEEL, name: "Rusted Machine", solid: true, opaque: true, transparent: false, emissive: false, R: 0.3, breakTime: 2.5, tool: "disassembler", minTier: 1, placeable: false, color: [0.44, 0.4, 0.3] }),
   def({ id: WIND_TURBINE, name: "Wind Turbine", solid: true, opaque: true, transparent: false, emissive: false, R: 0.2, breakTime: 3, tool: "disassembler", minTier: 1, placeable: true, color: [0.7, 0.7, 0.74] }),
   def({ id: SOLAR_PANEL, name: "Solar Panel", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 2.5, tool: "disassembler", minTier: 1, placeable: true, color: [0.2, 0.26, 0.4] }),
   def({ id: BATTERY, name: "Battery", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 3, tool: "disassembler", minTier: 1, placeable: true, color: [0.3, 0.44, 0.36] }),
@@ -209,6 +218,7 @@ export const BLOCKS: BlockDef[] = [
   def({ id: INSERTER, name: "Inserter", solid: true, opaque: false, transparent: false, emissive: false, R: 0.2, breakTime: 1, tool: "disassembler", minTier: 1, placeable: true, color: [0.3, 0.5, 0.55] }),
   def({ id: PLANTER, name: "Planter", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 1, tool: "disassembler", minTier: 1, placeable: true, color: [0.3, 0.5, 0.28] }),
   def({ id: HARVESTER, name: "Harvester", solid: true, opaque: false, transparent: false, emissive: false, R: 0.3, breakTime: 1, tool: "disassembler", minTier: 1, placeable: true, color: [0.55, 0.42, 0.2] }),
+  def({ id: REFINERY, name: "Refinery", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.4, 0.38, 0.42] }),
   // Alabaster masonry: the Cave's pale stone cut into building kit. Bricks and
   // panels stand full blocks; Pillars and Fences are real geometry — a rail
   // fence you can lean into but never hop, a gate you open with E.
@@ -226,6 +236,22 @@ export const BLOCKS: BlockDef[] = [
   // Chest Connector rail — but it is not a cell of the grid, it adds no space,
   // and it stores nothing. E on it lists everything the cluster holds.
   def({ id: CHEST_INTERFACE, name: "Chest Interface", solid: true, opaque: true, transparent: false, emissive: false, R: 0.9, breakTime: 1.5, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.42, 0.5, 0.62] }),
+  // Cooking Pot: the kitchen station. Coals bank like a Campfire's; it glows while
+  // the fire holds fuel and swaps to a cold tile when not (see renderer).
+  def({ id: COOKPOT, name: "Cooking Pot", solid: true, opaque: false, transparent: false, emissive: true, R: 0.2, breakTime: 1.0, tool: null, minTier: 0, placeable: true, color: [0.9, 0.5, 0.22] }),
+  // Water Cage: a closed vessel holding one Source — solid, never flowing, yet
+  // Water to every crop and tree that reaches it. Breaking it drops the Cage and
+  // releases the Water (game.ts); a Bucket scoops it out instead.
+  def({ id: WATER_CAGE, name: "Water Cage (dry)", solid: true, opaque: false, transparent: true, emissive: false, R: 0.1, breakTime: 1.0, tool: null, minTier: 0, placeable: true, color: [0.5, 0.52, 0.55] }),
+  def({ id: WATER_CAGE_FULL, name: "Water Cage (full)", solid: true, opaque: false, transparent: true, emissive: false, R: 0.15, breakTime: 1.0, tool: null, minTier: 0, placeable: false, color: [0.25, 0.45, 0.65] }),
+  // Sugar Cane: the thirstiest crop — Sand, Dirt or Farm Land, Water within 2.
+  // Picking a ripe stalk cuts the top and leaves the stool to re-ripen.
+  def({ id: SUGARCANE_1, name: "Sugar Cane Shoot", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: true, color: [0.35, 0.6, 0.35] }),
+  def({ id: SUGARCANE_2, name: "Sugar Cane", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.3, tool: null, minTier: 0, placeable: false, color: [0.5, 0.68, 0.32] }),
+  // Apple Tree: an Apple Pip planted in soil grows stage by stage (game.ts
+  // updateTrees mirrors); its canopy bears Apple fruit blocks that re-ripen.
+  def({ id: APPLE_SAPLING, name: "Apple Pip", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: true, color: [0.32, 0.55, 0.3] }),
+  def({ id: APPLE_FRUIT, name: "Apple", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: false, color: [0.75, 0.2, 0.2] }),
 ];
 
 /** Everything that lives on the Grid: Panel..Harvester (ADR-0007). */

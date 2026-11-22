@@ -4,7 +4,8 @@ export interface Recipe {
   out: string;
   count: number;
   needs: Record<string, number>;
-  station: "bench" | "armory" | null; // where it must be crafted; null = by hand
+  station: "bench" | "armory" | "refinery" | null; // where it must be crafted; null = by hand
+  returns?: Record<string, number>; // containers handed back after crafting (the oil bucket)
 }
 
 export const RECIPES: Recipe[] = [
@@ -42,7 +43,6 @@ export const RECIPES: Recipe[] = [
   { out: "power_pole", count: 2, needs: { metal: 1, deadwood: 3 }, station: "bench" },
   { out: "power_panel", count: 1, needs: { metal: 4, copperrod: 2, glass: 1 }, station: "bench" },
   { out: "gen_wood", count: 1, needs: { metal: 4, copperrod: 2, rock: 3 }, station: "bench" },
-  { out: "water_wheel", count: 1, needs: { wood_log: 4, metal: 2 }, station: "bench" },
   { out: "wind_turbine", count: 1, needs: { metal: 3, copperrod: 2, wood_log: 4 }, station: "bench" },
   { out: "solar_panel", count: 1, needs: { glass: 3, copperrod: 2, metal: 2 }, station: "bench" },
   { out: "battery", count: 1, needs: { metal: 3, copperrod: 2, salt: 3 }, station: "bench" },
@@ -50,6 +50,8 @@ export const RECIPES: Recipe[] = [
   { out: "inserter", count: 1, needs: { metal: 4, copperrod: 2, glass: 2 }, station: "bench" },
   { out: "planter", count: 1, needs: { wood_log: 4, metal: 2, glass: 1 }, station: "bench" },
   { out: "harvester", count: 1, needs: { metal: 5, glass: 2 }, station: "bench" },
+  { out: "refinery", count: 1, needs: { metal_plating: 3, copperrod: 2, glass: 1 }, station: "bench" },
+  { out: "rocket_fuel", count: 1, needs: { oil_bucket: 1, coal_ore: 1 }, station: "refinery", returns: { bucket: 1 } },
   { out: "sword", count: 1, needs: { metal: 2, deadwood: 1 }, station: "bench" },
   { out: "door", count: 1, needs: { metal: 2, deadwood: 2 }, station: "bench" },
   { out: "hull", count: 2, needs: { metal: 2, sand: 2 }, station: "bench" },
@@ -68,6 +70,8 @@ export const RECIPES: Recipe[] = [
   { out: "deadwood", count: 2, needs: { wood_log: 1 }, station: null },
   { out: "chest_connector", count: 1, needs: { deadwood: 2, metal: 1 }, station: null },
   { out: "chest_interface", count: 1, needs: { metal: 2, glass: 1 }, station: "bench" },
+  { out: "cooking_pot", count: 1, needs: { metal: 2, glass: 1 }, station: "bench" },
+  { out: "water_cage", count: 1, needs: { metal: 2, glass: 1 }, station: "bench" },
   { out: "metal_plating", count: 1, needs: { metal: 1 }, station: null },
   { out: "door_inner", count: 1, needs: { metal: 1 }, station: "bench" },
   // Alabaster masonry: everything cut from the Cave's raw stone — no catalyst.
@@ -101,7 +105,7 @@ export const SMELT: { in: string; out: string; n?: number }[] = [
   { in: "rock", out: "metal" }, // the landlubber's chain: one Rock bakes one Iron Rod
   { in: "rat_raw", out: "rat_cooked" },
   { in: "vulture_raw", out: "vulture_cooked" },
-  { in: "wheat", out: "cooked_wheat" },
+  // Wheat bakes at the Cooking Pot, not the Campfire — the pot is the kitchen.
   // Ore yields double: the dig is the expensive part, not the fire.
   { in: "iron_ore", out: "metal", n: 2 },
   { in: "copper_ore", out: "copperrod", n: 2 },
@@ -109,8 +113,66 @@ export const SMELT: { in: string; out: string; n?: number }[] = [
   { in: "canister_full", out: "hot_water_pouch" }, // sealed hot for the cold hours
 ];
 
+// ---------------- Cooking Pot ----------------
+// The Pot keeps a Coals bank like the Campfire, but each recipe decides whether
+// the fire is touched: `charges` is what one cook spends from the bank (Fruit
+// Salad is 0 — chopping needs no heat). Jobs are row-pressed from the Dishes
+// list; ingredients come off the pot's Input Grid.
+// `*fruit` / `*meat` wildcards match any item of that tag.
+export const FRUIT_ITEMS = ["apple", "dune_melon", "prickly_pear"];
+export const MEAT_ITEMS = ["rat_raw", "vulture_raw", "rat_cooked", "vulture_cooked"];
+
+export interface PotRecipe {
+  out: string;
+  count: number;
+  needs: Record<string, number>;
+  charges: number;
+  seconds: number;
+  side?: { item: string; n: number }; // extra output (Stew returns the Canister empty)
+  tag?: "bread" | "dish";            // bumps the matching quest counter
+}
+
+export const POT_RECIPES: PotRecipe[] = [
+  { out: "bread", count: 1, needs: { wheat: 1 }, charges: 1, seconds: 12, tag: "bread" },
+  { out: "sugar", count: 1, needs: { sugar_cane: 1 }, charges: 1, seconds: 6 },
+  { out: "stew", count: 1, needs: { "*fruit": 1, wheat: 1, "*meat": 1, canister_full: 1 }, charges: 2, seconds: 30, side: { item: "canister_empty", n: 1 }, tag: "dish" },
+  { out: "fruit_salad", count: 1, needs: { "*fruit": 2, canister_full: 1 }, charges: 0, seconds: 8, side: { item: "canister_empty", n: 1 }, tag: "dish" },
+  { out: "apple_pie", count: 1, needs: { apple: 2, wheat: 1, sugar: 1 }, charges: 2, seconds: 20, tag: "dish" },
+];
+
+export function potHas(inv: Inventory, r: PotRecipe): boolean {
+  return Object.entries(r.needs).every(([id, n]) =>
+    id === "*fruit" ? countTag(inv, FRUIT_ITEMS) >= n
+    : id === "*meat" ? countTag(inv, MEAT_ITEMS) >= n
+    : inv.has(id, n));
+}
+
+export function countTag(inv: Inventory, ids: string[]): number {
+  let t = 0;
+  for (const id of ids) t += inv.countOf(id);
+  return t;
+}
+
+/** Removes a pot recipe's ingredients (specific ids first, then wildcards). */
+export function potConsume(inv: Inventory, r: PotRecipe): boolean {
+  if (!potHas(inv, r)) return false;
+  for (const [id, n] of Object.entries(r.needs)) {
+    let left = n;
+    if (id === "*fruit" || id === "*meat") {
+      for (const tid of id === "*fruit" ? FRUIT_ITEMS : MEAT_ITEMS) {
+        if (left <= 0) break;
+        left -= inv.removeItem(tid, left);
+      }
+    } else {
+      left -= inv.removeItem(id, n);
+    }
+    if (left > 0) return false; // can't happen after potHas, but never half-consume
+  }
+  return true;
+}
+
 /** What a fuel item feeds a Campfire, in charges (a lit fire drips 1 charge per 10 real minutes). */
-export const FIRE_FUEL: Record<string, number> = { kindling: 0.5, wood_log: 2, deadwood: 3 };
+export const FIRE_FUEL: Record<string, number> = { kindling: 0.5, wood_log: 2, deadwood: 1, coal_ore: 6 };
 
 export function canCraft(inv: Inventory, r: Recipe): boolean {
   return Object.entries(r.needs).every(([id, n]) => inv.has(id, n));

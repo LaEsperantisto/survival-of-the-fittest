@@ -2,9 +2,10 @@ import {
   AIR, SAND, SANDSTONE, ROCK, GRAVEL, SALT, DEADWOOD, DIRT, HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL_PLATING, BEACON, CAMPFIRE,
   WATER, ADOBE, INSGLASS, ENGINECORE, CS, CH, REGULATOR, REGULATOR_HUSK, CACTUS, CACTUS_FRUIT,
   DOOR_INNER, DOOR_INNER_UPPER, CHEST, BED, BED_EXT, MELON_1, MELON_2, WHEAT_1, WHEAT_2, FARMLAND, GRASS, WOOD, LEAVES,
+  APPLE_FRUIT,
   STORM_BREAKER, STORM_BREAKER_HUSK,
   POWER_PANEL, POWER_POLE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
-  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, THRUSTER,
+  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, COAL_ORE, THRUSTER,
 } from "./blocks";
 import { fbm2, ridge2, value2, hash2, Rng } from "./noise";
 
@@ -692,6 +693,43 @@ function stampTree(set: (x: number, y: number, z: number, id: number) => void, x
   for (const p of treePlan(x, groundTop + 1, z, () => rnd.next())) set(p.x, p.y, p.z, p.b);
 }
 
+/** The mature Apple Tree — half the size of its Living Tree cousin: trunk
+ *  3-4 blocks, a small crown, and exactly three fruit cells stamped
+ *  APPLE_FRUIT. Same stage machinery as treePlan; the fruit slots are part
+ *  of the plan, so a picked bough (LEAVES) re-ripens on the very same cell. */
+export function appleTreePlan(x: number, y: number, z: number, rnd: () => number): TreePart[] {
+  const H = 3 + (rnd() < 0.5 ? 1 : 0); // trunk 3..4 blocks
+  const parts: TreePart[] = [];
+  const at = (px: number, py: number, pz: number, b: number, stage: number) =>
+    parts.push({ x: px, y: py, z: pz, b, stage });
+  at(x, y, z, WOOD, 1);
+  at(x, y + 1, z, WOOD, 1);
+  for (let dy = 2; dy < H; dy++) at(x, y + dy, z, WOOD, 2);
+  const top = y + H - 1;
+  const crown: TreePart[] = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    const prof = dy === 1 ? 1.3 : 1.9; // leafy radius per layer
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+      const rr = dx * dx + dz * dz + dy * dy * 2.2;
+      if (rr > prof * prof) continue;
+      if (rr > (prof - 0.8) * (prof - 0.8) && rnd() < 0.3) continue; // ragged edge
+      if (dx === 0 && dz === 0) continue;                            // the trunk breathes there
+      crown.push({ x: x + dx, y: top + dy, z: z + dz, b: LEAVES, stage: 3 });
+    }
+  }
+  // exactly three fruit cells, spread around the crown
+  for (let i = 0; i < 3 && crown.length > i; i++)
+    crown[Math.floor(((i + 0.5) / 3) * crown.length) % crown.length].b = APPLE_FRUIT;
+  parts.push(...crown);
+  return parts;
+}
+
+/** Stamp a whole mature Apple Tree into the world at a spot, seeded by its base. */
+function stampAppleTree(set: (x: number, y: number, z: number, id: number) => void, x: number, groundTop: number, z: number, seed: number, salt: number) {
+  const rnd = new Rng(((hash2(x, z, seed + salt) * 4294967296) >>> 0) || 1);
+  for (const p of appleTreePlan(x, groundTop + 1, z, () => rnd.next())) set(p.x, p.y, p.z, p.b);
+}
+
 function paintOasis(set: (x: number, y: number, z: number, id: number) => void, o: Oasis, seed: number) {
   const hb = Math.round(heightAt(seed, o.x, o.z));
   // a ROUND pool: disc with a bowl-rounded bottom — 3 deep at the middle,
@@ -737,6 +775,18 @@ function paintOasis(set: (x: number, y: number, z: number, id: number) => void, 
       if (py > hb && Math.hypot(px - o.x, pz - o.z) <= o.r) return;
       set(px, py, pz, b);
     }, tx, top, tz, seed, 81);
+  }
+  // 2-3 Apple Trees on the green ring — the oasis's sweetest gift
+  const nApple = 2 + (hash2(o.x, o.z, seed + 91) < 0.6 ? 1 : 0);
+  for (let i = 0; i < nApple; i++) {
+    const a = i * (Math.PI * 2 / nApple) + hash2(o.x - i, o.z + i, seed + 93) * 1.4 + 0.5;
+    const rr = o.r + 1 + hash2(o.x + i, o.z + i, seed + 95) * (gring + 1);
+    const tx = o.x + Math.round(Math.cos(a) * rr), tz = o.z + Math.round(Math.sin(a) * rr);
+    const top = Math.max(Math.round(heightAt(seed, tx, tz)), hb);
+    stampAppleTree((px, py, pz, b) => {
+      if (py > hb && Math.hypot(px - o.x, pz - o.z) <= o.r) return;
+      set(px, py, pz, b);
+    }, tx, top, tz, seed, 97);
   }
   // ripe Dune Melons ripen on the sand at the water's edge — the desert's free drink
   for (let i = 0; i < 5; i++) {
@@ -1173,6 +1223,7 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number, w
             noise3(wx / 5 + 40, y / 5, wz / 5, seed + 331) > 0.886) c[idx] = COBALT_ORE;
         else if (y >= 12 && noise3(wx / 5, y / 5, wz / 5, seed + 313) > 0.864) c[idx] = IRON_ORE;
         else if (y >= 12 && noise3(wx / 5, y / 5 + 60, wz / 5, seed + 317) > 0.878) c[idx] = COPPER_ORE;
+        else if (y >= 6 && noise3(wx / 5 + 120, y / 5 + 30, wz / 5, seed + 329) > 0.842) c[idx] = COAL_ORE;
         else if (y >= 8 && y <= 24 && noise3(wx / 5, y / 5, wz / 5 + 70, seed + 321) > 0.883) c[idx] = ALABASTER;
       }
 
