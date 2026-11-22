@@ -16,6 +16,7 @@ export class Player {
   inWater = false;    // body touches water at feet or waist (checked at both)
   headUnder = false;
   fallPeakY = this.pos.y; // highest point since last leaving the ground
+  private prevJump = false; // edge-detect the jump press for the unstick eject
   lastFallDist = 0;       // metres of the fall that just landed (reset by the reader)
 
   constructor(private world: World) {}
@@ -73,11 +74,22 @@ export class Player {
       this.vel.y *= 1 - Math.min(0.9, 2.2 * dt);
     } else {
       this.vel.y -= 24 * dt;
-      // trapped inside a block (a Ship landed on you, a misplaced wall):
-      // jump always works there, so the way out is always up
-      const stuck = !this.onGround && this.collides(this.pos.x, this.pos.y + 0.02, this.pos.z);
-      if (jump && (this.onGround || stuck)) { this.vel.y = 8.2; this.onGround = false; }
+      // trapped inside a block (a Ship settled on you, a misplaced wall):
+      // an impulse is useless there — the collision zeroes it the same
+      // frame. A jump press instead ejects you up past the cell your
+      // feet stand in; press again if two blocks deep.
+      const stuck = this.collides(this.pos.x, this.pos.y + 0.02, this.pos.z);
+      if (jump && !this.prevJump && stuck) {
+        this.pos.y = Math.floor(this.pos.y + 0.02) + 1;
+        this.fallPeakY = this.pos.y;
+        this.vel.y = 0;
+        this.onGround = true;
+      } else if (jump && this.onGround) {
+        this.vel.y = 8.2;
+        this.onGround = false;
+      }
     }
+    this.prevJump = jump;
 
     this.moveAxis(this.vel.x * dt, 0);
     this.moveAxis(this.vel.z * dt, 2);
