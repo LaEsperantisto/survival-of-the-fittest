@@ -472,7 +472,9 @@ export class Game {
     const sh = new Ship(this.shipSeq++, this.world.worldH);
     for (let x = -X; x <= X; x++) for (let z = -Z; z <= Z; z++) for (let y = 0; y <= H; y++) {
       const post = Math.abs(x) === X && Math.abs(z) === Z;
-      if (post && (y === 0 || y === H)) continue; // corners clipped at both decks
+      // the eight hull corners are Frame Corners: without them a clean Ship
+      // has no valid Frame and sinks through its own dock
+      if (post && (y === 0 || y === H)) { sh.setCell(x, y, z, FRAME_CORNER); continue; }
       if (Math.abs(x) !== X && Math.abs(z) !== Z && y !== 0 && y !== H) continue; // hollow
       sh.setCell(x, y, z, post ? CURVED_HULL : HULL);
     }
@@ -2622,7 +2624,9 @@ export class Game {
     let bestShip: Ship | null = null;
     let bestHit: ShipHit | null = null;
     for (const sh of this.ships.values()) {
-      if (sh.grounded) continue; // grounded hulls ARE the lattice
+      // a grounded hull on the lattice (Desertis after landing) has no entity
+      // left to raycast; a grounded Ship that STAYS an entity — pre-docked on
+      // the Second Planet — is still its blocks, so raycast it too
       const h = sh.rayHit(o.x, o.y, o.z, dir.x, dir.y, dir.z, 5.5);
       if (h && (!bestHit || h.t < bestHit.t)) { bestShip = sh; bestHit = h; }
     }
