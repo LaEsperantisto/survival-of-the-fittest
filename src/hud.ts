@@ -56,7 +56,7 @@ export function renderHotbar(inv: Inventory) {
   }
   const el = $("hotbar");
   el.innerHTML = "";
-  uniq.slice(0, 9).forEach((u, i) => {
+  uniq.slice(0, 10).forEach((u, i) => {
     const d = document.createElement("div");
     d.className = "hb-slot" + (u.itemId === selId ? " sel" : "");
     d.dataset.hb = String(i);
@@ -65,7 +65,7 @@ export function renderHotbar(inv: Inventory) {
     img.alt = ITEMS[u.itemId].name;
     d.appendChild(img);
     const k = document.createElement("span");
-    k.className = "hb-key"; k.textContent = String(i + 1);
+    k.className = "hb-key"; k.textContent = i === 9 ? "0" : String(i + 1);
     d.appendChild(k);
     if (u.count > 1) {
       const c = document.createElement("span");

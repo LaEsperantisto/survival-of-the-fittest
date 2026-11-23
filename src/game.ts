@@ -1506,8 +1506,17 @@ export class Game {
           (ae instanceof HTMLInputElement || ae instanceof HTMLTextAreaElement)) return;
       this.keys.add(ke.code);
       if (ke.code === "KeyE") {
-        if (this.piloting) this.exitPiloting();            // E is the way off the yoke
-        else if (this.ui === "flycheck") this.closeFlycheck();
+        if (this.piloting) {
+          // E aimed at the yoke frees the cursor over the instrument panel
+          // while the Ship flies on; E again takes the hands back. E aimed
+          // anywhere else is still the way off the yoke.
+          const t = this.raycastTarget();
+          const atYoke = !!t?.hit && this.world.get(t.hit.x, t.hit.y, t.hit.z) === FLIGHT_CONTROLS &&
+            this.shipAt(t.hit.x, t.hit.y, t.hit.z) === this.piloting;
+          if (this.ui === "flycheck") this.closeFlycheck();
+          else if (atYoke) this.openYokePanel();
+          else this.exitPiloting();
+        } else if (this.ui === "flycheck") this.closeFlycheck();
         else this.act();
       }
       if (ke.code === "KeyQ" && !this.piloting) this.useItem();
@@ -1559,7 +1568,7 @@ export class Game {
         else this.escape(true);
       }
       if (ke.code.startsWith("Digit")) {
-        const n = Number(ke.code.slice(5));
+        const n = Number(ke.code.slice(5)) || 10; // Digit0 is the tenth slot
         const hb = this.hotbarItems();
         if (n >= 1 && n <= hb.length) {
           const id = hb[n - 1];
@@ -4814,6 +4823,14 @@ export class Game {
     if (!this.ui) this.relock();
   }
 
+  /** E at the yoke mid-flight: cursor free over the live panel; the Ship keeps flying. */
+  private openYokePanel() {
+    this.ui = "flycheck";
+    this.flyPending = null; // the in-flight readouts overwrite the ground checklist each frame
+    document.getElementById("ui-flight")!.classList.remove("hidden");
+    this.unlockPointer();
+  }
+
   private enterPiloting(sh: Ship) {
     this.piloting = sh;
     this.pilotLand = false;
@@ -4831,7 +4848,7 @@ export class Game {
     this.closeFlycheck();
     document.getElementById("ui-flight")!.classList.add("hidden");
     this.renderer.setFrameOutline(null);
-    hud.toast("Hands off the yoke — the Ship settles down on its own.");
+    hud.toast("Hands off the yoke — the Ship holds while anyone is aboard.");
   }
 
   private toggleFlyOutline() {

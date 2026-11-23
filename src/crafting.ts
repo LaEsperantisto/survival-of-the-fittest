@@ -73,7 +73,7 @@ export const RECIPES: Recipe[] = [
   // ---- farming & building ----
   // Farm Land is never crafted — a shovel opens a furrow in real soil, that's it
   { out: "deadwood", count: 2, needs: { wood_log: 1 }, station: null },
-  { out: "chest_connector", count: 1, needs: { deadwood: 2, metal: 1 }, station: null },
+  { out: "chest_connector", count: 1, needs: { deadwood: 1 }, station: null },
   { out: "chest_interface", count: 1, needs: { metal: 2, glass: 1 }, station: "bench" },
   { out: "cooking_pot", count: 1, needs: { metal: 2, glass: 1 }, station: "bench" },
   { out: "water_cage", count: 1, needs: { metal: 2, glass: 1 }, station: "bench" },
