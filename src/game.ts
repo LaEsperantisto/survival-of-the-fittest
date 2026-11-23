@@ -898,6 +898,7 @@ export class Game {
     for (const eid of this.regGlow.values()) this.renderer.removeEntityMesh(eid);
     this.visorBeams.clear(); this.beaconBeams.clear(); this.regGlow.clear();
     for (const g of this.shipGroups.values()) this.renderer.removeEntityGroup(g);
+    this.shipGroups.clear(); // buildShipGroup must not find a detached group
     for (const m of this.mobs) this.renderer.removeSceneObject(m.vis.group);
     this.mobs = []; this.traderAt.clear();
     this.clearPlanetLights();
@@ -6012,7 +6013,8 @@ export class Game {
     sh.yaw = 0;
     sh.spinTo = null;
     const c = sh.centerLocal();
-    sh.pos = { x: c[0], y: ARR_Y + 1 + c[1], z: c[2] };
+    const bb = sh.getBox()!;
+    sh.pos = { x: c[0], y: ARR_Y + 1 + c[1] - bb.min[1], z: c[2] };
     sh.vel = { x: 0, y: 0, z: 0 };
     sh.prevPos = { ...sh.pos };
     sh.prevYaw = 0;
