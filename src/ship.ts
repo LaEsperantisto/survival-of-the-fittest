@@ -49,6 +49,17 @@ export interface ShipCell {
   rot: number;
 }
 
+/** exact hull hit from Ship.rayHit: the local cell, the entered face (local
+ *  normal), and the ray distance (identical in world and ship space) */
+export interface ShipHit {
+  ix: number;
+  iy: number;
+  iz: number;
+  face: [number, number, number];
+  t: number;
+  id: number;
+}
+
 export const skey = (ix: number, iy: number, iz: number): string => keyOf(ix, iy, iz);
 
 export interface ShipSnapshot {
@@ -198,6 +209,107 @@ export class Ship {
     // doors and other groups: reuse the block table's own solidity
     const { isSolid: solid } = require_isSolid();
     return solid(c.id);
+  }
+
+  /** A point solid in this hull's real geometry (no lattice quantisation):
+   *  the world point is mapped ship-local and lands in its true cell under
+   *  any yaw. Used by continuous player physics. */
+  solidAt(x: number, y: number, z: number): boolean {
+    const c = this.cellAtWorld(x, y, z);
+    if (!c) return false;
+    const { isSolid: solid } = require_isSolid();
+    return solid(c.id);
+  }
+
+  /** Does an axis-aligned world box (a walking player's AABB) meet any solid
+   *  cell of this hull — exactly, with no lattice quantisation? The box is
+   *  mapped into ship space, where it becomes a square canted by -yaw and
+   *  every cell stays a unit cube: separating-axis test along the local x/z
+   *  axes (the cell's faces) and the canted box's own face normals. Yaw
+   *  leaves y alone, so the vertical interval stays exact. */
+  hitsBox(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): boolean {
+    const box = this.getBox();
+    if (!box) return false;
+    const c = this.centerLocal();
+    const ly0 = c[1] + (y0 - this.pos.y), ly1 = c[1] + (y1 - this.pos.y);
+    if (ly1 <= box.min[1] || ly0 >= box.max[1] + 1) return false;
+    const iy0 = Math.max(box.min[1], Math.floor(ly0));
+    const iy1 = Math.min(box.max[1], Math.floor(ly1 - 1e-9));
+    if (iy1 < iy0) return false;
+    const [cos, sin] = this.rot();
+    // the box's half-edge vectors, in ship space
+    const hx = (x1 - x0) / 2, hz = (z1 - z0) / 2;
+    const ax = cos * hx, az = sin * hx; // world +x → local (cos·hx, sin·hx)
+    const bx = -sin * hz, bz = cos * hz; // world +z → local (−sin·hz, cos·hz)
+    const p = this.worldToLocal((x0 + x1) / 2, 0, (z0 + z1) / 2);
+    // cells the canted box can possibly touch
+    const ex = Math.abs(ax) + Math.abs(bx), ez = Math.abs(az) + Math.abs(bz);
+    const { isSolid: solid } = require_isSolid();
+    for (let ix = Math.floor(p.x - ex); ix <= Math.ceil(p.x + ex); ix++)
+      for (let iz = Math.floor(p.z - ez); iz <= Math.ceil(p.z + ez); iz++)
+        for (let iy = iy0; iy <= iy1; iy++) {
+          const cell = this.getCell(ix, iy, iz);
+          if (!cell || !solid(cell.id)) continue;
+          if (iy + 1 <= ly0 || iy >= ly1) continue; // vertical intervals, exact
+          const dx = p.x - (ix + 0.5), dz = p.z - (iz + 0.5);
+          if (Math.abs(dx) > Math.abs(ax) + Math.abs(bx) + 0.5) continue; // local x axis
+          if (Math.abs(dz) > Math.abs(az) + Math.abs(bz) + 0.5) continue; // local z axis
+          if (Math.abs(dx * az - dz * ax) > Math.abs(bx * az - bz * ax) + 0.5 * (Math.abs(az) + Math.abs(ax))) continue;
+          if (Math.abs(dx * bz - dz * bx) > Math.abs(ax * bz - az * bx) + 0.5 * (Math.abs(bz) + Math.abs(bx))) continue;
+          return true;
+        }
+    return false;
+  }
+
+  /** Raycast the hull as a solid polycube: the ray is mapped into ship-local
+   *  space (a rigid turn, so ray distances are unchanged) and DDA'd against
+   *  the cell grid. Exact at any yaw — this is what the crosshair hits, so
+   *  the block you aim at is the block you get, turned or not. `face` is the
+   *  ship-local normal of the entered face. */
+  rayHit(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxDist: number): ShipHit | null {
+    const box = this.getBox();
+    if (!box) return null;
+    const [cos, sin] = this.rot();
+    const o = this.worldToLocal(ox, oy, oz);
+    const ldx = cos * dx - sin * dz, ldy = dy, ldz = sin * dx + cos * dz;
+    // broad phase: slab-test the cell bbox so most ships cost a few flops
+    let tin = 0, tout = maxDist;
+    const slabs: [number, number, number, number][] = [
+      [o.x, ldx, box.min[0], box.max[0] + 1],
+      [o.y, ldy, box.min[1], box.max[1] + 1],
+      [o.z, ldz, box.min[2], box.max[2] + 1],
+    ];
+    for (const [p, d, mn, mx] of slabs) {
+      if (d === 0) { if (p < mn || p >= mx) return null; continue; }
+      let a = (mn - p) / d, b = (mx - p) / d;
+      if (a > b) { const t0 = a; a = b; b = t0; }
+      if (a > tin) tin = a;
+      if (b < tout) tout = b;
+      if (tin > tout) return null;
+    }
+    if (tout <= 0) return null;
+    // start the lattice walk just inside the bbox entry point
+    const s = tin + 1e-6;
+    let x = Math.floor(o.x + ldx * s), y = Math.floor(o.y + ldy * s), z = Math.floor(o.z + ldz * s);
+    const stx = Math.sign(ldx), sty = Math.sign(ldy), stz = Math.sign(ldz);
+    const td = (d: number) => (d !== 0 ? Math.abs(1 / d) : Infinity);
+    const tDx = td(ldx), tDy = td(ldy), tDz = td(ldz);
+    const toBoundary = (v: number, st: number) =>
+      st > 0 ? (Math.ceil(v) - v || 1) : st < 0 ? (v - Math.floor(v) || 1) : Infinity;
+    let tmx = tin + toBoundary(o.x + ldx * s, stx) * tDx,
+      tmy = tin + toBoundary(o.y + ldy * s, sty) * tDy,
+      tmz = tin + toBoundary(o.z + ldz * s, stz) * tDz;
+    let entered = tin;
+    let face: [number, number, number] = [0, 0, 0];
+    for (let i = 0; i < 128; i++) {
+      const c = this.getCell(x, y, z);
+      if (c && c.id !== AIR) return { ix: x, iy: y, iz: z, face, t: entered, id: c.id };
+      if (tmx < tmy && tmx < tmz) { face = [-stx, 0, 0]; x += stx; entered = tmx; tmx += tDx; }
+      else if (tmy < tmz) { face = [0, -sty, 0]; y += sty; entered = tmy; tmy += tDy; }
+      else { face = [0, 0, -stz]; z += stz; entered = tmz; tmz += tDz; }
+      if (entered > tout) return null;
+    }
+    return null;
   }
 
   /** the Ship Frame declared by this Ship's own corners */

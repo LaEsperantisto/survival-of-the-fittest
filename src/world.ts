@@ -172,6 +172,13 @@ export class World {
     if (y >= 0 && y < CH) this.fluidQ.add(x + "," + y + "," + z);
   }
 
+  /** cell claimed by an airborne hull (see cellProvider): world fluid never
+   *  drains or pours through it — a Ship carries its liquid until it stands
+   *  down, when the landing writes re-queue everything. */
+  private hullCell(x: number, y: number, z: number): boolean {
+    return this.cellProvider !== null && this.cellProvider(x, y, z) !== null;
+  }
+
   /**
    * Run queued Minecraft-style flow for both fluids — water and oil share the
    * queue and the code path (see FLUIDS). Sources spread 7 cells sideways and
@@ -193,6 +200,7 @@ export class World {
     for (const k of wave) {
       if (ops >= budget) break;
       const [x, y, z] = k.split(",").map(Number);
+      if (this.hullCell(x, y, z)) continue; // the hull took this cell's fluid with it
       const here = this.get(x, y, z);
       for (const f of FLUIDS) {
         // a cell holding the other fluid needs only that fluid's pass; air and
@@ -212,6 +220,7 @@ export class World {
     const seen = new Set<string>();
     while (stack.length && ops++ < budget) {
       const [x, y, z] = stack.pop()!;
+      if (this.hullCell(x, y, z)) continue; // fluid in the hull drains when the Ship lands
       const s = f.strength(this.get(x, y, z));
       if (!s || s === 8) continue; // air, solid, other fluid, or Source: sources never drain on their own
       const k = x + "," + y + "," + z;
@@ -249,7 +258,7 @@ export class World {
       }
       if (!s) continue;
       if (gen === 0 && y > 0) { // fall straight down: a Source sends level 7, flow keeps its level
-        if ((below === AIR || f.strength(below) > 0) && f.strength(below) < s)
+        if ((below === AIR || f.strength(below) > 0) && f.strength(below) < s && !this.hullCell(x, y - 1, z))
           this.set(x, y - 1, z, f.flowId(s === 8 ? 7 : s));
       } else if (gen === 1 && y > 0 && (below === AIR || f.strength(below) > 0) && f.strength(below) < s) {
         this.queueFluid(x, y, z); // off-gen: keep this cell in the wave so the fall isn't lost
@@ -260,9 +269,11 @@ export class World {
       const out = s === 8 ? 7 : s - 1; // Sources spread 7; flow decays by 1 per cell
       if (out < 1) continue;
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-        const side = this.get(x + dx, y, z + dz);
+        const tx = x + dx, tz = z + dz;
+        if (this.hullCell(tx, y, tz)) continue; // an airborne hull's cells are off-limits
+        const side = this.get(tx, y, tz);
         if ((side === AIR || f.strength(side) > 0) && f.strength(side) < out)
-          this.set(x + dx, y, z + dz, f.flowId(out));
+          this.set(tx, y, tz, f.flowId(out));
       }
     }
     return ops;

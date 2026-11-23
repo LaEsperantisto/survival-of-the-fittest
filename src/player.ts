@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { World, subBoxes } from "./world";
+import type { Ship } from "./ship";
 import { isSolid, isWater, waterStrength, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_GATE_OPEN } from "./blocks";
 
 const W = 0.6, H = 1.8, EYE = 1.62;
@@ -18,6 +19,11 @@ export class Player {
   fallPeakY = this.pos.y; // highest point since last leaving the ground
   private prevJump = false; // edge-detect the jump press for the unstick eject
   lastFallDist = 0;       // metres of the fall that just landed (reset by the reader)
+  /** an airborne Ship the crew is standing in, set by Game before each
+   *  walking step: collision then tests the hull's true turned geometry
+   *  (hitsBox), and the world-grid stamps of its cells stay muted — walls
+   *  don't flicker in and out as the hull yaws underfoot */
+  hull: Ship | null = null;
 
   constructor(private world: World) {}
 
@@ -31,6 +37,7 @@ export class Player {
   }
 
   private collides(x: number, y: number, z: number): boolean {
+    if (this.hull && this.hull.hitsBox(x - W / 2, y, z - W / 2, x + W / 2, y + H, z + W / 2)) return true;
     const x0 = Math.floor(x - W / 2), x1 = Math.floor(x + W / 2);
     const z0 = Math.floor(z - W / 2), z1 = Math.floor(z + W / 2);
     const y0 = Math.floor(y), y1 = Math.floor(y + H - 0.001);

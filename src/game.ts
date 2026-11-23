@@ -8,7 +8,7 @@ import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, sackUnits, sackFree, type It
 import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_GROUP, ALAB_GATE, ALAB_GATE_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, CHEST_INTERFACE, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, INSERTER, PLANTER, HARVESTER, REFINERY, POLE_LINK, DEVICE_REACH, isPowerBlock, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable,
   COOKPOT, WATER_CAGE, WATER_CAGE_FULL, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING, APPLE_FRUIT,
   FRAME_CORNER, FLIGHT_CONTROLS, OIL, isFluid } from "./blocks";
-import { Ship, SHIP, FWD_DIR, massOf } from "./ship";
+import { Ship, SHIP, FWD_DIR, massOf, type ShipHit } from "./ship";
 import { computeFrame, type Box3, type FrameResult } from "./shipframe";
 import { meshShipCells } from "./renderer";
 
@@ -89,7 +89,17 @@ export interface Mob {
   flashOn?: boolean;  // whether the visual currently has flash materials swapped in
   vis: MobVisual;
 }
-export interface Raycast { hit: { x: number; y: number; z: number } | null; water: { x: number; y: number; z: number } | null; face: THREE.Vector3 }
+export interface Raycast { hit: { x: number; y: number; z: number } | null; water: { x: number; y: number; z: number } | null; face: THREE.Vector3; /** set when the crosshair is on an airborne hull: the EXACT ship-local cell behind the coarse display cell in `hit`, plus the ship-local face it was entered through */ ship?: { sh: Ship; ix: number; iy: number; iz: number; fx: number; fy: number; fz: number } }
+
+/** A block address (see Game.atGet/atSet/atKey): world cell `x,y,z`, plus
+ *  the exact ship-local cell `ix,iy,iz` when the block rides an airborne
+ *  Ship. `sh` is set iff the cell is aboard; then x,y,z is only the coarse
+ *  display cell (drops, lights). */
+export interface BlockAt {
+  x: number; y: number; z: number;
+  ix: number; iy: number; iz: number;
+  sh?: Ship;
+}
 
 export class Game {
   seed: number;
@@ -114,14 +124,14 @@ export class Game {
   /** The renderer's fire gauges: 0 = cold charcoal tile, >0 = flame (a lit fire only). */
   gauges = new Map<string, number>();
   fire: FireState | null = null; // the station whose panel is open
-  openFire: [number, number, number] | null = null;
+  openFire: string | null = null;
   /** Cooking Pot stations keyed by "x,y,z" (the kitchen half of the campfire family). */
   pots = new Map<string, PotState>();
   pot: PotState | null = null; // the pot whose panel is open
-  openPot: [number, number, number] | null = null;
+  openPot: string | null = null;
   /** the Wood Generator whose panel is open (world coords; the station itself is the genFuel bank under its power key). */
-  openGen: [number, number, number] | null = null;
-  beaconMarks: { x: number; y: number; z: number }[] = [];
+  openGen: string | null = null;
+  beaconMarks: { x: number; y: number; z: number; ship?: number }[] = [];
   // ---- the Map kit and the lessons (save v2) ----
   worldMode: "easy" | "hard" | "phase2" = "easy";
   pins: { id: number; x: number; z: number; name: string }[] = [];
@@ -160,7 +170,9 @@ export class Game {
   ui: null | "inv" | "bench" | "cache" | "flycheck" | "trade" = null;
   openCacheId: number | null = null;
   openStation: [number, number, number] | null = null;
-  private breaking: { x: number; y: number; z: number; need: number; elapsed: number } | null = null;
+  private breaking: { x: number; y: number; z: number; need: number; elapsed: number; shId?: number; ix?: number; iy?: number; iz?: number } | null = null;
+  /** true only while raycastTarget's world DDA runs (provider must stay mute) */
+  private rayBlind = false;
   // planted crops: "x,y,z" -> accumulated good-conditions seconds
   crops = new Map<string, number>();
   private cropAcc = 0;
@@ -279,6 +291,10 @@ export class Game {
     // a claimed cell reads as the Ship's block, never as the chunk under it
     this.world.cellProvider = (x, y, z) => {
       if (!this.ships.size) return null;
+      // crosshair targeting DDA's the world grid itself; an airborne hull is
+      // continuous geometry raycast separately (Ship.rayHit), so the provider
+      // must not stamp its cells onto quantised world coords mid-DDA
+      if (this.rayBlind) return null;
       for (const sh of this.ships.values()) {
         const b = sh.worldAABB();
         if (x + 0.5 < b.min[0] || x + 0.5 >= b.max[0] || y + 0.5 < b.min[1] || y + 0.5 >= b.max[1] || z + 0.5 < b.min[2] || z + 0.5 >= b.max[2]) continue;
@@ -407,6 +423,19 @@ export class Game {
     }
   }
 
+  /** re-key the state maps that hang off hull cells — crops, trees, boughs,
+   *  fires, pots, gauges, tripped Panels — across a takeoff / landing. */
+  private migrateKeys(map: Map<string, string>): void {
+    if (!map.size) return;
+    for (const m of [this.crops, this.trees, this.appleTrees, this.fruitRegrow, this.fires, this.pots, this.gauges, this.treePlanCache] as Map<string, unknown>[])
+      for (const [from, to] of map)
+        if (m.has(from)) { m.set(to, m.get(from)); m.delete(from); }
+    for (const [from, to] of map)
+      if (this.trippedPanels.has(from)) { this.trippedPanels.delete(from); this.trippedPanels.add(to); }
+    for (const [from, to] of map)
+      if (this.breakers.has(from)) { this.breakers.delete(from); this.breakers.add(to); }
+  }
+
   private static chestDims(n: number): [number, number] {
     if (n <= 6) return [3 * n, 3];
     // linked clusters grow wide first (one row of 3-wide chest faces), then taller,
@@ -481,22 +510,24 @@ export class Game {
     return items;
   }
 
-  private openChest(x: number, y: number, z: number, ifc = false) {
-    const cells = this.chestCluster(x, y, z);
+  private openChest(a: BlockAt, ifc = false) {
+    const cells = this.chestClusterAt(a);
     if (!cells.length) {
       hud.toast("The Chest Interface isn't touching any Chest.");
       this.audio.error();
       return;
     }
-    const key = this.chestKey(cells);
+    const key = this.chestKeyAt(cells);
     const known = this.chests.has(key);
     if (!this.chests.has(key)) this.chests.set(key, []);
     const ci = this.emptyChestGrid(cells.length);
     ci.slots = this.chests.get(key)!;
     // world-placed Chests hold stores exactly once: a cluster never
-    // opened before rolls its loot now, and every later opening is bare
-    if (!known && cells.some(([cx, , cz]) => this.inTown(cx, cz))) {
-      for (const it of this.townLoot(cells[0][0], cells[0][2])) {
+    // opened before rolls its loot now, and every later opening is bare.
+    // A Ship's own Chests were built, not buried — they never roll.
+    const aboard = cells.some((c) => c.sh);
+    if (!known && !aboard && cells.some((c) => this.inTown(c.x, c.z))) {
+      for (const it of this.townLoot(cells[0].x, cells[0].z)) {
         // every instance gets its own slot — chest stores never stack
         for (let i = 0; i < it.count; i++) {
           const s: Slot = { itemId: it.itemId, x: 0, y: 0 };
@@ -505,7 +536,7 @@ export class Game {
       }
       hud.toast("Someone's stores — untouched since the town emptied.");
       this.questBump("supplies");
-    } else if (!known && cells.some(([cx, , cz]) => this.inOutpost(cx, cz))) {
+    } else if (!known && !aboard && cells.some((c) => this.inOutpost(c.x, c.z))) {
       // the relic crew's stores: copper for their wires, salt for their food,
       // one precious iron rod for whatever else survived
       for (const it of [{ itemId: "copperrod", count: 3 }, { itemId: "salt", count: 2 }, { itemId: "metal", count: 1 }]) {
@@ -532,11 +563,11 @@ export class Game {
   }
 
   /** After placing a chest, fold every neighbouring cluster's contents into the new cluster. */
-  private linkChests(bx: number, by: number, bz: number, old: Slot[]) {
-    const cells = this.chestCluster(bx, by, bz);
+  private linkChests(a: BlockAt, old: Slot[]) {
+    const cells = this.chestClusterAt(a);
     const ci = this.emptyChestGrid(cells.length);
     for (const sl of old) if (!Game.placeSlotFree(ci, sl)) this.dropEntity(sl.itemId, 1, 2, sl.charges);
-    if (ci.slots.length) this.chests.set(this.chestKey(cells), ci.slots);
+    if (ci.slots.length) this.chests.set(this.chestKeyAt(cells), ci.slots);
     if (cells.length > 1) hud.toast(`Chests linked — one ${ci.w}×${ci.h} inventory.`);
   }
 
@@ -1038,6 +1069,7 @@ export class Game {
     // every standing Save Beacon: the same treatment in Beacon cyan
     const liveBeacons = new Set<string>();
     for (const b of this.beaconMarks) {
+      if (b.ship !== undefined) continue; // a Beacon aboard flies with its hull — no fixed beam
       const k = `${b.x},${b.y},${b.z}`;
       liveBeacons.add(k);
       if (arrowFor(b.x + 0.5, b.z + 0.5, "#35e0ff")) {
@@ -1058,8 +1090,9 @@ export class Game {
         want.set(`c${c.id}`, [c.x + 0.5, c.y, c.z + 0.5, 0xd8a24a]);
       }
       for (const key of this.chests.keys()) {
-        const [x, y, z] = key.split(";")[0].split(",").map(Number);
-        want.set(`x${key}`, [x + 0.5, y, z + 0.5, 0xe6c96a]);
+        const at = this.atOfKey(key.split(";")[0]); // a Chest aboard beams from under the hull
+        if (!at) continue;
+        want.set(`x${key}`, [at.x + 0.5, at.y, at.z + 0.5, 0xe6c96a]);
       }
       // a Surveyor's Pin named "Base" beams from anywhere, like a home port
       for (const pin of this.pins)
@@ -1115,8 +1148,10 @@ export class Game {
       case "water_home":
       case "liftoff": {
         const b = [...this.beaconMarks, { x: -4, y: 31, z: -1 }].reverse()
-          .find((b) => this.world.get(b.x, b.y, b.z) === BEACON);
-        return b ? { name: "Save Beacon", x: b.x + 0.5, y: b.y, z: b.z + 0.5 } : null;
+          .find((b) => this.beaconAlive(b));
+        if (!b) return null;
+        const [bx, by, bz] = this.beaconWorld(b);
+        return { name: "Save Beacon", x: bx + 0.5, y: by, z: bz + 0.5 };
       }
       case "wreck": {
         const s = this.world.gen.secondShip;
@@ -1149,12 +1184,15 @@ export class Game {
         if (!this.crops.size) return null; // point at the nearest plot once something is planted
         let bk: string | null = null, bd = Infinity;
         for (const k of this.crops.keys()) {
-          const [x, , z] = k.split(",").map(Number);
+          const c = this.stateKeyCell(k);
+          if (!c) continue;
+          const [x, , z] = c;
           const d = (x + 0.5 - p.x) ** 2 + (z + 0.5 - p.z) ** 2;
           if (d < bd) { bd = d; bk = k; }
         }
-        const [x, y, z] = bk!.split(",").map(Number);
-        return { name: "Your Farm", x: x + 0.5, y: y + 1, z: z + 0.5 };
+        const at = this.atOfKey(bk!);
+        if (!at) return null;
+        return { name: "Your Farm", x: at.x + 0.5, y: at.y + 1, z: at.z + 0.5 };
       }
       default: return null; // sky / mine / day: nothing to point at
     }
@@ -1167,9 +1205,11 @@ export class Game {
     if (q.kind === "sky" && this.survival.lastOpenSky) this.questBump("sky");
     else if (q.kind === "oasis" && this.world.gen.nearOasis(Math.floor(p.x), Math.floor(p.z))) this.questBump("oasis");
     else if (q.kind === "water_home" && this.inv.slots.some((s) => s.itemId === "canister_full") &&
-      [...this.beaconMarks, { x: -4, y: 31, z: -1 }].some((b) =>
-        this.world.get(b.x, b.y, b.z) === BEACON &&
-        (b.x + 0.5 - p.x) ** 2 + (b.y + 1 - p.y) ** 2 + (b.z + 0.5 - p.z) ** 2 < 25)) this.questBump("water_home");
+      [...this.beaconMarks, { x: -4, y: 31, z: -1 }].some((b) => {
+        if (!this.beaconAlive(b)) return false;
+        const [bx, by, bz] = this.beaconWorld(b);
+        return (bx + 0.5 - p.x) ** 2 + (by + 1 - p.y) ** 2 + (bz + 0.5 - p.z) ** 2 < 25;
+      })) this.questBump("water_home");
     else if (q.kind === "wreck") {
       const s = this.world.gen.secondShip;
       if ((s.x + 0.5 - p.x) ** 2 + (s.z + 0.5 - p.z) ** 2 < 169) this.questBump("wreck");
@@ -1904,7 +1944,15 @@ export class Game {
       // while piloting the deck carries the crew: no gravity, no walking,
       // the Ship's own motion is the only thing that moves the player
       if (hands) {
+      // walking inside an airborne hull: collide on the hull's exact turned
+      // geometry, not the world-grid stamps of its cells (provider muted)
+      let hull: Ship | null = null;
+      for (const sh of this.ships.values())
+        if (!sh.grounded && sh.spinTo === null && this.isAboard(sh)) { hull = sh; break; }
+      this.player.hull = hull;
+      if (hull) this.rayBlind = true;
       this.player.update(dt, mx, mz, jump, this.speedMul);
+      if (hull) this.rayBlind = false;
       // landing a fall: the first 4 blocks are free; ~16 without armour is lethal
       if (this.player.lastFallDist > 0) {
         const fd = this.player.lastFallDist;
@@ -1988,7 +2036,19 @@ export class Game {
 
     const target = this.raycastTarget();
     this.renderer.setPlayerLight(this.lanternOn ? this.player.eye() : null);
-    this.renderer.setHighlight((this.ui || this.cine) ? null : (target?.hit ?? null));
+    {
+      // aiming at a flying hull: the outline hangs off the Ship group at the
+      // exact local cell, so it hugs the rotated hull instead of the grid
+      const sp = target?.ship;
+      if (this.ui || this.cine || !target) this.renderer.setHighlight(null);
+      else if (sp) {
+        const g = this.shipGroups.get(sp.sh.id);
+        if (g) {
+          const [cx, cy, cz] = sp.sh.centerLocal();
+          this.renderer.setHighlight({ x: sp.ix - cx, y: sp.iy - cy, z: sp.iz - cz }, g);
+        } else this.renderer.setHighlight(target.hit);
+      } else this.renderer.setHighlight(target.hit);
+    }
     // a held placeable block shows a translucent preview of where it lands
     {
       const gs = this.inv.selectedSlot();
@@ -1996,25 +2056,48 @@ export class Game {
       const hit = target?.hit, face = target?.face;
       let shown = false;
       if (!this.ui && !this.cine && gblk !== undefined && BLOCKS[gblk].placeable && hit && face) {
-        const gx = hit.x + face.x, gy = hit.y + face.y, gz = hit.z + face.z;
-        const at = this.world.get(gx, gy, gz);
-        if (at === AIR || (isWater(at) && at !== WATER)) {
-          const rot = gs!.blockRot ?? 0;
-          const cells: { x: number; y: number; z: number; id: number; rot: number }[] =
-            [{ x: gx, y: gy, z: gz, id: gblk, rot }];
-          // multi-cell blocks preview their whole footprint, turned the way
-          // the held rotation points
-          if (gblk === BENCH || gblk === BED) {
-            const [dx, dz] = ROT_DIRS[rot & 3];
-            if (this.world.get(gx + dx, gy, gz + dz) === AIR)
-              cells.push({ x: gx + dx, y: gy, z: gz + dz, id: gblk === BENCH ? BENCH_EXT : BED_EXT, rot });
+        const rot = gs!.blockRot ?? 0;
+        const cells: { x: number; y: number; z: number; id: number; rot: number }[] = [];
+        let parent: THREE.Object3D | undefined;
+        const sp = target!.ship;
+        if (sp) {
+          // the preview is drawn in Ship space: exact local cell, turns with yaw
+          const at = this.atOf(target!);
+          const g = this.shipGroups.get(sp.sh.id);
+          const [cx, cy, cz] = sp.sh.centerLocal();
+          if (at && g) {
+            const air = this.atGet(at, sp.fx, sp.fy, sp.fz);
+            if (air === AIR || (isWater(air) && air !== WATER)) {
+              cells.push({ x: sp.ix + sp.fx - cx, y: sp.iy + sp.fy - cy, z: sp.iz + sp.fz - cz, id: gblk, rot });
+              if (gblk === BENCH || gblk === BED) {
+                const [dx, dz] = ROT_DIRS[rot & 3];
+                if (this.atGet(at, sp.fx + dx, sp.fy, sp.fz + dz) === AIR)
+                  cells.push({ x: sp.ix + sp.fx + dx - cx, y: sp.iy + sp.fy - cy, z: sp.iz + sp.fz + dz - cz, id: gblk === BENCH ? BENCH_EXT : BED_EXT, rot });
+              }
+              const gd = DOOR_GROUP.get(gblk);
+              if (gd && gblk === gd.base && this.atGet(at, sp.fx, sp.fy + 1, sp.fz) === AIR)
+                cells.push({ x: sp.ix + sp.fx - cx, y: sp.iy + sp.fy + 1 - cy, z: sp.iz + sp.fz - cz, id: gd.upper, rot });
+              parent = g;
+            }
           }
-          const gd = DOOR_GROUP.get(gblk);
-          if (gd && gblk === gd.base && this.world.get(gx, gy + 1, gz) === AIR)
-            cells.push({ x: gx, y: gy + 1, z: gz, id: gd.upper, rot });
-          this.renderer.setGhost(cells);
-          shown = true;
+        } else {
+          const gx = hit.x + face.x, gy = hit.y + face.y, gz = hit.z + face.z;
+          const at = this.world.get(gx, gy, gz);
+          if (at === AIR || (isWater(at) && at !== WATER)) {
+            cells.push({ x: gx, y: gy, z: gz, id: gblk, rot });
+            // multi-cell blocks preview their whole footprint, turned the way
+            // the held rotation points
+            if (gblk === BENCH || gblk === BED) {
+              const [dx, dz] = ROT_DIRS[rot & 3];
+              if (this.world.get(gx + dx, gy, gz + dz) === AIR)
+                cells.push({ x: gx + dx, y: gy, z: gz + dz, id: gblk === BENCH ? BENCH_EXT : BED_EXT, rot });
+            }
+            const gd = DOOR_GROUP.get(gblk);
+            if (gd && gblk === gd.base && this.world.get(gx, gy + 1, gz) === AIR)
+              cells.push({ x: gx, y: gy + 1, z: gz, id: gd.upper, rot });
+          }
         }
+        if (cells.length) { this.renderer.setGhost(cells, parent); shown = true; }
       }
       if (!shown) this.renderer.clearGhost();
     }
@@ -2114,6 +2197,15 @@ export class Game {
     const o = this.player.eye();
     const dir = new THREE.Vector3();
     this.renderer.camera.getWorldDirection(dir);
+    // Airborne hulls are continuous geometry: raycast them exactly (ship-local
+    // DDA) instead of trusting the provider to stamp cells onto the grid.
+    let bestShip: Ship | null = null;
+    let bestHit: ShipHit | null = null;
+    for (const sh of this.ships.values()) {
+      if (sh.grounded) continue; // grounded hulls ARE the lattice
+      const h = sh.rayHit(o.x, o.y, o.z, dir.x, dir.y, dir.z, 5.5);
+      if (h && (!bestHit || h.t < bestHit.t)) { bestShip = sh; bestHit = h; }
+    }
     let x = Math.floor(o.x), y = Math.floor(o.y), z = Math.floor(o.z);
     const step = new THREE.Vector3(Math.sign(dir.x), Math.sign(dir.y), Math.sign(dir.z));
     const tDelta = new THREE.Vector3(dir.x !== 0 ? Math.abs(1 / dir.x) : Infinity, dir.y !== 0 ? Math.abs(1 / dir.y) : Infinity, dir.z !== 0 ? Math.abs(1 / dir.z) : Infinity);
@@ -2121,32 +2213,58 @@ export class Game {
     const tMax = new THREE.Vector3(dist(o.x, step.x) * tDelta.x, dist(o.y, step.y) * tDelta.y, dist(o.z, step.z) * tDelta.z);
     let prev = new THREE.Vector3(x, y, z);
     let water: { x: number; y: number; z: number } | null = null;
-    for (let i = 0; i < 80; i++) {
-      const id = this.world.get(x, y, z);
-      if (isFluid(id)) {
-        if (!water) water = { x, y, z };
-        // Flow is see-through; a Source is aimable, so pools can be emptied for good
-        if (id === WATER || id === OIL) return { hit: { x, y, z }, water, face: new THREE.Vector3(prev.x - x, prev.y - y, prev.z - z) };
+    let tEntry = 0; // ray distance at which the current cell was entered
+    this.rayBlind = true; // the provider must not stamp hull cells onto grid cells mid-DDA
+    let worldHitT = Infinity;
+    try {
+      for (let i = 0; i < 80; i++) {
+        const id = this.world.get(x, y, z); // rayBlind keeps this raw while airborne
+        if (isFluid(id)) {
+          if (!water) water = { x, y, z };
+          // Flow is see-through; a Source is aimable, so pools can be emptied for good
+          if (id === WATER || id === OIL) { worldHitT = tEntry; break; }
+        }
+        else if (id !== AIR) { worldHitT = tEntry; break; }
+        prev.set(x, y, z);
+        if (tMax.x < tMax.y && tMax.x < tMax.z) { x += step.x; tEntry = tMax.x; tMax.x += tDelta.x; }
+        else if (tMax.y < tMax.z) { y += step.y; tEntry = tMax.y; tMax.y += tDelta.y; }
+        else { z += step.z; tEntry = tMax.z; tMax.z += tDelta.z; }
+        if (new THREE.Vector3(x - o.x, y - o.y, z - o.z).length() > 5.5) break;
       }
-      else if (id !== AIR) return { hit: { x, y, z }, water, face: new THREE.Vector3(prev.x - x, prev.y - y, prev.z - z) };
-      prev.set(x, y, z);
-      if (tMax.x < tMax.y && tMax.x < tMax.z) { x += step.x; tMax.x += tDelta.x; }
-      else if (tMax.y < tMax.z) { y += step.y; tMax.y += tDelta.y; }
-      else { z += step.z; tMax.z += tDelta.z; }
-      if (new THREE.Vector3(x - o.x, y - o.y, z - o.z).length() > 5.5) break;
+    } finally {
+      this.rayBlind = false;
     }
-    return { hit: null, water, face: new THREE.Vector3(0, 0, 0) };
+    if (bestHit && bestShip && bestHit.t <= worldHitT) {
+      // the crosshair is on the flying hull: `hit` carries the coarse display
+      // cell, `ship` carries the exact local cell everything else commits to
+      const sh = bestShip;
+      const [wx, wy, wz] = sh.cellToWorld(bestHit.ix, bestHit.iy, bestHit.iz);
+      const [cos, sin] = sh.rot();
+      const [lx, ly, lz] = bestHit.face;
+      return {
+        hit: { x: wx, y: wy, z: wz },
+        water: null,
+        face: new THREE.Vector3(Math.round(cos * lx + sin * lz), ly, Math.round(-sin * lx + cos * lz)),
+        ship: { sh, ix: bestHit.ix, iy: bestHit.iy, iz: bestHit.iz, fx: Math.round(lx), fy: ly, fz: Math.round(lz) },
+      };
+    }
+    const hit = worldHitT < Infinity ? { x, y, z } : null;
+    return { hit, water, face: hit ? new THREE.Vector3(prev.x - x, prev.y - y, prev.z - z) : new THREE.Vector3(0, 0, 0) };
   }
 
   private promptFor(t: Raycast | null): string | null {
     if (this.nearestTrader()) return "E: Trade with the Trader";
     if (!t) return null;
-    if (t.hit && this.world.get(t.hit.x, t.hit.y, t.hit.z) === CHEST) return "E: Open Chest";
-    if (t.hit && this.world.get(t.hit.x, t.hit.y, t.hit.z) === CHEST_INTERFACE) return "E: Open Chest Interface";
+    const at = this.atOf(t);
+    if (at) {
+      const hid = this.atGet(at);
+      if (hid === CHEST) return "E: Open Chest";
+      if (hid === CHEST_INTERFACE) return "E: Open Chest Interface";
+    }
     const near = this.nearestCache();
     if (near) return near.kind === "reward" ? "E: Claim Reward Cache" : "E: Open death cache";
-    if (t.hit) {
-      const id = this.world.get(t.hit.x, t.hit.y, t.hit.z);
+    if (at) {
+      const id = this.atGet(at);
       if (isDoorHalf(id)) return "E: Open door";
       if (DOOR_GROUP.has(id)) return "E: Close door";
       if (id === ALAB_GATE) return "E: Open fence gate";
@@ -2161,11 +2279,11 @@ export class Game {
       if (id === WATER_CAGE_FULL) return this.inv.selectedSlot()?.itemId === "bucket" ? "E: Scoop Water from the Cage" : "E: The Cage is full of Water";
       if (id === WATER_CAGE) return this.inv.selectedSlot()?.itemId === "bucket_full" ? "E: Fill the Cage with Water" : null;
       if (id === REGULATOR) return "E: Draw neutral air (37 °C)";
-      if (id === POWER_PANEL) return this.trippedPanels.has(`${t.hit.x},${t.hit.y},${t.hit.z}`)
+      if (id === POWER_PANEL) return this.trippedPanels.has(this.atKey(at))
         ? "E: Reset the tripped Power Panel" : "E: Power Panel — check the meters";
       if (id === THRUSTER) return this.inv.has("thruster_nozzle", 1) ? "E: Install Thruster Nozzle" : null;
       if (id === ENGINECORE) return "E: Engine Core — load Rocket Fuel";
-      if (id === FLIGHT_CONTROLS) return this.shipAt(t.hit.x, t.hit.y, t.hit.z) ? "E: Take the controls" : "E: Flight Controls — read what the Ship still needs";
+      if (id === FLIGHT_CONTROLS) return (at.sh ?? this.shipAt(at.x, at.y, at.z)) ? "E: Take the controls" : "E: Flight Controls — read what the Ship still needs";
     }
     if (t.water) return this.world.get(t.water.x, t.water.y, t.water.z) === OIL ? null : "E: Refill canister";
     return null;
@@ -2225,8 +2343,17 @@ export class Game {
     const t = this.raycastTarget();
     if (!t?.hit) { this.breaking = null; this.showBreakBar(null); return; }
     const { x, y, z } = t.hit;
-    const id = this.world.get(x, y, z);
-    if (!this.breaking || this.breaking.x !== x || this.breaking.y !== y || this.breaking.z !== z) {
+    const sp = t.ship;
+    const at: BlockAt = sp
+      ? { x, y, z, sh: sp.sh, ix: sp.ix, iy: sp.iy, iz: sp.iz }
+      : { x, y, z, ix: x, iy: y, iz: z };
+    const id = this.atGet(at);
+    // a flying Ship slides under the crosshair: the break must stick to the
+    // ship-LOCAL cell, not restart every frame on a new display cell
+    const same = this.breaking && (sp
+      ? this.breaking.shId === sp.sh.id && this.breaking.ix === sp.ix && this.breaking.iy === sp.iy && this.breaking.iz === sp.iz
+      : this.breaking.shId === undefined && this.breaking.x === x && this.breaking.y === y && this.breaking.z === z);
+    if (!same) {
       const cb = this.canBreakWith(id);
       if (!cb.ok) {
         if (cb.why && !this.breakMsg) {
@@ -2236,78 +2363,86 @@ export class Game {
         }
         this.breaking = null; this.showBreakBar(null); return;
       }
-      this.breaking = { x, y, z, need: cb.time, elapsed: 0 };
+      this.breaking = sp
+        ? { x, y, z, shId: sp.sh.id, ix: sp.ix, iy: sp.iy, iz: sp.iz, need: cb.time, elapsed: 0 }
+        : { x, y, z, need: cb.time, elapsed: 0 };
       // the Chronicle nags before a Husk comes down: it drops only the frame,
       // and the repair needs a Bench — break it without paying and the machine is lost
       if (id === REGULATOR_HUSK || id === STORM_BREAKER_HUSK) this.lesson("husk");
     }
-    this.breaking.elapsed += dt;
+    const b = this.breaking;
+    if (!b) return;
+    b.elapsed += dt;
     this.audioTickAcc += dt;
     if (this.audioTickAcc > 0.25) { this.audioTickAcc = 0; this.audio.tick(); }
-    this.showBreakBar(this.breaking.elapsed / this.breaking.need);
-    if (this.breaking.elapsed >= this.breaking.need) {
-      this.breakBlock(x, y, z);
+    this.showBreakBar(b.elapsed / b.need);
+    if (b.elapsed >= b.need) {
+      this.breakBlock(at);
       this.breaking = null;
       this.showBreakBar(null);
     }
   }
 
-  private breakBlock(x: number, y: number, z: number) {
+  private breakBlock(a: BlockAt) {
+    const { x, y, z } = a;
     this.tut?.notify("mine");
-    const id = this.world.get(x, y, z);
+    const id = this.atGet(a);
     this.codex.add("b:" + id); // the Codex teaches what you have broken once
     this.questBump("mine");
     const doorG = DOOR_GROUP.get(id);
     if (doorG) {
-      this.wset(x, y, z, AIR);
+      this.atSet(a, AIR);
       for (const dy of [-1, 1]) {
-        const n = this.world.get(x, y + dy, z);
-        if (DOOR_GROUP.get(n) === doorG) this.wset(x, y + dy, z, AIR);
+        const n = this.atGet(a, 0, dy, 0);
+        if (DOOR_GROUP.get(n) === doorG) this.atSet(a, AIR, 0, dy, 0);
       }
       this.giveOrDrop(BLOCK_TO_ITEM[doorG.base], 1);
       this.audio.blockBreak();
       return;
     }
     if (id === BEACON) {
-      this.wset(x, y, z, AIR);
-      this.beaconMarks = this.beaconMarks.filter((b) => !(b.x === x && b.y === y && b.z === z));
+      this.atSet(a, AIR);
+      this.beaconMarks = this.beaconMarks.filter((b) => a.sh
+        ? !(b.ship === a.sh.id && b.x === a.ix && b.y === a.iy && b.z === a.iz)
+        : !(b.ship === undefined && b.x === x && b.y === y && b.z === z));
       hud.toast("Save beacon destroyed. Respawn falls back to the newest intact beacon.");
       this.audio.blockBreak();
       return;
     }
     if (id === CACTUS) {
       // every cactus column block carries fruit: one Prickly Pear plus the block itself
-      this.wset(x, y, z, AIR);
+      this.atSet(a, AIR);
       this.giveOrDrop("prickly_pear", 1);
       this.giveOrDrop("cactus", 1);
       this.audio.blockBreak();
       return;
     }
     if (id === CACTUS_FRUIT) {
-      this.wset(x, y, z, AIR);
+      this.atSet(a, AIR);
       this.giveOrDrop("prickly_pear", 2);
       this.giveOrDrop("cactus", 1);
       this.audio.blockBreak();
       return;
     }
     if (id === SAPLING || id === APPLE_SAPLING) {
-      this.wset(x, y, z, AIR);
-      this.trees.delete(`${x},${y},${z}`);
-      this.appleTrees.delete(`${x},${y},${z}`);
+      this.atSet(a, AIR);
+      this.trees.delete(this.atKey(a));
+      this.appleTrees.delete(this.atKey(a));
       this.giveOrDrop(id === SAPLING ? "seed_tree" : "apple_pip", 1); // the seed comes back
       this.audio.blockBreak();
       return;
     }
-    if (id === WOOD && (this.trees.has(`${x},${y},${z}`) || this.appleTrees.has(`${x},${y},${z}`))) {
+    if (id === WOOD && (this.trees.has(this.atKey(a)) || this.appleTrees.has(this.atKey(a)))) {
       // felling the trunk ends this tree: a seed replanted into the cell
       // must start from scratch, never inherit the felled one's progress
-      this.trees.delete(`${x},${y},${z}`);
-      this.appleTrees.delete(`${x},${y},${z}`);
-      this.treePlanCache.delete(`${x},${y},${z}`);
+      const tk = this.atKey(a);
+      this.trees.delete(tk);
+      this.appleTrees.delete(tk);
+      this.treePlanCache.delete(tk);
     }
     if (id === APPLE_FRUIT) {
       // breaking the branch knocks the Apple loose but hurts nothing else
-      this.wset(x, y, z, LEAVES);
+      this.atSet(a, LEAVES);
       this.giveOrDrop("apple", 1);
       this.audio.blockBreak();
       return;
@@ -2315,8 +2450,8 @@ export class Game {
     if (id === MELON_2 || id === MELON_1 || id === WHEAT_2 || id === WHEAT_1 || id === SUGARCANE_2 || id === SUGARCANE_1) {
       // breaking a crop by hand or tool yields its harvest too — rougher than
       // picking it (E) but never a wasted plant
-      this.wset(x, y, z, AIR); // wheat sits ON farmland: breaking it must not stack a second tilled block
-      this.crops.delete(`${x},${y},${z}`);
+      this.atSet(a, AIR); // wheat sits ON farmland: breaking it must not stack a second tilled block
+      this.crops.delete(this.atKey(a));
       if (id === MELON_2) { this.giveOrDrop("dune_melon", 1); if (this.seedLuck(x, z, 97)) this.giveOrDrop("seed_melon", 1); }
       if (id === WHEAT_2) { this.giveOrDrop("wheat", 1); this.giveOrDrop("seed_wheat", 1); if (this.seedLuck(x, z, 83)) this.giveOrDrop("seed_wheat", 1); }
       if (id === MELON_1) this.giveOrDrop("seed_melon", 1);
@@ -2327,7 +2462,7 @@ export class Game {
       return;
     }
     if (id === LEAVES) {
-      this.wset(x, y, z, AIR);
+      this.atSet(a, AIR);
       this.giveOrDrop("kindling", 1);
       if (hash2(x + 7 * z, y, this.seed + 91) < 0.2) this.giveOrDrop("seed_tree", 1); // canopy sheds seeds: farms renew
       this.audio.blockBreak();
@@ -2336,15 +2471,17 @@ export class Game {
     if (id === BED || id === BED_EXT) {
       // a bed is a pair: breaking either half removes the whole bed, in
       // whichever direction the pillow half was turned
-      this.wset(x, y, z, AIR);
-      const peer = this.bedPeer(x, y, z);
-      if (peer) this.wset(peer[0], peer[1], peer[2], AIR);
+      this.atSet(a, AIR);
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const n = this.atGet(a, dx, 0, dz);
+        if (n === BED || n === BED_EXT) { this.atSet(a, AIR, dx, 0, dz); break; }
+      }
       this.giveOrDrop("bed", 1);
       this.audio.blockBreak();
       return;
     }
     if (id === CAMPFIRE) {
-      const key = `${x},${y},${z}`;
+      const key = this.atKey(a);
       const f = this.fires.get(key);
       if (f) {
         // the staged goods scatter; the fuel already spent into the coals is heat, not items
@@ -2356,7 +2493,7 @@ export class Game {
       this.syncFire(key);
     }
     if (id === COOKPOT) {
-      const key = `${x},${y},${z}`;
+      const key = this.atKey(a);
       const p = this.pots.get(key);
       if (p) {
         // the staged ingredients and dishes scatter; simmering jobs stop with the pot
@@ -2369,13 +2506,13 @@ export class Game {
     }
     if (id === WATER_CAGE_FULL) {
       // the Cage drops, the Water it held does not: it stays in the world
-      this.wset(x, y, z, WATER);
+      this.atSet(a, WATER);
       this.giveOrDrop("water_cage", 1);
       this.audio.blockBreak();
       return;
     }
     if (id === WATER_CAGE) {
-      this.wset(x, y, z, AIR);
+      this.atSet(a, AIR);
       this.giveOrDrop("water_cage", 1);
       this.audio.blockBreak();
       return;
@@ -2383,15 +2520,15 @@ export class Game {
     if (id === CHEST) {
       // breaking one chest of a linked cluster: the grid shrinks; contents that
       // no longer fit spill onto the sand. The chest block itself drops too.
-      const cells = this.chestCluster(x, y, z);
-      const old = this.chests.get(this.chestKey(cells)) ?? [];
-      this.chests.delete(this.chestKey(cells));
-      this.wset(x, y, z, AIR);
-      const rest = cells.filter(([cx, cy, cz]) => cx !== x || cy !== y || cz !== z);
+      const cells = this.chestClusterAt(a);
+      const old = this.chests.get(this.chestKeyAt(cells)) ?? [];
+      this.chests.delete(this.chestKeyAt(cells));
+      this.atSet(a, AIR);
+      const rest = cells.filter((c) => c.ix !== a.ix || c.iy !== a.iy || c.iz !== a.iz);
       const groups: [string, Inventory][] = [];
       for (const c of rest) {
-        const g = this.chestCluster(c[0], c[1], c[2]);
-        const k = this.chestKey(g);
+        const g = this.chestClusterAt(c);
+        const k = this.chestKeyAt(g);
         if (groups.some(([gk]) => gk === k)) continue;
         groups.push([k, this.emptyChestGrid(g.length)]);
       }
@@ -2409,15 +2546,15 @@ export class Game {
       // breaking a link between Chests splits the cluster: the contents are
       // rekeyed into the groups that stay connected; only what no group has
       // room for spills onto the sand
-      const cells = this.chestCluster(x, y, z);
+      const cells = this.chestClusterAt(a);
       if (cells.length) {
-        const old = this.chests.get(this.chestKey(cells)) ?? [];
-        this.chests.delete(this.chestKey(cells));
-        this.wset(x, y, z, AIR);
+        const old = this.chests.get(this.chestKeyAt(cells)) ?? [];
+        this.chests.delete(this.chestKeyAt(cells));
+        this.atSet(a, AIR);
         const groups: [string, Inventory][] = [];
         for (const c of cells) {
-          const g = this.chestCluster(c[0], c[1], c[2]);
-          const k = this.chestKey(g);
+          const g = this.chestClusterAt(c);
+          const k = this.chestKeyAt(g);
           if (groups.some(([gk]) => gk === k)) continue;
           groups.push([k, this.emptyChestGrid(g.length)]);
         }
@@ -2432,42 +2569,85 @@ export class Game {
     }
     if (id === FRAME_CORNER) {
       // pulling a Corner out dismantles whatever Frame it declared
-      this.worldCorners.delete(`${x},${y},${z}`); this.frameSeq++;
+      if (!a.sh) { this.worldCorners.delete(`${x},${y},${z}`); this.frameSeq++; }
       this.renderer.setFrameOutline(null);
     }
     if (id === ENGINECORE) {
-      this.wset(x, y, z, AIR);
+      this.atSet(a, AIR);
+      if (a.sh) {
+        // a flying heart: its Rocket Fuel spills as canisters with it
+        for (const ch of a.sh.fuel) if (ch > 0) this.dropEntity("rocket_fuel", 1, 2, ch);
+        a.sh.fuel = [0, 0];
+      }
       this.giveOrDrop("engine_core", 1);
       this.questBump("core");
       this.audio.blockBreak();
       return;
     }
     if (id === BENCH || id === BENCH_EXT) {
-      const peer = this.benchPeer(x, y, z);
-      this.wset(x, y, z, AIR);
-      if (peer) this.wset(peer[0], peer[1], peer[2], AIR);
+      this.atSet(a, AIR);
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const n = this.atGet(a, dx, 0, dz);
+        if (n === BENCH || n === BENCH_EXT) { this.atSet(a, AIR, dx, 0, dz); break; }
+      }
       this.giveOrDrop("bench", 1);
       this.audio.blockBreak();
       return;
     }
     if (id === LAMP || id === CAMPFIRE || id === COOKPOT || id === THRUSTER_LIT) this.renderer.removePointLight(x, y, z);
-    if (id === STORM_BREAKER) this.breakers.delete(`${x},${y},${z}`);
+    if (id === STORM_BREAKER) this.breakers.delete(this.atKey(a));
     if (isPowerBlock(id)) {
-      const pk = `${x},${y},${z}`;
+      const pk = this.atKey(a);
       this.powerCells.delete(pk); this.genFuel.delete(pk); this.batteryCharge.delete(pk);
       if (id === ELEC_LAMP) this.renderer.removePointLight(x, y, z);
       if (id === POWER_PANEL) {
         this.trippedPanels.delete(pk);
         // the Lamps fed by this Panel just lost their feed
         for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const)
-          if (this.world.get(x + dx, y + dy, z + dz) === LAMP) this.renderer.removePointLight(x + dx, y + dy, z + dz);
+          if (this.atGet(a, dx, dy, dz) === LAMP) this.renderer.removePointLight(x + dx, y + dy, z + dz);
       }
       this.rebuildPower();
     }
-    this.wset(x, y, z, AIR);
+    this.atSet(a, AIR);
     const item = this.blockItemId(id);
     if (item) this.giveOrDrop(item, 1);
     this.audio.blockBreak();
+  }
+
+  /** the Chest-cluster walk over BlockAt addresses: ship-local offsets when
+   *  the cluster rides an airborne Ship, world cells otherwise. */
+  private chestClusterAt(a: BlockAt): BlockAt[] {
+    const seen = new Set<string>([this.atKey(a)]);
+    const walk: BlockAt[] = [a];
+    const out: BlockAt[] = [];
+    while (walk.length) {
+      const c = walk.pop()!;
+      if (this.atGet(c) === CHEST) out.push(c);
+      for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const) {
+        const nb = this.atGet(c, dx, dy, dz);
+        if (nb !== CHEST && nb !== CHEST_CONNECTOR && nb !== CHEST_INTERFACE) continue;
+        const n: BlockAt = a.sh
+          ? { x: c.x + dx, y: c.y + dy, z: c.z + dz, ix: c.ix + dx, iy: c.iy + dy, iz: c.iz + dz, sh: a.sh }
+          : { x: c.x + dx, y: c.y + dy, z: c.z + dz, ix: c.x + dx, iy: c.y + dy, iz: c.z + dz };
+        const k = this.atKey(n);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        walk.push(n);
+      }
+    }
+    return out;
+  }
+
+  /** chest contents key over BlockAt: exact local tokens aboard; on land the
+   *  grounded-Ship claiming (as chestKey always did) or the plain cell. */
+  private chestKeyAt(cells: BlockAt[]): string {
+    return cells.map((c) => {
+      if (c.sh) return `s${c.sh.id},${c.ix},${c.iy},${c.iz}`;
+      const sh = this.claimShip(c.x, c.y, c.z);
+      if (!sh) return `${c.x},${c.y},${c.z}`;
+      const l = sh.worldToLocal(c.x + 0.5, c.y + 0.5, c.z + 0.5);
+      return `s${sh.id},${Math.floor(l.x)},${Math.floor(l.y)},${Math.floor(l.z)}`;
+    }).sort().join(";");
   }
 
   // ---------- desert wildlife ----------
@@ -2552,7 +2732,7 @@ export class Game {
         const x = Math.floor(p.x + Math.cos(a) * r) + 0.5, z = Math.floor(p.z + Math.sin(a) * r) + 0.5;
         if (!underground) {
           if (Math.hypot(x, z) < 24) continue; // keep the crash site quiet
-          if (this.beaconMarks.some((b) => Math.hypot(b.x + 0.5 - x, b.z + 0.5 - z) < 16)) continue; // save points stay safe
+          if (this.beaconMarks.some((b) => { const [bx, , bz2] = this.beaconWorld(b); return Math.hypot(bx + 0.5 - x, bz2 + 0.5 - z) < 16; })) continue; // save points stay safe
           const camp = structuresOf(this.seed).nearestCamp(x, z);
           if (camp && Math.hypot(camp.x - x, camp.z - z) < 34) continue; // camps are the Trader's patch
           const gy = this.mobSurface(x, z);
@@ -2914,24 +3094,6 @@ export class Game {
     this.renderInv(); // the item is only in the grid after applyEquip resized it
   }
 
-  /** The other half of a two-block Crafting Bench, or null. */
-  private benchPeer(x: number, y: number, z: number): [number, number, number] | null {
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-      const id = this.world.get(x + dx, y, z + dz);
-      if (id === BENCH || id === BENCH_EXT) return [x + dx, y, z + dz];
-    }
-    return null;
-  }
-
-  /** The other half of a two-block Bed, in whichever direction it was turned. */
-  private bedPeer(x: number, y: number, z: number): [number, number, number] | null {
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-      const id = this.world.get(x + dx, y, z + dz);
-      if (id === BED || id === BED_EXT) return [x + dx, y, z + dz];
-    }
-    return null;
-  }
-
   private blockItemId(id: number): string | null {
     return BLOCK_TO_ITEM[id] ?? null;
   }
@@ -2990,12 +3152,21 @@ export class Game {
     if (!BLOCKS[def.block].placeable) { hud.toast(`${def.name} is raw material, not a block to place.`); this.audio.error(); return; }
     const t = this.raycastTarget();
     if (!t?.hit) return;
-    const bx = t.hit.x + t.face.x, by = t.hit.y + t.face.y, bz = t.hit.z + t.face.z;
+    const at0 = this.atOf(t);
+    if (!at0) return;
+    // the face offset rides the Ship's own axes when the crosshair is on a hull
+    const [ox, oy, oz] = t.ship
+      ? [t.ship.fx, t.ship.fy, t.ship.fz]
+      : [Math.round(t.face.x), Math.round(t.face.y), Math.round(t.face.z)];
+    const at = at0; // (target cell = hit cell; offsets below carry the face)
     // blocks go into flowing water and push it out; still Sources stay whole
-    const at = this.world.get(bx, by, bz);
-    if (at !== AIR && !(isWater(at) && at !== WATER)) return;
+    const here = this.atGet(at, ox, oy, oz);
+    if (here !== AIR && !(isWater(here) && here !== WATER)) return;
+    const origin = (dx: number, dy: number, dz: number): [number, number, number] =>
+      at.sh ? at.sh.cellToWorld(at.ix + dx, at.iy + dy, at.iz + dz) : [at.x + dx, at.y + dy, at.z + dz];
     if (isSolid(def.block)) {
       // refuse placing a solid block inside the player
+      const [bx, by, bz] = origin(ox, oy, oz);
       const p = this.player.pos;
       if (bx + 1 > p.x - 0.3 && bx < p.x + 0.3 && bz + 1 > p.z - 0.3 && bz < p.z + 0.3 && by + 1 > p.y && by < p.y + 1.8) return;
     }
@@ -3006,9 +3177,9 @@ export class Game {
     if (def.block === CHEST || def.block === CHEST_INTERFACE) {
       const done = new Set<string>();
       for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const) {
-        const nb = this.world.get(bx + dx, by + dy, bz + dz);
+        const nb = this.atGet(at, ox + dx, oy + dy, oz + dz);
         if (nb !== CHEST && nb !== CHEST_CONNECTOR && nb !== CHEST_INTERFACE) continue;
-        const k = this.chestKey(this.chestCluster(bx + dx, by + dy, bz + dz));
+        const k = this.chestKeyAt(this.chestClusterAt(this.shiftAt(at, ox + dx, oy + dy, oz + dz)));
         if (done.has(k)) continue;
         done.add(k);
         chestOld.push(...(this.chests.get(k) ?? []));
@@ -3016,38 +3187,38 @@ export class Game {
       }
     }
     // the Crafting Bench stands two blocks wide: the open neighbour sits where
-    // the held rotation points (R turns it before you place)
+    // the held rotation points (R turns it before you place); aboard, the peer
+    // offset is Ship-local, so the pair keeps its shape through the turn
     let benchPeer: [number, number, number] | null = null;
-    const floorAt = (x: number, y: number, z: number) => isSolid(this.world.get(x, y - 1, z));
-    const inPlayer = (bx: number, by: number, bz: number) => {
+    const floorAt = (dx: number, dz: number) => isSolid(this.atGet(at, ox + dx, oy - 1, oz + dz));
+    const inPlayer = (dx: number, dz: number) => {
+      const [bx, by, bz] = origin(ox + dx, oy, oz + dz);
       const p = this.player.pos;
       return bx + 1 > p.x - 0.3 && bx < p.x + 0.3 && bz + 1 > p.z - 0.3 && bz < p.z + 0.3 && by + 1 > p.y && by < p.y + 1.8;
     };
     if (def.block === BENCH) {
       const [dx, dz] = ROT_DIRS[(slot.blockRot ?? 0) & 3];
-      const nx = bx + dx, nz = bz + dz;
-      if (this.world.get(nx, by, nz) !== AIR) { hud.toast("The Bench's far half has no room there — press R to turn it."); this.audio.error(); return; }
-      if (!floorAt(nx, by, nz)) { hud.toast("The Bench's far half needs solid ground under it."); this.audio.error(); return; }
-      if (inPlayer(nx, by, nz)) { hud.toast("Step out of the Bench's footprint first."); this.audio.error(); return; }
-      benchPeer = [nx, by, nz];
+      if (this.atGet(at, ox + dx, oy, oz + dz) !== AIR) { hud.toast("The Bench's far half has no room there — press R to turn it."); this.audio.error(); return; }
+      if (!floorAt(dx, dz)) { hud.toast("The Bench's far half needs solid ground under it."); this.audio.error(); return; }
+      if (inPlayer(dx, dz)) { hud.toast("Step out of the Bench's footprint first."); this.audio.error(); return; }
+      benchPeer = [dx, 0, dz];
     }
     let bedPeer: [number, number, number] | null = null;
     if (def.block === BED) {
       const [dx, dz] = ROT_DIRS[(slot.blockRot ?? 0) & 3];
-      const nx = bx + dx, nz = bz + dz;
-      if (this.world.get(nx, by, nz) !== AIR) { hud.toast("The Bed needs an empty block for its pillow half — press R to turn it."); this.audio.error(); return; }
-      if (!floorAt(bx, by, bz) || !floorAt(nx, by, nz)) { hud.toast("The Bed needs solid ground under both halves."); this.audio.error(); return; }
-      if (inPlayer(nx, by, nz)) { hud.toast("Step off the Bed's footprint first."); this.audio.error(); return; }
-      bedPeer = [nx, by, nz];
+      if (this.atGet(at, ox + dx, oy, oz + dz) !== AIR) { hud.toast("The Bed needs an empty block for its pillow half — press R to turn it."); this.audio.error(); return; }
+      if (!floorAt(0, 0) || !floorAt(dx, dz)) { hud.toast("The Bed needs solid ground under both halves."); this.audio.error(); return; }
+      if (inPlayer(dx, dz)) { hud.toast("Step off the Bed's footprint first."); this.audio.error(); return; }
+      bedPeer = [dx, 0, dz];
     }
     const doorPlace = DOOR_GROUP.get(def.block);
     if (doorPlace && def.block === doorPlace.base) {
-      if (!floorAt(bx, by, bz)) { hud.toast("A Door needs solid ground under it."); this.audio.error(); return; }
+      if (!floorAt(0, 0)) { hud.toast("A Door needs solid ground under it."); this.audio.error(); return; }
     }
     if (def.block === MELON_1 || def.block === WHEAT_1 || def.block === CACTUS || def.block === SAPLING || def.block === SUGARCANE_1 || def.block === APPLE_SAPLING) {
       // seeds only take in tilled ground; a cactus pad also accepts loose sand;
       // a Tree Seed wants real soil — Dirt or Farm Land; Cane is hardy anywhere soft
-      const under = this.world.get(bx, by - 1, bz);
+      const under = this.atGet(at, ox, oy - 1, oz);
       const ok = def.block === SAPLING || def.block === APPLE_SAPLING
         ? (under === DIRT || under === FARMLAND || under === GRASS)
         : def.block === SUGARCANE_1
@@ -3061,42 +3232,41 @@ export class Game {
         this.audio.error(); return;
       }
     }
-    this.wset(bx, by, bz, def.block);
-    if (slot.blockRot && rotatable(def.block)) this.world.setRot(bx, by, bz, slot.blockRot);
-    if (benchPeer) {
-      this.wset(benchPeer[0], benchPeer[1], benchPeer[2], BENCH_EXT);
-      if (slot.blockRot) this.world.setRot(benchPeer[0], benchPeer[1], benchPeer[2], slot.blockRot);
-    }
-    if (doorPlace && def.block === doorPlace.base && this.world.get(bx, by + 1, bz) === AIR)
-      this.wset(bx, by + 1, bz, doorPlace.upper);
+    const rot = slot.blockRot && rotatable(def.block) ? slot.blockRot : undefined;
+    this.atSet(at, def.block, ox, oy, oz, rot);
+    if (benchPeer) this.atSet(at, BENCH_EXT, ox + benchPeer[0], oy, oz + benchPeer[2], slot.blockRot || undefined);
+    if (doorPlace && def.block === doorPlace.base && this.atGet(at, ox, oy + 1, oz) === AIR)
+      this.atSet(at, doorPlace.upper, ox, oy + 1, oz);
     if (bedPeer) { // a bed spans 2 blocks, pillow where you turned it
-      this.wset(bedPeer[0], bedPeer[1], bedPeer[2], BED_EXT);
-      if (slot.blockRot) this.world.setRot(bedPeer[0], bedPeer[1], bedPeer[2], slot.blockRot);
+      this.atSet(at, BED_EXT, ox + bedPeer[0], oy, oz + bedPeer[2], slot.blockRot || undefined);
     }
-    if (def.block === MELON_1 || def.block === WHEAT_1 || def.block === SUGARCANE_1) { this.crops.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); }
-    if (def.block === SAPLING) { this.trees.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); hud.toast("Seed in the soil. Keep water within 10 blocks and it climbs, stage by stage."); }
-    if (def.block === APPLE_SAPLING) { this.wset(bx, by, bz, APPLE_SAPLING); this.appleTrees.set(`${bx},${by},${bz}`, 0); this.tut?.notify("plant"); hud.toast("A Pip in the soil. Keep water within 10 blocks and an Apple Tree climbs, stage by stage."); }
+    const key = this.atKey(at, ox, oy, oz);
+    if (def.block === MELON_1 || def.block === WHEAT_1 || def.block === SUGARCANE_1) { this.crops.set(key, 0); this.tut?.notify("plant"); }
+    if (def.block === SAPLING) { this.trees.set(key, 0); this.tut?.notify("plant"); hud.toast("Seed in the soil. Keep water within 10 blocks and it climbs, stage by stage."); }
+    if (def.block === APPLE_SAPLING) { this.appleTrees.set(key, 0); this.tut?.notify("plant"); hud.toast("A Pip in the soil. Keep water within 10 blocks and an Apple Tree climbs, stage by stage."); }
     if (def.block === FRAME_CORNER) {
-      // a new Corner may declare (or ruin) a Frame — the caches must notice
-      this.worldCorners.add(`${bx},${by},${bz}`); this.frameSeq++;
+      // a new Corner may declare (or ruin) a Frame — the caches must notice;
+      // a Corner standing on an airborne hull rides the hull and counts when it lands
+      if (!at.sh) this.worldCorners.add(key);
+      this.frameSeq++;
       hud.toast("Corner set. Eight Corners, one face-braced cuboid — the Frame declares what flies.");
     }
-    if (def.block === FLIGHT_CONTROLS) {
-      const comp = this.pendingFrames().find((c) => Game.compContains(c.frame, bx, by, bz));
+    if (def.block === FLIGHT_CONTROLS && !at.sh) {
+      const comp = this.pendingFrames().find((c) => Game.compContains(c.frame, at.x + ox, at.y + oy, at.z + oz));
       if (comp) { this.questBump("yoke"); hud.toast("The yoke is bolted inside the Frame. Press E at it: the panel reads out everything the Ship still needs."); }
       else hud.toast("The yoke wants to stand inside a Ship Frame — put it within the Corners.");
     }
-    if (def.block === ENGINECORE) {
+    if (def.block === ENGINECORE && !at.sh) {
       // the Core is the Ship's heart: it works inside the Frame, not beside a beacon
-      const comp = this.pendingFrames().find((c) => Game.compContains(c.frame, bx, by, bz));
+      const comp = this.pendingFrames().find((c) => Game.compContains(c.frame, at.x + ox, at.y + oy, at.z + oz));
       if (comp) { this.questBump("core_set"); hud.toast("The Engine Core stands inside the Frame. The Ship's grid — and its fuel — start here."); }
       else hud.toast("The Engine Core works inside the Ship Frame — set it up within the Corners.");
     }
     // a LAMP only lights once the power tick finds a live Panel beside it
-    if (def.block === THRUSTER_LIT) this.renderer.addPointLight(bx, by, bz, "fire"); // a carried engine keeps burning
-    if (def.block === STORM_BREAKER) this.breakers.add(`${bx},${by},${bz}`);
+    if (def.block === THRUSTER_LIT) { const [lx2, ly2, lz2] = origin(ox, oy, oz); this.renderer.addPointLight(lx2, ly2, lz2, "fire"); } // a carried engine keeps burning
+    if (def.block === STORM_BREAKER) this.breakers.add(key);
     if (isPowerBlock(def.block)) {
-      const pk = `${bx},${by},${bz}`;
+      const pk = key;
       this.powerCells.set(pk, def.block);
       if (def.block === GEN_WOOD) this.genFuel.set(pk, 0);
       if (def.block === BATTERY) this.batteryCharge.set(pk, 0);
@@ -3106,7 +3276,7 @@ export class Game {
       else if (def.block === PLANTER) this.lesson("planter");
       else if (def.block === HARVESTER) this.lesson("harvester");
     }
-    if (def.block === CHEST || def.block === CHEST_INTERFACE) this.linkChests(bx, by, bz, chestOld);
+    if (def.block === CHEST || def.block === CHEST_INTERFACE) this.linkChests(this.shiftAt(at, ox, oy, oz), chestOld);
     this.inv.slots.splice(this.inv.selected, 1);
     this.inv.selected = Math.min(this.inv.selected, Math.max(0, this.inv.slots.length - 1));
     this.renderHeld();
@@ -3118,25 +3288,36 @@ export class Game {
     const t = this.raycastTarget();
     const trader = this.nearestTrader();
     if (trader) { this.openTrade(trader); return; }
-    if (t?.hit && this.world.get(t.hit.x, t.hit.y, t.hit.z) === CHEST) { this.openChest(t.hit.x, t.hit.y, t.hit.z); return; }
-    if (t?.hit && this.world.get(t.hit.x, t.hit.y, t.hit.z) === CHEST_INTERFACE) { this.openChest(t.hit.x, t.hit.y, t.hit.z, true); return; }
+    const at = this.atOf(t);
+    if (at) {
+      const hid = this.atGet(at);
+      if (hid === CHEST) { this.openChest(at); return; }
+      if (hid === CHEST_INTERFACE) { this.openChest(at, true); return; }
+    }
     const cache = this.nearestCache();
     if (cache) { this.openCacheId = cache.id; this.ui = "cache"; this.unlockPointer(); this.renderCache(); document.getElementById("ui-cache")!.classList.remove("hidden"); return; }
     // a Surveyor's Pin is planted at your feet — no raycast needed
     if (this.inv.selectedSlot()?.itemId === "surveyor_pin") { this.plantPin(); return; }
     if (!t) return;
-    if (t.hit) {
-      const { x, y, z } = t.hit;
-      const id = this.world.get(x, y, z);
-      if (id === MELON_2 || id === WHEAT_2 || id === CACTUS_FRUIT || id === SUGARCANE_2 || id === APPLE_FRUIT) { this.harvest(x, y, z, id); return; }
-      if (id === POWER_PANEL) { this.panelAct(x, y, z); return; }
+    if (at) {
+      const { x, y, z } = at;
+      const id = this.atGet(at);
+      if (id === MELON_2 || id === WHEAT_2 || id === CACTUS_FRUIT || id === SUGARCANE_2 || id === APPLE_FRUIT) { this.harvest(at, id); return; }
+      if (id === POWER_PANEL) { this.panelAct(this.atKey(at)); return; }
       if (id === BED || id === BED_EXT) { this.sleep(); return; }
       if (id === ALAB_GATE || id === ALAB_GATE_OPEN) {
         // the gate leaf swings on its stile; world.set clears the rotation
         // nibble, so carry it across the id swap
-        const r = this.world.getRot(x, y, z);
-        this.wset(x, y, z, id === ALAB_GATE ? ALAB_GATE_OPEN : ALAB_GATE);
-        if (r) this.world.setRot(x, y, z, r);
+        if (at.sh) {
+          const c = at.sh.getCell(at.ix, at.iy, at.iz)!;
+          at.sh.setCell(at.ix, at.iy, at.iz, id === ALAB_GATE ? ALAB_GATE_OPEN : ALAB_GATE, c.rot);
+          this.shipDirty.add(at.sh.id);
+          this.markShipChunksDirty(at.sh);
+        } else {
+          const r = this.world.getRot(x, y, z);
+          this.wset(x, y, z, id === ALAB_GATE ? ALAB_GATE_OPEN : ALAB_GATE);
+          if (r) this.world.setRot(x, y, z, r);
+        }
         this.audio.door();
         return;
       }
@@ -3153,26 +3334,26 @@ export class Game {
             return;
           }
           // rebuild the pair with correct halves: the open block below marks us as the top
-          if (this.world.get(x, y - 1, z) === openId) {
-            this.wset(x, y, z, upper);
-            this.wset(x, y - 1, z, base);
-          } else if (this.world.get(x, y + 1, z) === openId) {
-            this.wset(x, y, z, base);
-            this.wset(x, y + 1, z, upper);
+          if (this.atGet(at, 0, -1, 0) === openId) {
+            this.atSet(at, upper);
+            this.atSet(at, base, 0, -1, 0);
+          } else if (this.atGet(at, 0, 1, 0) === openId) {
+            this.atSet(at, base);
+            this.atSet(at, upper, 0, 1, 0);
           } else {
             // lone open half — its neighbor tells us which half we are
-            this.wset(x, y, z, half(this.world.get(x, y + 1, z)) ? upper : base);
+            this.atSet(at, half(this.atGet(at, 0, 1, 0)) ? upper : base);
           }
         } else {
           // push-door: the leaf swings away from whoever opens it
-          const wallAlongX = isSolid(this.world.get(x - 1, y, z)) || isSolid(this.world.get(x + 1, y, z));
+          const wallAlongX = isSolid(this.atGet(at, -1, 0, 0)) || isSolid(this.atGet(at, 1, 0, 0));
           const p = this.player.pos;
           const off = wallAlongX ? p.z - (z + 0.5) : p.x - (x + 0.5);
           const k = x + "," + z;
           if (Math.abs(off) > 0.35) this.world.doorSwing.set(k, (off > 0 ? -1 : 1) as 1 | -1);
           else this.world.doorSwing.delete(k);
-          this.wset(x, y, z, openId);
-          for (const dy of [-1, 1]) if (half(this.world.get(x, y + dy, z))) this.wset(x, y + dy, z, openId);
+          this.atSet(at, openId);
+          for (const dy of [-1, 1]) if (half(this.atGet(at, 0, dy, 0))) this.atSet(at, openId, 0, dy, 0);
           this.tut?.notify("door");
         }
         this.audio.door();
@@ -3180,7 +3361,12 @@ export class Game {
       }
       if (id === BEACON) {
         this.tut?.notify("save");
-        if (!this.beaconMarks.some((b) => b.x === x && b.y === y && b.z === z)) this.beaconMarks.push({ x, y, z });
+        // a Beacon in a flying hull is marked where the hull carries it, not
+        // at the grid cell it happens to hover over
+        const mk = at.sh ? { ship: at.sh.id, x: at.ix, y: at.iy, z: at.iz } : { x, y, z };
+        const same = (b: { x: number; y: number; z: number; ship?: number }) =>
+          (b.ship ?? -1) === (at.sh ? at.sh.id : -1) && b.x === mk.x && b.y === mk.y && b.z === mk.z;
+        if (!this.beaconMarks.some(same)) this.beaconMarks.push(mk);
         this.audio.savePing();
         if (this.saveNow()) hud.toast("Saved. Death will respawn you at this beacon.");
         else hud.toast("This world is not saved — the beacon only marks it.");
@@ -3190,8 +3376,8 @@ export class Game {
       if (id === ARMORY) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("armory"); return; }
       if (id === REFINERY) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("refinery"); return; }
       if (id === CAMPFIRE) {
-        this.openFire = [x, y, z];
-        this.fire = this.fireAt(x, y, z);
+        this.openFire = this.atKey(at);
+        this.fire = this.fireAtKey(this.openFire);
         this.gridFocus = "inv";
         this.ui = "inv";
         this.unlockPointer();
@@ -3203,19 +3389,19 @@ export class Game {
         return;
       }
       if (id === COOKPOT) {
-        this.openPotPanel(x, y, z);
+        this.openPotPanel(this.atKey(at));
         this.gridFocus = "inv";
         this.unlockPointer();
         this.audio.door();
         return;
       }
-      if (id === GEN_WOOD) { this.openGenPanel(x, y, z); return; }
+      if (id === GEN_WOOD) { this.openGenPanel(this.atKey(at)); return; }
       if (id === WATER_CAGE || id === WATER_CAGE_FULL) {
         const full = id === WATER_CAGE_FULL;
         const sel = this.inv.selectedSlot();
         if (full && sel?.itemId === "bucket") {
           this.inv.removeItem("bucket", 1);
-          this.wset(x, y, z, WATER_CAGE);
+          this.atSet(at, WATER_CAGE);
           this.inv.addItem("bucket_full", 1);
           this.audio.drink();
           hud.toast("You ladle Water out of the Cage — the Water stays behind the Wire.");
@@ -3224,7 +3410,7 @@ export class Game {
         }
         if (!full && sel?.itemId === "bucket_full") {
           this.inv.removeItem("bucket_full", 1);
-          this.wset(x, y, z, WATER_CAGE_FULL);
+          this.atSet(at, WATER_CAGE_FULL);
           this.inv.addItem("bucket", 1);
           this.audio.place();
           hud.toast("You pour a full Bucket into the Cage.");
@@ -3236,7 +3422,7 @@ export class Game {
         return;
       }
       if (id === FLIGHT_CONTROLS) {
-        const sh = this.shipAt(x, y, z);
+        const sh = at.sh ?? this.shipAt(x, y, z);
         if (sh) this.enterPiloting(sh);
         else {
           const comp = this.pendingFrames().find((c) => Game.compContains(c.frame, x, y, z));
@@ -3245,7 +3431,7 @@ export class Game {
         }
         return;
       }
-      if (id === ENGINECORE) { this.engineCoreAct(x, y, z); return; }
+      if (id === ENGINECORE) { this.engineCoreAct(at); return; }
       if (id === THRUSTER) {
         if (!this.inv.has("thruster_nozzle", 1)) {
           this.audio.error();
@@ -3253,7 +3439,7 @@ export class Game {
           return;
         }
         this.inv.removeItem("thruster_nozzle", 1);
-        this.wset(x, y, z, THRUSTER_LIT);
+        this.atSet(at, THRUSTER_LIT);
         this.renderer.addPointLight(x, y, z, "fire");
         this.questBump("thruster");
         this.audio.door();
@@ -3302,45 +3488,47 @@ export class Game {
   }
 
   /** E at a ripe crop: pick it. Melons re-ripen on the vine; wheat leaves the Farmland it stood on. */
-  private harvest(x: number, y: number, z: number, id: number) {
+  private harvest(a: BlockAt, id: number) {
+    const key = this.atKey(a);
+    const { x, z } = a;
     if (id === MELON_2) {
-      this.wset(x, y, z, MELON_1);
-      this.crops.set(`${x},${y},${z}`, 30); // the vine keeps growing from partway
+      this.atSet(a, MELON_1);
+      this.crops.set(key, 30); // the vine keeps growing from partway
       this.giveOrDrop("dune_melon", 1 + (hash2(x, z, this.seed + 71) < 0.4 ? 1 : 0));
       if (this.seedLuck(x, z, 97)) this.giveOrDrop("seed_melon", 1);
       this.questBump("farm");
       this.audio.pickup();
-      if (!this.melonHintShown) { this.melonHintShown = true; hud.toast("Dune Melon picked — the plant keeps growing. Break an oasis sprout, or pick with luck, for Melon Seeds."); }
-      else hud.toast("Dune Melon picked — the plant keeps growing.");
+      if (!this.melonHintShown) { this.melonHintShown = true; hud.toast("Dune Melon picked - the plant keeps growing. Break an oasis sprout, or pick with luck, for Melon Seeds."); }
+      else hud.toast("Dune Melon picked - the plant keeps growing.");
     } else if (id === WHEAT_2) {
-      this.wset(x, y, z, AIR); // the tilled Farmland under the cut stays put
-      this.crops.delete(`${x},${y},${z}`);
+      this.atSet(a, AIR); // the tilled Farmland under the cut stays put
+      this.crops.delete(key);
       this.giveOrDrop("wheat", 2);
       this.giveOrDrop("seed_wheat", 1);
       if (this.seedLuck(x, z, 83)) this.giveOrDrop("seed_wheat", 1);
       this.questBump("farm");
       this.audio.pickup();
-      hud.toast("Desert Wheat cut — the Farmland stays tilled.");
+      hud.toast("Desert Wheat cut - the Farmland stays tilled.");
     } else if (id === SUGARCANE_2) {
-      this.wset(x, y, z, SUGARCANE_1);
-      this.crops.set(`${x},${y},${z}`, 30); // the stubble re-sprouts partway
+      this.atSet(a, SUGARCANE_1);
+      this.crops.set(key, 12);
       this.giveOrDrop("sugar_cane", 2);
       if (this.seedLuck(x, z, 89)) this.giveOrDrop("sugar_cane", 1);
       this.questBump("farm");
       this.audio.pickup();
-      hud.toast("Sugarcane cut — the stubble sprouts again.");
+      hud.toast("Sugarcane cut - the stubble sprouts again.");
     } else if (id === APPLE_FRUIT) {
-      this.wset(x, y, z, LEAVES);
-      this.fruitRegrow.set(`${x},${y},${z}`, 0); // the same bough ripens another Apple
+      this.atSet(a, LEAVES);
+      this.fruitRegrow.set(key, 0); // the same bough ripens another Apple
       this.giveOrDrop("apple", 1);
       this.audio.pickup();
-      hud.toast("Apple picked — the bough will fruit again.");
+      hud.toast("Apple picked - the bough will fruit again.");
     } else {
-      this.wset(x, y, z, CACTUS);
+      this.atSet(a, CACTUS);
       this.giveOrDrop("prickly_pear", 2);
       this.questBump("farm");
       this.audio.pickup();
-      hud.toast("Prickly Pears picked — the cactus goes on fruiting.");
+      hud.toast("Prickly Pears picked - the cactus goes on fruiting.");
     }
   }
 
@@ -3365,12 +3553,13 @@ export class Game {
 
   /** A lit Campfire nearby takes the edge off the cold: +18 °C close in, +9 °C at a reach away. */
   private fireWarmth(pos: THREE.Vector3): number {
-    const fx = Math.floor(pos.x), fy = Math.floor(pos.y), fz = Math.floor(pos.z);
     let best = 0;
-    for (let dx = -6; dx <= 6; dx++) for (let dz = -6; dz <= 6; dz++) for (let dy = -2; dy <= 2; dy++) {
-      if (this.world.get(fx + dx, fy + dy, fz + dz) !== CAMPFIRE) continue;
-      if (!this.fireLit(`${fx + dx},${fy + dy},${fz + dz}`)) continue; // cold charcoal warms nothing
-      const d = Math.max(Math.abs(dx), Math.abs(dz));
+    for (const [key, f] of this.fires) {
+      if (!f.lit) continue; // cold charcoal warms nothing
+      const c = this.stateKeyCell(key); // a fire aboard warms from where the hull carries it
+      if (!c) continue;
+      const d = Math.max(Math.abs(pos.x - (c[0] + 0.5)), Math.abs(pos.z - (c[2] + 0.5)));
+      if (d > 6) continue;
       best = Math.max(best, d <= 4 ? 18 : 9);
     }
     return best;
@@ -3382,13 +3571,14 @@ export class Game {
   private aimLabel(world: World, x: number, y: number, z: number): string {
     let id = world.get(x, y, z);
     let cy = y;
+    const ak = (yy: number) => this.keyAtWorld(x, yy, z); // aboard, the plant hangs off its Ship key
     if (id === FARMLAND) {
       const up = world.get(x, y + 1, z);
       if (up === MELON_1 || up === MELON_2 || up === WHEAT_1 || up === WHEAT_2 || up === SUGARCANE_1 || up === SUGARCANE_2) { id = up; cy = y + 1; }
     }
     // a planted Apple Tree reads like its Living Tree cousin
-    if (id === APPLE_SAPLING || (id === WOOD && this.appleTrees.has(`${x},${y},${z}`))) {
-      const p = this.appleTrees.get(`${x},${y},${z}`);
+    if (id === APPLE_SAPLING || (id === WOOD && this.appleTrees.has(ak(y)))) {
+      const p = this.appleTrees.get(ak(y));
       if (p === undefined) return blockDisplayName(id);
       const pct = Math.floor((p / 480) * 100);
       if (p >= 480) return "Apple Tree — full grown, fruiting";
@@ -3396,8 +3586,8 @@ export class Game {
     }
     if (id === APPLE_FRUIT) return "Apple — ripe (E to pick)";
     // a planted Living Tree reads like a crop: percent + pause reason
-    if (id === SAPLING || (id === WOOD && this.trees.has(`${x},${y},${z}`))) {
-      const p = this.trees.get(`${x},${y},${z}`);
+    if (id === SAPLING || (id === WOOD && this.trees.has(ak(y)))) {
+      const p = this.trees.get(ak(y));
       if (p === undefined) return blockDisplayName(id);
       const pct = Math.floor((p / 480) * 100);
       if (p >= 480) return "Living Tree — full grown";
@@ -3406,7 +3596,7 @@ export class Game {
     if (id !== MELON_1 && id !== MELON_2 && id !== WHEAT_1 && id !== WHEAT_2 && id !== SUGARCANE_1 && id !== SUGARCANE_2) return blockDisplayName(id);
     const name = blockDisplayName(id);
     if (id === MELON_2 || id === WHEAT_2 || id === SUGARCANE_2) return `${name} — ripe`;
-    const p = this.crops.get(`${x},${cy},${z}`);
+    const p = this.crops.get(ak(cy));
     if (p === undefined) return name;
     const melon = id === MELON_1, cane = id === SUGARCANE_1;
     const total = melon ? 60 : cane ? 60 : 90;
@@ -3442,7 +3632,9 @@ export class Game {
   /** A lit Sandstorm Breaker's calm reaches this cell, so the storm term drops out. */
   private breakerCalmAt(x: number, y: number, z: number): boolean {
     for (const key of this.breakers) {
-      const [bx, by, bz] = key.split(",").map(Number);
+      const c = this.stateKeyCell(key);
+      if (!c) continue;
+      const [bx, by, bz] = c;
       if (Math.hypot(x - bx, y - by, z - bz) <= STORM_BREAKER_R) return true;
     }
     return false;
@@ -3475,8 +3667,10 @@ export class Game {
     const dtc = this.cropAcc;
     this.cropAcc = 0;
     for (const [key, p] of this.crops) {
-      const [x, y, z] = key.split(",").map(Number);
-      const id = this.world.get(x, y, z);
+      const at = this.atOfKey(key);
+      if (!at) { this.crops.delete(key); continue; }
+      const { x, y, z } = at; // display cell: water and air are read where the plant stands
+      const id = this.atGet(at);
       if (id !== MELON_1 && id !== MELON_2 && id !== WHEAT_1 && id !== WHEAT_2 && id !== SUGARCANE_1 && id !== SUGARCANE_2) { this.crops.delete(key); continue; }
       if (id === MELON_2 || id === WHEAT_2 || id === SUGARCANE_2) continue; // ripe, waiting
       const melon = id === MELON_1, cane = id === SUGARCANE_1;
@@ -3487,7 +3681,7 @@ export class Game {
         const np = p + dtc;
         this.crops.set(key, np);
         const ripe = melon ? 60 : cane ? 60 : 90;
-        if (np >= ripe) this.wset(x, y, z, melon ? MELON_2 : cane ? SUGARCANE_2 : WHEAT_2);
+        if (np >= ripe) this.atSet(at, melon ? MELON_2 : cane ? SUGARCANE_2 : WHEAT_2);
       }
     }
   }
@@ -3524,6 +3718,19 @@ export class Game {
     return null;
   }
 
+  /** is a beacon mark still pointing at a standing Save Beacon (aboard, at
+   *  ship-local coords; the Beacon rides the hull)? */
+  private beaconAlive(b: { x: number; y: number; z: number; ship?: number }): boolean {
+    if (b.ship === undefined) return this.world.get(b.x, b.y, b.z) === BEACON;
+    const sh = this.ships.get(b.ship);
+    return !!sh && sh.getCell(b.x, b.y, b.z)?.id === BEACON;
+  }
+  /** the world cell a beacon mark points at right now. */
+  private beaconWorld(b: { x: number; y: number; z: number; ship?: number }): [number, number, number] {
+    if (b.ship === undefined) return [b.x, b.y, b.z];
+    const sh = this.ships.get(b.ship);
+    return sh ? sh.cellToWorld(b.x, b.y, b.z) : [b.x, b.y, b.z];
+  }
   /** any Ship (grounded or airborne) with a cell at this world coord. */
   private shipAt(x: number, y: number, z: number): Ship | null {
     for (const sh of this.ships.values()) if (sh.cellAtWorld(x + 0.5, y + 0.5, z + 0.5)) return sh;
@@ -3536,6 +3743,88 @@ export class Game {
     for (let x = Math.floor(b.min[0] / CS); x <= Math.floor(b.max[0] / CS); x++)
       for (let z = Math.floor(b.min[2] / CS); z <= Math.floor(b.max[2] / CS); z++)
         this.world.dirty.add(x + "," + z);
+  }
+
+  /**
+   * A block address: a world lattice cell, or — when the crosshair lands on
+   * an airborne hull — the EXACT ship-local cell (with its coarse display
+   * cell kept for lights/drops). Every get, set and state key in the block
+   * editors speaks through this, so what you aim at is what you break,
+   * place or feed, turned or not: `wset`-style world quantisation would map
+   * neighbours onto wrong cells mid-turn.
+   */
+  private atGet(a: BlockAt, ox = 0, oy = 0, oz = 0): number {
+    if (!a.sh) return this.world.get(a.x + ox, a.y + oy, a.z + oz);
+    return a.sh.getCell(a.ix + ox, a.iy + oy, a.iz + oz)?.id ?? AIR;
+  }
+
+  private atSet(a: BlockAt, id: number, ox = 0, oy = 0, oz = 0, rot?: number): void {
+    if (!a.sh) {
+      this.wset(a.x + ox, a.y + oy, a.z + oz, id);
+      if (rot) this.world.setRot(a.x + ox, a.y + oy, a.z + oz, rot);
+      return;
+    }
+    if (id === AIR) a.sh.deleteCell(a.ix + ox, a.iy + oy, a.iz + oz);
+    else a.sh.setCell(a.ix + ox, a.iy + oy, a.iz + oz, id, rot ?? 0);
+    this.shipDirty.add(a.sh.id);
+    this.markShipChunksDirty(a.sh);
+  }
+
+  /** the same cell moved by a local (aboard) or world (on land) offset. */
+  private shiftAt(a: BlockAt, dx: number, dy: number, dz: number): BlockAt {
+    if (!a.sh) return { x: a.x + dx, y: a.y + dy, z: a.z + dz, ix: a.x + dx, iy: a.y + dy, iz: a.z + dz };
+    const ix = a.ix + dx, iy = a.iy + dy, iz = a.iz + dz;
+    const [x, y, z] = a.sh.cellToWorld(ix, iy, iz);
+    return { x, y, z, sh: a.sh, ix, iy, iz };
+  }
+
+  /** the state key for a (possibly offset) cell: "x,y,z" on land,
+   *  "s<id>,ix,iy,iz" aboard — the same keys takeoff/landing migrate. */
+  private atKey(a: BlockAt, ox = 0, oy = 0, oz = 0): string {
+    return a.sh
+      ? `s${a.sh.id},${a.ix + ox},${a.iy + oy},${a.iz + oz}`
+      : `${a.x + ox},${a.y + oy},${a.z + oz}`;
+  }
+
+  /** the BlockAt for a world cell an airborne hull happens to be over: the
+   *  provider exposes hull cells at the display quantisation, so the read and
+   *  the write below both go through the same address — always consistent. */
+  private atAtWorld(x: number, y: number, z: number): BlockAt {
+    const sh = this.claimShip(x, y, z);
+    if (!sh) return { x, y, z, ix: x, iy: y, iz: z };
+    const p = sh.worldToLocal(x + 0.5, y + 0.5, z + 0.5);
+    return { x, y, z, sh, ix: Math.floor(p.x), iy: Math.floor(p.y), iz: Math.floor(p.z) };
+  }
+
+  /** the state key for a world cell, aboard or not. */
+  private keyAtWorld(x: number, y: number, z: number): string {
+    return this.atKey(this.atAtWorld(x, y, z));
+  }
+
+  private atOfKey(k: string): BlockAt | null {
+    if (!k.startsWith("s")) { const [x, y, z] = Game.keyPos(k); return { x, y, z, ix: x, iy: y, iz: z }; }
+    const p = k.slice(1).split(",").map(Number);
+    const sh = this.ships.get(p[0]);
+    if (!sh) return null;
+    const [x, y, z] = sh.cellToWorld(p[1], p[2], p[3]);
+    return { x, y, z, sh, ix: p[1], iy: p[2], iz: p[3] };
+  }
+
+  /** the display cell for a state key ("s5,2,3,4" -> the Ship's world cell
+   *  under that local cell right now), or null if its Ship is gone. */
+  private stateKeyCell(k: string): [number, number, number] | null {
+    if (!k.startsWith("s")) return Game.keyPos(k);
+    const p = k.slice(1).split(",").map(Number);
+    const sh = this.ships.get(p[0]);
+    return sh ? sh.cellToWorld(p[1], p[2], p[3]) : null;
+  }
+
+  private atOf(t: Raycast | null): BlockAt | null {
+    if (!t?.hit) return null;
+    const { x, y, z } = t.hit;
+    return t.ship
+      ? { x, y, z, sh: t.ship.sh, ix: t.ship.ix, iy: t.ship.iy, iz: t.ship.iz }
+      : { x, y, z, ix: x, iy: y, iz: z };
   }
 
   private static keyPos(k: string): [number, number, number] { return k.split(",").map(Number) as [number, number, number]; }
@@ -3683,31 +3972,21 @@ export class Game {
     }
   }
 
-  /** the genFuel/Battery power key of the block at world x,y,z: ship-local
-   *  "s<id>,lx,ly,lz" aboard a Ship, plain "x,y,z" on the ground (same rule
-   *  as chestKey, so panel keys match the Grid's own cell keys). */
-  private powerKeyAt(x: number, y: number, z: number): string {
-    const sh = this.claimShip(x, y, z);
-    if (!sh) return `${x},${y},${z}`;
-    const l = sh.worldToLocal(x + 0.5, y + 0.5, z + 0.5);
-    return `s${sh.id},${Math.floor(l.x)},${Math.floor(l.y)},${Math.floor(l.z)}`;
-  }
-
   /** Bank a dragged fuel item's burn seconds in the open generator. */
   private feedGen(s: Slot): boolean {
     if (!this.openGen) return false;
     const burn = GEN_FUEL[s.itemId];
     if (burn === undefined) return false;
-    const k = this.powerKeyAt(...this.openGen);
+    const k = this.openGen;
     this.genFuel.set(k, (this.genFuel.get(k) ?? 0) + burn * (s.stack?.count ?? 1));
     return true;
   }
 
   /** Open a Wood Generator's panel in the Inventory window — all station
    *  panels are exclusive; the bank itself lives in genFuel. */
-  private openGenPanel(x: number, y: number, z: number) {
+  private openGenPanel(k: string) {
     this.closeUI();
-    this.openGen = [x, y, z];
+    this.openGen = k;
     this.ui = "inv";
     document.getElementById("ui-inventory")!.classList.remove("hidden");
     document.getElementById("ui-craft")!.classList.add("hidden");
@@ -3730,7 +4009,7 @@ export class Game {
     if (!this.openGen) return;
     const sec = document.getElementById("gen-section")!;
     if (sec.classList.contains("hidden")) return;
-    const bank = Math.max(0, this.genFuel.get(this.powerKeyAt(...this.openGen)) ?? 0);
+    const bank = Math.max(0, this.genFuel.get(this.openGen) ?? 0);
     const s = Math.ceil(bank);
     document.getElementById("gen-gauge")!.textContent =
       bank > 0 ? `burning — ${s} s of charge left` : "idle — no charge banked";
@@ -3849,8 +4128,7 @@ export class Game {
   }
 
   /** E at a Power Panel: check the meters, or reset it when it has headroom again. */
-  private panelAct(x: number, y: number, z: number) {
-    const k = `${x},${y},${z}`;
+  private panelAct(k: string) {
     const g = this.gridAtPanel(k);
     if (!g || g.panels !== 1) { hud.toast("This Panel is not wired as the heart of a Grid."); this.audio.error(); return; }
     let supply = 0, draw = 0, batt = 0, battCap = 0;
@@ -3889,6 +4167,7 @@ export class Game {
     for (const g of this.grids) {
       if (!g.powered) continue;
       for (const [k, id] of g.cells) {
+        if (this.shipOfPowerKey(k)) continue; // machines aboard a flying hull idle until it lands: their world-space I/O can't follow the turn
         const [x, y, z] = k.split(",").map(Number);
         if (id === INSERTER) moved = this.inserterAct(x, y, z) || moved;
         else if (id === PLANTER) moved = this.planterAct(x, y, z) || moved;
@@ -3938,7 +4217,7 @@ export class Game {
     const bx = x - dx, bz = z - dz, bid = this.world.get(bx, y, bz);
     if (bid === CAMPFIRE) {
       // route by kind: a fuel item's charges go straight into the coals, anything else its input grid
-      const f = this.fireAt(bx, y, bz);
+      const f = this.fireAtKey(`${bx},${y},${bz}`);
       const key = `${bx},${y},${bz}`;
       for (let i = 0; i < src.length; i++) {
         const s = src[i];
@@ -4010,12 +4289,13 @@ export class Game {
     const t = this.raycastTarget();
     if (!t?.water) { hud.toast("Aim at water or an Oil Seep."); this.audio.error(); return; }
     const { x, y, z } = t.water;
-    const id = this.world.get(x, y, z);
+    const at = this.atAtWorld(x, y, z); // a Source in the hull is scooped from the Ship, not the chunks
+    const id = this.atGet(at);
     if (id !== WATER && id !== OIL) { hud.toast("Only a still Source fills the bucket — flow slips through."); this.audio.error(); return; }
     if (!this.inv.has("bucket", 1)) { hud.toast("You need an empty Bucket."); this.audio.error(); return; }
     this.inv.removeItem("bucket", 1);
     this.giveOrDrop(id === WATER ? "bucket_full" : "oil_bucket", 1);
-    this.wset(x, y, z, AIR);
+    this.atSet(at, AIR);
     this.audio.drink();
     hud.toast(id === WATER
       ? "Bucket scooped from the Source — that water is gone from here."
@@ -4023,14 +4303,20 @@ export class Game {
     this.renderHeld();
   }
 
-  /** Bucket (full) at an open cell: pours a new Source there. */
+  /** Bucket (full) at an open cell: pours a new Source there. Aboard, the
+   *  liquid lands in the Ship's own cells — it rides the hull and only finds
+   *  its level again when the Ship stands down. */
   private bucketPour() {
     const t = this.raycastTarget();
     if (!t?.hit) return;
-    const x = t.hit.x + t.face.x, y = t.hit.y + t.face.y, z = t.hit.z + t.face.z;
-    if (this.world.get(x, y, z) !== AIR) { hud.toast("Pour into open space."); this.audio.error(); return; }
+    const at = this.atOf(t);
+    if (!at) return;
+    const [ox, oy, oz] = t.ship
+      ? [t.ship.fx, t.ship.fy, t.ship.fz]
+      : [Math.round(t.face.x), Math.round(t.face.y), Math.round(t.face.z)];
+    if (this.atGet(at, ox, oy, oz) !== AIR) { hud.toast("Pour into open space."); this.audio.error(); return; }
     const oil = this.inv.selectedSlot()?.itemId === "oil_bucket";
-    this.wset(x, y, z, oil ? OIL : WATER);
+    this.atSet(at, oil ? OIL : WATER, ox, oy, oz);
     this.inv.removeItem(oil ? "oil_bucket" : "bucket_full", 1);
     this.giveOrDrop("bucket", 1);
     this.audio.drink();
@@ -4046,26 +4332,28 @@ export class Game {
     const dtc = this.treeAcc;
     this.treeAcc = 0;
     for (const [key, p] of this.trees) {
-      const [x, y, z] = key.split(",").map(Number);
-      const id = this.world.get(x, y, z);
+      const at = this.atOfKey(key);
+      if (!at) { this.trees.delete(key); continue; }
+      const id = this.atGet(at);
       if (id !== SAPLING && id !== WOOD) { this.trees.delete(key); continue; } // chopped or buried: done
       if (p >= 480) continue; // full grown is final: a mature tree never re-grows chopped branches or canopy
-      if (!this.waterNear(x, y, z, 10)) continue;
+      if (!this.waterNear(at.x, at.y, at.z, 10)) continue;
       const np = Math.min(480, p + dtc); // ~8 real minutes root to canopy
       this.trees.set(key, np);
       const upto = np >= 480 ? 3 : np >= 270 ? 2 : np >= 120 ? 1 : 0;
       if (upto === 0) continue;
       let plan = this.treePlanCache.get(key);
       if (!plan) {
-        let s = Math.floor(hash2(x + 7 * z, y, this.seed + 55) * 1e9) + 1;
+        let s = Math.floor(hash2(at.ix + 7 * at.iz, at.iy, this.seed + 55) * 1e9) + 1;
         const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
-        plan = treePlan(x, y, z, rnd);
+        plan = treePlan(at.ix, at.iy, at.iz, rnd);
         this.treePlanCache.set(key, plan);
       }
       for (const part of plan) {
         if (part.stage > upto) continue;
-        const cur = this.world.get(part.x, part.y, part.z);
-        if (cur === AIR || cur === SAPLING) this.wset(part.x, part.y, part.z, part.b); // the seed cell itself turns to trunk
+        const dx = part.x - at.ix, dy = part.y - at.iy, dz = part.z - at.iz; // aboard, the plan grows along the hull's own axes
+        const cur = this.atGet(at, dx, dy, dz);
+        if (cur === AIR || cur === SAPLING) this.atSet(at, part.b, dx, dy, dz); // the seed cell itself turns to trunk
       }
     }
   }
@@ -4079,34 +4367,36 @@ export class Game {
     const dtc = this.appleAcc;
     this.appleAcc = 0;
     for (const [key, p] of this.appleTrees) {
-      const [x, y, z] = key.split(",").map(Number);
-      const id = this.world.get(x, y, z);
+      const at = this.atOfKey(key);
+      if (!at) { this.appleTrees.delete(key); continue; }
+      const id = this.atGet(at);
       if (id !== APPLE_SAPLING && id !== WOOD) { this.appleTrees.delete(key); continue; } // chopped or buried: done
       if (p >= 480) continue; // full grown is final
-      if (!this.waterNear(x, y, z, 10)) continue;
+      if (!this.waterNear(at.x, at.y, at.z, 10)) continue;
       const np = Math.min(480, p + dtc); // ~8 real minutes pip to fruiting crown
       this.appleTrees.set(key, np);
       const upto = np >= 480 ? 3 : np >= 270 ? 2 : np >= 120 ? 1 : 0;
       if (upto === 0) continue;
       let plan = this.treePlanCache.get(key);
       if (!plan) {
-        let s = Math.floor(hash2(x + 7 * z, y, this.seed + 133) * 1e9) + 1;
+        let s = Math.floor(hash2(at.ix + 7 * at.iz, at.iy, this.seed + 133) * 1e9) + 1;
         const rnd = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
-        plan = appleTreePlan(x, y, z, rnd);
+        plan = appleTreePlan(at.ix, at.iy, at.iz, rnd);
         this.treePlanCache.set(key, plan);
       }
       for (const part of plan) {
         if (part.stage > upto) continue;
-        const cur = this.world.get(part.x, part.y, part.z);
-        if (cur === AIR || cur === APPLE_SAPLING) this.wset(part.x, part.y, part.z, part.b); // the pip cell itself turns to trunk
+        const dx = part.x - at.ix, dy = part.y - at.iy, dz = part.z - at.iz; // aboard, the crown grows along the hull's own axes
+        const cur = this.atGet(at, dx, dy, dz);
+        if (cur === AIR || cur === APPLE_SAPLING) this.atSet(at, part.b, dx, dy, dz); // the pip cell itself turns to trunk
       }
     }
     // picked boughs: the plan's fruit slots turn back to Apple over a minute of good air
     for (const [key, t] of this.fruitRegrow) {
-      const [x, y, z] = key.split(",").map(Number);
-      if (this.world.get(x, y, z) !== LEAVES) { this.fruitRegrow.delete(key); continue; }
+      const at = this.atOfKey(key);
+      if (!at || this.atGet(at) !== LEAVES) { this.fruitRegrow.delete(key); continue; }
       const nt = t + dtc;
-      if (nt >= 60) { this.wset(x, y, z, APPLE_FRUIT); this.fruitRegrow.delete(key); }
+      if (nt >= 60) { this.atSet(at, APPLE_FRUIT); this.fruitRegrow.delete(key); }
       else this.fruitRegrow.set(key, nt);
     }
   }
@@ -4210,8 +4500,7 @@ export class Game {
     return f;
   }
 
-  private fireAt(x: number, y: number, z: number): FireState {
-    const key = `${x},${y},${z}`;
+  private fireAtKey(key: string): FireState {
     let f = this.fires.get(key);
     if (!f) { f = Game.newFire(); this.fires.set(key, f); }
     return f;
@@ -4242,15 +4531,19 @@ export class Game {
 
   /** Keep the point light, the cold/lit charcoal tile and the gauge in step with the fire. */
   private syncFire(key: string) {
-    const [x, y, z] = key.split(",").map(Number);
+    const p = this.stateKeyCell(key);
+    if (!p) return; // the ship that carried it is gone
+    const [cx, cy, cz] = p;
     const lit = this.fireLit(key);
     const total = lit ? Game.fireFuel(this.fires.get(key)!) : 0;
     if (this.gauges.get(key) !== total) {
       this.gauges.set(key, total);
-      this.world.dirty.add(Math.floor(x / CS) + "," + Math.floor(z / CS)); // cold vs lit charcoal
+      this.world.dirty.add(Math.floor(cx / CS) + "," + Math.floor(cz / CS)); // cold vs lit charcoal
     }
-    if (lit && !this.renderer.hasPointLight(x, y, z)) this.renderer.addPointLight(x, y, z, "fire");
-    else if (!lit && this.renderer.hasPointLight(x, y, z)) this.renderer.removePointLight(x, y, z);
+    if (lit && !this.renderer.hasPointLight(cx, cy, cz)) {
+      this.renderer.addPointLight(cx, cy, cz, "fire");
+      if (key.startsWith("s")) this.shipDirty.add(Number(key.slice(1, key.indexOf(",")))); // lit coals glow through the hull
+    } else if (!lit && this.renderer.hasPointLight(cx, cy, cz)) this.renderer.removePointLight(cx, cy, cz);
   }
 
   /** Burn charges, run cooking jobs, keep gauges honest — panel open or not. */
@@ -4305,7 +4598,7 @@ export class Game {
   /** Light fire / put it out (the panel button). */
   private toggleFire() {
     if (!this.fire || !this.openFire) return;
-    const key = this.openFire.join(",");
+    const key = this.openFire;
     const f = this.fire;
     if (f.lit) {
       f.lit = false;
@@ -4366,18 +4659,17 @@ export class Game {
     return p;
   }
 
-  private potAt(x: number, y: number, z: number): PotState {
-    const key = `${x},${y},${z}`;
+  private potAtKey(key: string): PotState {
     let p = this.pots.get(key);
     if (!p) { p = Game.newPot(); this.pots.set(key, p); }
     return p;
   }
 
   /** Open a pot's panel in the Inventory window — fire and pot panels are exclusive. */
-  private openPotPanel(x: number, y: number, z: number) {
+  private openPotPanel(key: string) {
     this.closeUI();
-    this.pot = this.potAt(x, y, z);
-    this.openPot = [x, y, z];
+    this.pot = this.potAtKey(key);
+    this.openPot = key;
     this.ui = "inv";
     document.getElementById("ui-inventory")!.classList.remove("hidden");
     document.getElementById("ui-craft")!.classList.add("hidden");
@@ -4393,23 +4685,27 @@ export class Game {
 
   /** Keep the point light and the cold/lit pot tile in step. */
   private syncPot(key: string) {
-    const [x, y, z] = key.split(",").map(Number);
-    const p = this.pots.get(key);
+    const p = this.stateKeyCell(key);
+    if (!p) return; // the ship that carried it is gone
+    const [cx, cy, cz] = p;
+    const pt = this.pots.get(key);
     const lit = this.potLit(key);
-    const total = lit && p ? p.charge : 0;
+    const total = lit && pt ? pt.charge : 0;
     if (this.gauges.get(key) !== total) {
       this.gauges.set(key, total);
-      this.world.dirty.add(Math.floor(x / CS) + "," + Math.floor(z / CS)); // cold vs lit iron
+      this.world.dirty.add(Math.floor(cx / CS) + "," + Math.floor(cz / CS)); // cold vs lit iron
     }
-    if (lit && !this.renderer.hasPointLight(x, y, z)) this.renderer.addPointLight(x, y, z, "fire");
-    else if (!lit && this.renderer.hasPointLight(x, y, z)) this.renderer.removePointLight(x, y, z);
+    if (lit && !this.renderer.hasPointLight(cx, cy + 0.2, cz)) {
+      this.renderer.addPointLight(cx, cy + 0.2, cz, "fire");
+      if (key.startsWith("s")) this.shipDirty.add(Number(key.slice(1, key.indexOf(",")))); // lit coals glow through the hull
+    } else if (!lit && this.renderer.hasPointLight(cx, cy + 0.2, cz)) this.renderer.removePointLight(cx, cy + 0.2, cz);
   }
 
   /** Press a Dishes row: pull the ingredients off the Input Grid, pay the
    *  recipe's charge up front (0-charge recipes need no fire at all), start the job. */
   private startPotJob(r: PotRecipe) {
     if (!this.pot || !this.openPot) return;
-    const key = this.openPot.join(",");
+    const key = this.openPot;
     const p = this.pot;
     if (p.jobs.length >= POT_MAX_JOBS) { hud.toast("The pot holds six dishes at once."); this.audio.error(); return; }
     if (!potHas(p.input, r)) { hud.toast(`Missing ingredients for ${ITEMS[r.out].name}.`); this.audio.error(); return; }
@@ -4472,7 +4768,7 @@ export class Game {
   /** Light the pot / put it out (the panel button). */
   private togglePot() {
     if (!this.pot || !this.openPot) return;
-    const key = this.openPot.join(",");
+    const key = this.openPot;
     const p = this.pot;
     if (p.lit) {
       p.lit = false;
@@ -4580,9 +4876,10 @@ export class Game {
     const p = this.player.pos;
     let best: [number, number, number] | null = null, bd = Infinity;
     for (const key of this.breakers) {
-      const [x, y, z] = key.split(",").map(Number);
-      const d = Math.hypot(p.x - (x + 0.5), p.y + 0.9 - (y + 0.5), p.z - (z + 0.5));
-      if (d <= STORM_BREAKER_R && d < bd) { bd = d; best = [x, y, z]; }
+      const c = this.stateKeyCell(key);
+      if (!c) continue;
+      const d = Math.hypot(p.x - (c[0] + 0.5), p.y + 0.9 - (c[1] + 0.5), p.z - (c[2] + 0.5));
+      if (d <= STORM_BREAKER_R && d < bd) { bd = d; best = c; }
     }
     this.stormShieldOn = best !== null;
     this.renderer.setStormDome(best ? [best[0] + 0.5, best[1] + 0.5, best[2] + 0.5] : null);
@@ -4925,12 +5222,19 @@ export class Game {
       }
       if (id === FRAME_CORNER) this.worldCorners.delete(pk);
     }
-    // Chest contents ride along: their keys become ship-local cells
-    const chestMove = new Map<string, string>();
-    for (const [x, y, z, id] of captured)
-      if (id === CHEST || id === CHEST_CONNECTOR || id === CHEST_INTERFACE)
-        chestMove.set(`${x},${y},${z}`, `s${sh.id},${x},${y},${z}`);
-    this.migrateChests(chestMove);
+    // everything keyed to a hull cell rides along: Chest contents, crops,
+    // fires, pots, gauges and Beacon marks switch from world keys to
+    // Ship-local ones, and back again when the Ship stands down
+    const keyMove = new Map<string, string>();
+    for (const [x, y, z, id] of captured) {
+      keyMove.set(`${x},${y},${z}`, `s${sh.id},${x},${y},${z}`);
+      if (id === BEACON) {
+        const m = this.beaconMarks.find((b) => b.ship === undefined && b.x === x && b.y === y && b.z === z);
+        if (m) m.ship = sh.id;
+      }
+    }
+    this.migrateChests(keyMove);
+    this.migrateKeys(keyMove);
     this.frameSeq++; this.pendingCache = null;
     this.buildShipGroup(sh);
     this.markShipChunksDirty(sh);
@@ -4965,13 +5269,14 @@ export class Game {
       this.shipGroups.delete(sh.id);
     }
     this.ships.delete(sh.id); // provider stops shadowing before the cells land
-    const chestMove = new Map<string, string>();
+    const keyMove = new Map<string, string>();
     for (const [k, c] of sh.cells) {
       const [lx, ly, lz] = k.split(",").map(Number);
       const [wx, wy, wz] = sh.cellToWorld(lx, ly, lz);
       this.world.set(wx, wy, wz, c.id);
       if (c.rot) this.world.setRot(wx, wy, wz, c.rot);
       const wk = `${wx},${wy},${wz}`;
+      keyMove.set(`s${sh.id},${lx},${ly},${lz}`, wk);
       if (isPowerBlock(c.id)) {
         const pk = "s" + sh.id + "," + k;
         this.powerCells.delete(pk);
@@ -4981,10 +5286,13 @@ export class Game {
       }
       if (c.id === FRAME_CORNER) this.worldCorners.add(wk);
       if (c.id === ENGINECORE) this.coreFuel.set(wk, sh.fuel);
-      if (c.id === CHEST || c.id === CHEST_CONNECTOR || c.id === CHEST_INTERFACE)
-        chestMove.set(`s${sh.id},${lx},${ly},${lz}`, wk);
+      if (c.id === BEACON) {
+        const m = this.beaconMarks.find((b) => b.ship === sh.id && b.x === lx && b.y === ly && b.z === lz);
+        if (m) { m.ship = undefined; m.x = wx; m.y = wy; m.z = wz; }
+      }
     }
-    this.migrateChests(chestMove);
+    this.migrateChests(keyMove);
+    this.migrateKeys(keyMove);
     this.frameSeq++; this.pendingCache = null;
     this.markShipChunksDirty(sh);
     this.audio.door();
@@ -5144,9 +5452,9 @@ export class Game {
   }
 
   /** E at an Engine Core: Rocket Fuel Canisters pour into the two ports. */
-  private engineCoreAct(x: number, y: number, z: number) {
-    const sh = this.claimShip(x, y, z);
-    const pk = `${x},${y},${z}`;
+  private engineCoreAct(a: BlockAt) {
+    const sh = a.sh ?? this.claimShip(a.x, a.y, a.z);
+    const pk = this.atKey(a);
     if (!sh && !this.coreFuel.has(pk)) this.coreFuel.set(pk, [0, 0]);
     const ports = sh ? sh.fuel : this.coreFuel.get(pk)!;
     const sel = this.inv.selectedSlot();
@@ -5207,9 +5515,11 @@ export class Game {
     this.paused = false;
     this.survival.reset();
     const beacon = [...this.beaconMarks].reverse()
-      .find((b) => this.world.get(b.x, b.y, b.z) === BEACON);
-    if (beacon) this.player.pos.set(beacon.x + 0.5, beacon.y + 1.01, beacon.z + 0.5);
-    else this.player.pos.set(0.5, 31.01, 0.5);
+      .find((b) => this.beaconAlive(b));
+    if (beacon) {
+      const [bx, by, bz] = this.beaconWorld(beacon);
+      this.player.pos.set(bx + 0.5, by + 1.01, bz + 0.5);
+    } else this.player.pos.set(0.5, 31.01, 0.5);
     this.player.vel.set(0, 0, 0);
     this.saveNow();
   }
@@ -5571,14 +5881,14 @@ export class Game {
       const lc = lamp.charges ?? 0;
       document.getElementById("fire-lamp-info")!.textContent = `Head Lantern — ${lc}/5 charges`;
       const lb = document.getElementById("btn-fire-lamp") as HTMLButtonElement;
-      lb.disabled = lc >= 5 || !this.fireLit(this.openFire!.join(","));
+      lb.disabled = lc >= 5 || !this.fireLit(this.openFire!);
       lb.onclick = () => {
-        if (lc >= 5 || !this.fireLit(this.openFire!.join(","))) return;
+        if (lc >= 5 || !this.fireLit(this.openFire!)) return;
         if (!this.spendFuel(f, 1)) return;
         lamp.charges = lc + 1;
         this.audio.place();
         hud.toast(`The lantern drinks from the flames — ${lamp.charges}/5 charges.`);
-        this.syncFire(this.openFire!.join(","));
+        this.syncFire(this.openFire!);
         this.renderInv();
       };
     } else lw.classList.add("hidden");
@@ -5952,8 +6262,8 @@ export class Game {
       document.getElementById("ifc-list")?.classList.remove("hot");
       if (this.overBin(ev.clientX, ev.clientY)) { this.binDiscard(); return; } // the item is already in temp
       if (this.overCoals(ev) && this.boxFuel(s.itemId) && (!this.openGen || this.feedGen(s))) { // onto the burn box: burned away, charge banked
-        if (this.pot) { this.feedFire(this.pot, s); this.syncPot(this.openPot!.join(",")); }
-        else if (this.fire) { this.feedFire(this.fire, s); this.syncFire(this.openFire!.join(",")); }
+        if (this.pot) { this.feedFire(this.pot, s); this.syncPot(this.openPot!); }
+        else if (this.fire) { this.feedFire(this.fire, s); this.syncFire(this.openFire!); }
         else this.paintGenStatus();
         this.temp = null;
         this.audio.place();
@@ -6011,8 +6321,8 @@ export class Game {
     // fuel headed for an open Campfire or Cooking Pot is consumed on the way: charges bank, item is gone
     if ((target === this.fire?.input || target === this.pot?.input) && FIRE_FUEL[s.itemId] !== undefined) {
       src.slots.splice(src.slots.indexOf(s), 1);
-      if (this.pot) { this.feedFire(this.pot, s); this.syncPot(this.openPot!.join(",")); }
-      else { this.feedFire(this.fire!, s); this.syncFire(this.openFire!.join(",")); }
+      if (this.pot) { this.feedFire(this.pot, s); this.syncPot(this.openPot!); }
+      else { this.feedFire(this.fire!, s); this.syncFire(this.openFire!); }
       this.audio.place();
       this.renderInv();
       this.renderHeld();
@@ -6117,8 +6427,8 @@ export class Game {
       document.getElementById("ifc-list")?.classList.remove("hot");
       if (this.overBin(ev.clientX, ev.clientY)) { this.binDiscard(); return; } // the item is already in temp
       if (this.overCoals(ev) && this.boxFuel(s.itemId) && (!this.openGen || this.feedGen(s))) { // onto the burn box: burned away, charge banked
-        if (this.pot) { this.feedFire(this.pot, s); this.syncPot(this.openPot!.join(",")); }
-        else if (this.fire) { this.feedFire(this.fire, s); this.syncFire(this.openFire!.join(",")); }
+        if (this.pot) { this.feedFire(this.pot, s); this.syncPot(this.openPot!); }
+        else if (this.fire) { this.feedFire(this.fire, s); this.syncFire(this.openFire!); }
         else this.paintGenStatus();
         this.temp = null;
         this.audio.place();

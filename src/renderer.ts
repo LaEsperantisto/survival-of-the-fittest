@@ -1933,11 +1933,12 @@ export class Renderer {
    *  occupy — the blocks' real shapes and textures, full-bright at 55 %.
    *  Multi-cell blocks pass their peers (bench/bed far half, door upper half)
    *  so the footprint is honest before you commit. */
-  setGhost(cells: { x: number; y: number; z: number; id: number; rot?: number }[]) {
-    if (!this.ghost) {
-      this.ghost = new THREE.Group();
-      this.scene.add(this.ghost);
-    }
+  setGhost(cells: { x: number; y: number; z: number; id: number; rot?: number }[], parent?: THREE.Object3D) {
+    if (!this.ghost) this.ghost = new THREE.Group();
+    // aiming at a flying Ship: the preview hangs off the Ship group and turns
+    // with it, instead of snapping to the world lattice it doesn't sit on
+    const p = parent ?? this.scene;
+    if (this.ghost.parent !== p) p.add(this.ghost);
     const kids = this.ghost.children;
     while (kids.length < cells.length) {
       const mesh = new THREE.Mesh(new THREE.BufferGeometry(), this.matGhost);
@@ -2239,10 +2240,13 @@ export class Renderer {
     for (const k of this.chunkMeshes.keys()) world.dirty.add(k);
   }
 
-  setHighlight(target: { x: number; y: number; z: number } | null) {
+  setHighlight(target: { x: number; y: number; z: number } | null, parent?: THREE.Object3D) {
     if (!target) { this.highlight.visible = false; return; }
-    this.highlight.visible = true;
+    // on a flying hull the outline rides the Ship group: exact cell, turns with yaw
+    const p = parent ?? this.scene;
+    if (this.highlight.parent !== p) p.add(this.highlight);
     this.highlight.position.set(target.x + 0.5, target.y + 0.5, target.z + 0.5);
+    this.highlight.visible = true;
   }
 
   /** Head Lantern: show the warm player light at pos, or hide it when null.
