@@ -55,7 +55,7 @@ A sub-space of the Ship or a Base separated by Insulating Blocks and a Door, sea
 The ship's insulating wall block.
 
 **Ship**:
-The small wreck at the world origin — a rounded hull with broken wings — split into sealable Compartments: a forward cockpit (its Chest), a central hall, a Save Room whose stern Door is the wreck's only opening to the outside, a water compartment, and a regulator room. On a Phase 1 Start the hall and regulator room hold a working Storm Breaker and Heat Regulator; on a Phase 0 Start they hold only their Husks; a Phase 2 Start ships flight-capable — lit wingtip Thrusters, a Yoke in the cockpit, an Engine Core in the hall, Panel and Battery wired in. It holds no Crafting Bench and no Bed — bench and bunk must be earned. Fully customizable: any block can be broken or placed, so the Ship can be expanded anywhere.
+The small wreck at the world origin — a rounded hull with broken wings — split into sealable Compartments: a forward cockpit (its Chest), a central hall, a Save Room whose stern Door is the wreck's only opening to the outside, a water compartment, and a regulator room. On a Phase 1 Start the hall and regulator room hold a working Storm Breaker and Heat Regulator; on a Phase 0 Start they hold only their Husks. The Ship can fly — and it can leave its planet (see **Lift-off**, **Leave Planet**); on a Phase 2 Start the world begins on Silvaris, its Ship already fixed and **docked** at a Settlement. It holds no Crafting Bench and no Bed — bench and bunk must be earned. Fully customizable: any block can be broken or placed, so the Ship can be expanded anywhere.
 
 **Save Room**:
 The wreck's Compartment containing the starting Save Beacon, reachable only through the hall — the safest room in the crash site.
@@ -72,14 +72,33 @@ Whatever space the player has enclosed with Insulating Blocks. Enclosing alone o
 Chosen or randomly generated at world creation. The same Seed yields the same world on any device.
 
 **Biome**:
-Terrain regions: Dunes, Rocky Desert, Badlands/mountains, Salt Flats, dry canyons.
+Terrain regions. Desertis: Dunes, Rocky Desert, Badlands/mountains, Salt Flats, dry Canyons. Silvaris: Deep Ocean, Shallows, Temperate Plains, Boreal Forest, Alpine Peaks, Scorch Belt.
+
+**Desertis**:
+the Desert Planet, where every normal run begins; the crashed Ship sits at its world origin. After Leave Planet its world record survives in the save — Base, caches and edits intact and waiting — but nothing reaches it until the player can make Super Rocket Fuel themselves.
+_Avoid_: the first planet, homeworld
+
+**Silvaris**:
+the Second Planet: oceans you can drown in, plains, a boreal forest, mountains tall enough to bite cold, and the Scorch Belt. It opens as the stage of Phase 2 — reached by Leave Planet at the end of Phase 1, or chosen directly at world creation. One save, one world record each: Silvaris has its own Landmarks, Pins, fauna, crops and Map.
+
+**Settlement**:
+an advanced ruin on Silvaris — better-built structures, better loot, Beds, a Trader stall, Inscriptions, and a **Dock**. No living soul is home — yet.
+
+**Dock**:
+a plaza of Dock Pads at every Settlement, laid out for a Ship to stand on. A grounded Ship standing on Docks is **docked**: the arrival cinematic aims for it, ground Grids join it naturally, and its moorings are the planet's familiar anchor.
+
+**Inscription**:
+a carved stele read with E. Settlements keep the Dwellers' memories in these; reading one earns its Codex entry. They resolve who the Dwellers were and why they left — and ask what worlds remain.
+
+**Scorch Belt**:
+the Silvaris biome of black basalt and heat-soaked ground near volcanic fires — no open flame to fear yet, but the Air Temperature and the Ashstorm bite there.
 
 **Oasis**:
 A recurring Landmark of the deep desert — open water ringed by green trees and plants that can be farmed. Ripe Dune Melon vines hang at the water's edge and young sprouts just beyond them: break a sprout for Melon Seeds, so the oasis seeds itself. Widely spaced, never scarce per world; the danger is the walk, not the shortage.
 _Avoid_: watering hole, spring
 
 **Town**:
-A settlement out in the world: huts, Chests with rare loot, Beds, and the only source of Desert Wheat Seed. No living soul is home — yet.
+A ruin out in the world: huts, Chests with rare loot, Beds, and the only source of Desert Wheat Seed. No living soul is home — yet.
 
 **Dead Tree**:
 A leafless tree scattered through the desert.
@@ -185,7 +204,7 @@ _Avoid_: weapon (as the item's name), blade, sword (bare — material always qua
 ### Systems
 
 **Main Quest**:
-The goal line: a fixed chain of guided goals; finishing it completes the game. Its deeds count whenever they happen, not only while their quest is current — something done early is paid off the moment its quest comes up, Reward Cache included.
+The goal line: one fixed chain of guided goals running across every planet. Each Phase is derived from how far the chain has run; completing a stretch closes a planet's story, not the game. Its deeds count whenever they happen, not only while their quest is current — something done early is paid off the moment its quest comes up, Reward Cache included.
 
 **Survivor**:
 A rescuable person. Needs exactly what the player needs — Water, safe Heat, Health — and no food of any kind. Vulnerable like the player: they need genuine shelter and water wherever they live, including a rebuilt Ship. Nothing about them is tied to the original wreck: any equivalent insulated structure has exactly the same properties.
@@ -234,6 +253,12 @@ The first crop found — wild at Oases. Eaten raw: a big drink with a little hea
 
 **Desert Wheat**:
 The harder crop, discovered in Town loot: it tolerates cold but not the midday, and its cooked food heals more than anything else on the farm.
+
+**Tundra Root**:
+a hardy Silvaris tuber grown on Farmland from seed tubers — the cold biome's staple, food for the player and for a pen of animals.
+
+**Ember Bush**:
+a small Silvaris shrub bearing pungent red berries — grown from cuttings, eaten raw or cooked.
 
 **Bread**:
 Desert Wheat baked at a Cooking Pot — the farm's best healing.
@@ -318,7 +343,7 @@ A station that breaks down crafted items (tools, gear — not placed blocks) int
 _Avoid_: scrap bin
 
 **Trader**:
-A desert merchant who keeps a stall at a Trader Camp. A Trader paces a small beat around the stall — never far from it, and it turns to face whoever is bartering — but it does not fight and cannot be killed. Barter is the only exchange, and there is no coin anywhere in the desert.
+A desert merchant who keeps a stall at a Trader Camp. A Trader paces a small beat around the stall — never far from it, and it turns to face whoever is bartering — but it does not fight and cannot be killed. Barter is the only exchange, and there is no coin anywhere in the desert. Silvaris keeps the same kind of camp — an outpost stall with the advanced goods the settlements don't hold.
 _Avoid_: NPC (generic), merchant, vendor, wanderer (the abandoned Town-based idea)
 
 **Trader Camp**:
@@ -331,12 +356,18 @@ A Trader's offers: five straight goods-for-goods swaps per Camp, fixed for that 
 A passing state of the open desert: wind-borne sand that amplifies whatever the Air Temperature already is, drinks the player's Water faster, and scours bare skin. Walls, shade and Caves ride it out; only the open air changes.
 _Avoid_: dust storm, weather (there is nothing else)
 
+**Blizzard**:
+Silvaris' twin of the Sandstorm over the Alpine Peaks and the cold forest: driving snow that amplifies Cold exactly as sand amplifies heat, drinks Water and scours bare skin. Shelter and Storm Breakers ride it out the same way.
+
+**Ashstorm**:
+Silvaris' twin over the Scorch Belt: airborne ash that amplifies Heat and scours — the belt's double bite. A Storm Breaker calms any storm kind; the desert's Breakers were never kind-specific.
+
 **Sandstorm Breaker**:
 A humming red pylon block. Standing within its radius, the Sandstorm loses all teeth on the body: no amplification, no extra Water drain, no scouring. The Ship's hall holds a working one on a Phase 1 Start, and only its Husk on a Phase 0 Start; more are craftable at a Crafting Bench, and each new one extends the calm. A Breaker's calm is visible as a faint red dome and a "STORM BROKEN" chip. The housing only comes down for an Alloy Disassembler.
 _Avoid_: windmill, storm lantern (it is not a light)
 
 **Engine Core**:
-The single quest-exclusive item — the final quest artifact. Everything else in the game is eventually craftable.
+The Ship's heart: a Grid machine that burns Rocket Fuel to drive the Thrusters. The first one is quest loot on Desertis — from Phase 2 on it is craftable at an Assembly Bench, so a player can raise more than one Ship. It shows **two physical canister slots**: a Rocket Fuel canister put in a slot banks fuel that burns until it is spent, and the slot then empties itself. The moment the engines draw on a slot, that canister is **locked** in — an untouched canister can be taken back out; a locked one belongs to the Ship until it is dry, and breaking the Core destroys it. A Super Rocket Fuel canister in a slot never burns: it waits there for Leave Planet.
 
 **Cave**:
 A hollow in the ground: tunnel networks and chambers dug through rock, entered at dark surface mouths in the rocky biomes. Deep Air Temperature barely moves with the sky — caves are a refuge at noon and a warmth at night. Without light underground there is only blackness.
@@ -399,6 +430,12 @@ _Avoid_: boulder (the lone L-shaped lump it replaces)
 A deep bluish Mineral, found only near the bottom of the underground — the material the Ship's repair hangs on.
 _Avoid_: cobalt (bare)
 
+**Titanium Ore**:
+A light silvery Mineral of Silvaris' deep caves — the bones of its advanced machines, smelted at a Foundry into Titanium Rod.
+
+**Graphite Ore**:
+A soft black Mineral of Silvaris' middle caves — the catalyst a Fuel Works needs to raise Rocket Fuel into Super Rocket Fuel.
+
 **Broken Thruster**:
 One of the wreck's four dead wingtip engines. A Disassembler takes it off its pylon — it comes down as an item and can be stood back up anywhere. Its only interaction while dead is a Thruster Nozzle (E); a lit Thruster keeps burning when broken and re-placed.
 
@@ -410,7 +447,14 @@ _Avoid_: forge (it is a bench, not a smithy), armory (spelling: British, like th
 The replacement part that wakes a Broken Thruster: crafted from what the deep caves give up (Cobalt, Copper). Installing all four completes the Main Quest.
 
 **Lift-off**:
-The ending: with every Thruster woken, the Ship takes off. The player may then continue on the ground where it lands again — the sky, and what is up there, stays for later.
+Piloted takeoff at the Yoke: the Ship rises under its own power and completes the Phase-1 flight quest. Home now travels with the Ship — it may fly and land anywhere on its planet. Not the game's ending: that role belongs to **Leave Planet**.
+
+**Super Rocket Fuel**:
+a sealed blue canister — the key between worlds. In the Ship it never burns for flight: it sits inert in an Engine Core slot until **Leave Planet** consumes it. Phase 1 hands out exactly one as a quest reward; the Phase-2 finale is making it yourself at a Fuel Works. Until then, the planet you left stays unreachable.
+_Avoid_: blue fuel, warp fuel
+
+**Leave Planet**:
+the interplanetary jump: at the Yoke with a Super Rocket Fuel canister loaded in an Engine Core slot and real flight fuel still in the other, press the button — after a warning that spells out what is consumed, what travels, and what is left behind, the Ship climbs under its own power and arrives **docked** on a Settlement's Dock on the next planet. It consumes the one Super canister; everything aboard the Ship travels, everything on the ground does not. One departure per jump; return is Phase 3's promise.
 
 **Sand Wurm**:
 A rare, blind, segmented deep predator: slow, nearly unkillable by early gear, and usually best outrun. Its Hide is the warmest armour there is.
@@ -434,6 +478,18 @@ Body armour of layered Thornback shell plates — the heaviest plate per blow sh
 A small, enormous-eared desert fox that outruns everything and fights nothing; its Pelt is soft, warm and prized in trade.
 _Avoid_: fennec (bare, in prose)
 
+**Snow Stalker**:
+a lean pale predator of the Alpine Peaks and the cold forest — the only Silvaris animal that hunts the player. Its Frost Pelt is the warmest wearable leather.
+
+**Tideback**:
+a heavy placid coastal grazer of Silvaris' Shallows; it flees rather than fights, and yields Hide for trade.
+
+**Brushbuck**:
+a plain-dwelling Silvaris herd animal — the planet's main source of Meat and common Pelt.
+
+**Frost Pelt**:
+the Snow Stalker's pale fur — the cold-weather warmest of the pelts, and the Silvaris fur the Trader prizes.
+
 **Head Lantern**:
 The Portable Light worn in the Light slot: toggled at will, it burns fuel charges and must be refueled — the only way to carry a Cave's worth of darkness back out.
 
@@ -452,12 +508,24 @@ Menu with units (Celsius/Fahrenheit), controls, and rendering options.
 a Sealed Space that holds at least one anchor — a Campfire, a Bed, a Storm Breaker, or a Power Panel. Only then does the desert call it home: muffled wind, warm light, a hearth that tends itself.
 _Avoid_: home, shelter (as a mechanic), camp
 
-**Phase Start**:
-the beginnings a world is made with, chosen at world creation and fixed for the run. **Phase 0 (Hard)**: the wreck is dead — only Husks of a Regulator and Storm Breaker. **Phase 1 (Easy, recommended)**: a living Heat Regulator and Storm Breaker. **Phase 2**: the wreck is already flight-capable — Frame braced, all four wingtip Thrusters lit, Yoke, Engine Core (its fuel ports loaded) and a wired Panel and Battery standing inside. Phase 0 and 1 are stripped of Bench and bunk; nothing else changes between Phases.
-_Avoid_: easy/hard mode (nothing else changes)
+**Phase**:
+a stage of the game and one of the beginnings a world is made with, chosen at world creation and fixed for the run. **Phase 0 (Hard)**: the wreck is dead — only Husks of a Regulator and Storm Breaker; the stage is pure survival. **Phase 1 (Easy, recommended)**: a living Heat Regulator and Storm Breaker; the stage is fixing the Ship on Desertis. **Phase 2**: the world begins on Silvaris with the Ship already fixed and docked at a Settlement; the stage is using the Ship across one planet. **Phase 3** (unbuilt): interplanetary travel. Reaching a stage means finishing the previous one's Main Quest chain: Lift-off and Leave Planet close Phase 1, crafting your own Super Rocket Fuel closes Phase 2. Phase 0 and 1 are stripped of Bench and bunk; nothing else changes between Phases.
+_Avoid_: easy/hard mode (nothing else changes), P1/P2/P3 milestones (retired)
 
 **Husk**:
 a dead wrecked fixture — a Regulator or Storm Breaker frozen mid-failure, teaching what might have been. Breaking it yields the broken thing; repairing it (about half a fresh build's parts) sets it working again.
+
+**Electric Bench**:
+the advanced workbench of the Grid: every power and machine part — Panel, Pole, generators, Battery, Inserter, Planter, Harvester, Chest, Chest Interface, Pump, Water Tower, Water Extractor, Refinery, Regulator, Storm Breaker, Lamp, Cooker — is built here, on every planet, and the plain Crafting Bench makes none of them. The Bench itself is a Crafting Bench recipe, cheap and early.
+
+**Assembly Bench**:
+the station of Ship-shape: assembles whole Engine Cores, Thruster Nozzles and Dock Pads from ingots, rods and glass.
+
+**Fuel Works**:
+the fuel plant: presses Rocket Fuel into **Super Rocket Fuel** — a sealed Rocket Fuel Canister and Graphite Ore, nothing else. The forge of the Phase-2 finale.
+
+**Foundry**:
+the smelting floor beyond the Campfire: refines raw Ore into Metal Plating, melts Titanium Ore into Titanium Rod, and hardens Metal Plating and Coal into Steel Plating.
 
 **Grid**:
 a connected network of Power Poles and powered blocks under one Power Panel. No Panel, no power; when draw outstrips supply the Panel trips and the Grid goes dark until someone resets it.
@@ -493,7 +561,7 @@ the panel the Surveyor's Visor draws while worn — local terrain, known Landmar
 _Avoid_: minimap, radar
 
 **Landmark**:
-a named feature the Map knows: Towns, Oases, Trader Camps, Cave Mouths, wrecks, buried canister sites. A Landmark becomes known by reaching it, by the Tracker, or (canisters) by digging one up; known ones mark themselves on the Map.
+a named feature the Map knows: Towns, Oases, Trader Camps, Cave Mouths, wrecks, buried canister sites — and on Silvaris, Settlements, their Docks and Trader Camps. A Landmark becomes known by reaching it, by the Tracker, or (canisters) by digging one up; known ones mark themselves on the Map. Every planet's Map knows only its own.
 
 **Pin**:
 a player-marked point planted by a craftable Surveyor's Pin, freely named. A Pin named "Base" is a marked point the Visor beams.

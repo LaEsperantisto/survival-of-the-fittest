@@ -140,6 +140,7 @@
   <div id="flight-errors"></div>
   <div id="flight-keys">W/S thrust &middot; A/D heading &middot; Space/Ctrl climb&ndash;descend &middot; hold Ctrl down to land &middot; F outline &middot; E leave the yoke (P / Esc too)</div>
   <button id="flight-take" disabled>Lift off</button>
+  <button id="flight-leave" class="hidden">Leave Planet</button>
   <button id="flight-outline">Frame outline (F)</button>
 </div>
 
@@ -284,6 +285,24 @@
   <h3>Trader — a straight swap, no coin</h3>
   <div id="trade-offers"></div>
   <p id="trade-note" class="trade-note"></p>
+</div>
+
+<div id="ui-core" class="panel hidden">
+  <button class="close-btn close-x" aria-label="Close">✕</button>
+  <h3>Engine Core <button id="btn-catalog-core" class="sort-btn">Catalog</button></h3>
+  <div id="core-slots">
+    <div class="core-slot" id="core-slot-0"><div class="core-slot-art"></div><div class="core-slot-lab">Port 1</div><div class="core-slot-state"></div></div>
+    <div class="core-slot" id="core-slot-1"><div class="core-slot-art"></div><div class="core-slot-lab">Port 2</div><div class="core-slot-state"></div></div>
+  </div>
+  <div class="fire-hint">Hold a Rocket Fuel or Super Rocket Fuel canister and click an empty port to load it. Click a loaded port to take the canister back out — but the moment the engines drink from a port, that canister is locked in until it runs dry, and breaking the Core destroys a locked one. A Super Rocket Fuel canister never burns: it waits in its port for the leap between worlds.</div>
+</div>
+
+<div id="ui-leave" class="panel hidden">
+  <button class="close-btn close-x" aria-label="Close">✕</button>
+  <h3>Leave Planet</h3>
+  <p id="leave-warn">The climb burns hard and long. Everything aboard the Ship travels with you; everything standing on the ground does not — your Base, farms, caches and Pins stay on this world, waiting.</p>
+  <div id="leave-check"></div>
+  <button id="btn-leave" disabled>Burn for the Second Planet</button>
 </div>
 
 <div id="screen-catalog" class="screen hidden">

@@ -1,5 +1,11 @@
 import { AIR, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER, DOOR_INNER_OPEN, LEAVES, REGULATOR, CAMPFIRE, BED, BED_EXT, STORM_BREAKER, POWER_PANEL, INSGLASS, BENCH, BENCH_EXT, CURVED_HULL, HULL_SLOPE, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_GATE_OPEN, CS, CH, WATER, WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1, OIL, OIL7, OIL6, OIL5, OIL4, OIL3, OIL2, OIL1, isOpaque, isFluid, waterStrength, flowId, oilStrength, oilFlowId } from "./blocks";
-import { genChunk, Structures } from "./gen";
+import { genChunk, structuresOf, Structures } from "./gen";
+import { genSilvarisChunk } from "./silvaris";
+import type { Planet } from "./save";
+
+/** Playable sky per planet (ADR-0011): `CH` stays the array capacity for every
+ *  planet, `worldH` is the terrain/flight/sky ceiling a planet actually uses. */
+export const PLANET_H: Record<Planet, number> = { desertis: 96, silvaris: 160 };
 
 export const ckey = (cx: number, cz: number) => cx + "," + cz;
 const bidx = (x: number, z: number, y: number) => (x * CS + z) * CH + y;
@@ -21,6 +27,18 @@ const FLUIDS: Fluid[] = [
   { source: WATER, flowIds: [WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1], strength: waterStrength, flowId, opaque: false },
   { source: OIL, flowIds: [OIL7, OIL6, OIL5, OIL4, OIL3, OIL2, OIL1], strength: oilStrength, flowId: oilFlowId, opaque: false },
 ];
+/** Silvaris terrain, per chunk — biomes, oceans, settlements and the arrival
+ *  plateau all come from silvaris.ts, painting through a chunk-local setter. */
+function silvarisChunk(seed: number, cx: number, cz: number): Uint8Array {
+  const c = new Uint8Array(CS * CS * CH);
+  const ox = cx * CS, oz = cz * CS;
+  genSilvarisChunk({ cx, cz, seed, set: (x, y, z, id) => {
+    const lx = x - ox, lz = z - oz;
+    if (lx >= 0 && lx < CS && lz >= 0 && lz < CS && y >= 0 && y < CH) c[bidx(lx, lz, y)] = id;
+  } });
+  return c;
+}
+
 /**
  * Infinite voxel world: base terrain is regenerated deterministically from the
  * seed; only player modifications (deltas) are persisted.
@@ -39,16 +57,38 @@ export class World {
   private fluidQ = new Set<string>();
   private fluidGen = 0; // counts propagation steps; odd steps skip the fall
   gen: Structures;
+  /** this planet's playable height (ADR-0011); chunk arrays always span CH */
+  worldH: number;
 
-  constructor(public seed: number, public worldMode: "easy" | "hard" | "phase2" = "easy") {
-    this.gen = new Structures(seed);
+  constructor(public seed: number, public worldMode: "easy" | "hard" | "phase2" = "easy",
+    public planet: Planet = "desertis", deltas?: Record<string, number[]>) {
+    this.worldH = PLANET_H[planet];
+    this.gen = structuresOf(seed);
+    if (deltas) this.loadDeltas(deltas);
+  }
+
+  /** Repoint this World at another planet's record without replacing the object:
+   *  Player and everything else that holds the reference follows. Chunk caches,
+   *  fluids, rots and the map-tile revision counters all reset, so the new
+   *  planet streams in as if the game had just loaded it. */
+  resetFor(seed: number, worldMode: "easy" | "hard" | "phase2", planet: Planet,
+    deltas: Record<string, number[]>, rots?: Record<string, number>) {
+    this.seed = seed; this.worldMode = worldMode; this.planet = planet;
+    this.worldH = PLANET_H[planet];
+    this.gen = structuresOf(seed);
+    this.doorSwing.clear();
+    this.fluidQ.clear();
+    this.revs.clear();
+    this.loadDeltas(deltas);
+    this.loadRots(rots ?? {});
   }
 
   chunk(cx: number, cz: number): Uint8Array {
     const k = ckey(cx, cz);
     let c = this.chunks.get(k);
     if (!c) {
-      c = genChunk(this.seed, this.gen, cx, cz, this.worldMode);
+      c = this.planet === "silvaris" ? silvarisChunk(this.seed, cx, cz)
+        : genChunk(this.seed, this.gen, cx, cz, this.worldMode);
       const d = this.deltas.get(k);
       if (d) for (const [i, id] of d) c[i] = id;
       this.chunks.set(k, c);
@@ -280,7 +320,7 @@ export class World {
   }
 
   surface(x: number, z: number): number {
-    for (let y = CH - 1; y >= 0; y--) {
+    for (let y = this.worldH - 1; y >= 0; y--) {
       const id = this.get(x, y, z);
       if (id !== AIR) return y;
     }

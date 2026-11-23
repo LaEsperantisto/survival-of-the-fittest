@@ -28,7 +28,6 @@ export const SHIP = {
   /** flight envelope, P1 numbers */
   speed: 10,          // m/s horizontal at full thrust
   climb: 4,           // m/s
-  ceiling: CH,        // world height
   yawRate: (25 * Math.PI) / 180, // ~25°/s at the controls
   /** smooth-landing spin: the hull settles to the nearest right angle at this rate */
   settleRate: (40 * Math.PI) / 180,
@@ -62,6 +61,28 @@ export interface ShipHit {
 
 export const skey = (ix: number, iy: number, iz: number): string => keyOf(ix, iy, iz);
 
+/** One Engine Core fuel port (ADR-0012): 0 empty, 1 Rocket Fuel,
+ * 2 Super Rocket Fuel. A Super port NEVER burns — Leave Planet spends it.
+ * `c` is charges left; `l` locks the moment the engines first drink from
+ * the canister, and only an untouched canister ever comes back out. */
+export interface Port { k: 0 | 1 | 2; c: number; l: boolean }
+export const emptyPort = (): Port => ({ k: 0, c: 0, l: false });
+/** flight-readout currency: the sum of Rocket charges only */
+export const rocketCharges = (fuel: readonly Port[]): number =>
+  fuel.reduce((a, pt) => a + (pt.k === 1 ? pt.c : 0), 0);
+/** pre-Port saves stored ports as bare charge numbers: a non-zero port is
+ * one the engines already drank from — full-grade Rocket Fuel, locked. */
+export function migratePorts(raw: (number | Port)[] | null | undefined): [Port, Port] {
+  const out: [Port, Port] = [emptyPort(), emptyPort()];
+  for (let i = 0; i < 2; i++) {
+    const e = raw?.[i];
+    if (typeof e === "number") out[i] = e > 0 ? { k: 1, c: e, l: true } : emptyPort();
+    else if (e && typeof e === "object")
+      out[i] = { k: e.k === 1 || e.k === 2 ? e.k : 0, c: Math.max(0, e.c || 0), l: !!e.l };
+  }
+  return out;
+}
+
 export interface ShipSnapshot {
   id: number;
   pos: { x: number; y: number; z: number };
@@ -69,7 +90,7 @@ export interface ShipSnapshot {
   fwd?: number;
   vel: { x: number; y: number; z: number };
   grounded: boolean;
-  fuel: number[];
+  fuel: Port[] | number[]; // legacy saves hold bare charge numbers
   cells: [string, ShipCell][];
 }
 
@@ -91,8 +112,8 @@ export class Ship {
   fwd = 0;
   vel = { x: 0, y: 0, z: 0 };
   grounded = true;
-  /** the two Engine Core Rocket Fuel ports, in charges */
-  fuel: number[] = [0, 0];
+  /** the two Engine Core fuel ports: Rocket burns, Super waits for the leap */
+  fuel: [Port, Port] = [emptyPort(), emptyPort()];
   /** last frame's pose, so riding entities can follow the delta */
   prevPos = { x: 0, y: 0, z: 0 };
   prevYaw = 0;
@@ -102,7 +123,11 @@ export class Ship {
   private bbox: Box3 | null = null;
   private shell: Set<string> | null = null;
 
-  constructor(public id: number) {}
+  /** flight ceiling is this planet's playable sky (ADR-0011): the Ship that
+   *  flies over Silvaris climbs far higher than the one over Desertis. */
+  get ceiling(): number { return this.worldH + 32; }
+
+  constructor(public id: number, public worldH = CH) {}
 
   getCell(ix: number, iy: number, iz: number): ShipCell | undefined {
     return this.cells.get(skey(ix, iy, iz));
@@ -422,7 +447,7 @@ export class Ship {
   }
 
   fuelTotal(): number {
-    return this.fuel.reduce((a, b) => a + b, 0);
+    return rocketCharges(this.fuel);
   }
 
   /** cells with at least one empty face — the only cells that can touch the
@@ -446,20 +471,19 @@ export class Ship {
   snapshot(): ShipSnapshot {
     return {
       id: this.id, pos: { ...this.pos }, yaw: this.yaw, fwd: this.fwd,
-      vel: { ...this.vel }, grounded: this.grounded, fuel: [...this.fuel],
+      vel: { ...this.vel }, grounded: this.grounded, fuel: this.fuel.map((pt) => ({ ...pt })),
       cells: [...this.cells.entries()],
     };
   }
 
-  static restore(s: ShipSnapshot): Ship {
-    const sh = new Ship(s.id);
+  static restore(s: ShipSnapshot, worldH = CH): Ship {
+    const sh = new Ship(s.id, worldH);
     sh.pos = { ...s.pos };
     sh.yaw = s.yaw;
     sh.fwd = ((s.fwd ?? 0) % 4 + 4) % 4;
     sh.vel = { ...s.vel };
     sh.grounded = s.grounded;
-    sh.fuel = (s.fuel ?? [0, 0]).slice(0, SHIP.fuelPorts);
-    while (sh.fuel.length < SHIP.fuelPorts) sh.fuel.push(0);
+    sh.fuel = migratePorts(s.fuel);
     for (const [k, c] of s.cells) sh.cells.set(k, c);
     sh.prevPos = { ...sh.pos };
     sh.prevYaw = sh.yaw;

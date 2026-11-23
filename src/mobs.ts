@@ -1,8 +1,12 @@
 import * as THREE from "three";
+import { GRASS, SAND, SNOW, BASALT } from "./blocks";
+import { SIL_SEA, SB_BOREAL, biomeAt, silvarisSpawns } from "./silvaris";
 
 // ---------------------------------------------------------------- definitions
 
-export type MobKind = "snake" | "rat" | "scorpion" | "wurm" | "trader" | "vulture" | "tortoise" | "fennec";
+export type MobKind =
+  | "snake" | "rat" | "scorpion" | "wurm" | "trader" | "vulture" | "tortoise" | "fennec"
+  | "stalker" | "tideback" | "brushbuck";
 
 export interface MobDef {
   kind: MobKind;
@@ -17,6 +21,8 @@ export interface MobDef {
   height: number;           // visual overall height
   drops: { itemId: string; count: number }[];
   dropChance?: number[];      // per-drop probability, aligned with drops (default 1)
+  retaliateR?: number;        // neutral-until-hit: radius it chases in after the player damages it (game.ts AI hook)
+  herd?: { min: number; max: number }; // spawn batch size at one site (herd species; default 1)
 }
 
 export const MOB_DEFS: Record<MobKind, MobDef> = {
@@ -72,6 +78,29 @@ export const MOB_DEFS: Record<MobKind, MobDef> = {
     hitR: 0.4, height: 0.45,
     drops: [{ itemId: "fennec_pelt", count: 1 }, { itemId: "rat_raw", count: 1 }],
     dropChance: [1, 0.3],
+  },
+  stalker: {
+    kind: "stalker", name: "Snow Stalker", hp: 24, speed: 5.2,
+    aggroR: 6, fleeR: 10, biteDmg: 8, biteCd: 1.8,
+    hitR: 0.6, height: 0.85,
+    drops: [{ itemId: "frost_pelt", count: 1 }, { itemId: "frost_pelt", count: 1 }],
+    dropChance: [1, 0.2],
+  },
+  tideback: {
+    kind: "tideback", name: "Tideback", hp: 70, speed: 0.55,
+    aggroR: 0, fleeR: 0, biteDmg: 10, biteCd: 2.5,
+    hitR: 1.4, height: 1.4,
+    retaliateR: 8,
+    drops: [{ itemId: "tideback_hide", count: 1 }, { itemId: "tideback_hide", count: 1 }],
+    dropChance: [1, 0.5],
+  },
+  brushbuck: {
+    kind: "brushbuck", name: "Brushbuck", hp: 10, speed: 4.6,
+    aggroR: 0, fleeR: 9, biteDmg: 0, biteCd: 0,
+    hitR: 0.6, height: 1.0,
+    herd: { min: 2, max: 4 },
+    drops: [{ itemId: "brushbuck_meat", count: 1 }, { itemId: "brushbuck_meat", count: 1 }],
+    dropChance: [1, 0.5],
   },
 };
 
@@ -315,6 +344,89 @@ function traderTex(): THREE.CanvasTexture {
   });
 }
 
+/** Snow Stalker pelt: near-white winter fur, slate dorsal streak, faint cold mottling. */
+function stalkerTex(): THREE.CanvasTexture {
+  return canvasTex((g, rnd) => {
+    g.fillStyle = "#dde5ea";
+    g.fillRect(0, 0, 64, 64);
+    for (let i = 0; i < 640; i++) {
+      g.fillStyle = rnd() > 0.5 ? "#e9eef2" : "#c8d2da";
+      g.fillRect((rnd() * 64) | 0, (rnd() * 64) | 0, 1, 1);
+    }
+    // slate dorsal streak (top rows) with a soft edge
+    for (let y = 0; y < 9; y++) {
+      g.fillStyle = y >= 5 ? "#5c6b78" : "#778795";
+      g.fillRect(0, y, 64, 1);
+    }
+    for (let i = 0; i < 46; i++) {
+      g.fillStyle = "#6d7c89";
+      g.fillRect((rnd() * 64) | 0, 9 + ((rnd() * 4) | 0), 2, 1);
+    }
+    // pale belly (bottom rows; flipY makes v=0 the canvas bottom)
+    for (let y = 54; y < 64; y++) {
+      g.fillStyle = y >= 58 ? "#f3f6f8" : "#e6ebef";
+      g.fillRect(0, y, 64, 1);
+    }
+  });
+}
+
+/** Tideback hide: wet sea-green leather, dark scute seams, pale barnacle pocks. */
+function tidebackTex(): THREE.CanvasTexture {
+  return canvasTex((g, rnd) => {
+    g.fillStyle = "#5f7166";
+    g.fillRect(0, 0, 64, 64);
+    for (let i = 0; i < 560; i++) {
+      g.fillStyle = rnd() > 0.5 ? "#6c7e72" : "#51615a";
+      g.fillRect((rnd() * 64) | 0, (rnd() * 64) | 0, 1, 1);
+    }
+    // scute seams: dark grid
+    g.fillStyle = "#3d4a44";
+    for (const x of [10, 31, 52]) g.fillRect(x, 0, 2, 64);
+    for (const y of [12, 33, 54]) g.fillRect(0, y, 64, 2);
+    // barnacle pocks clustered near the seams
+    for (const [cx, cy] of [[13, 15], [34, 36], [55, 13], [24, 48]]) {
+      for (let i = 0; i < 5; i++) {
+        g.fillStyle = "#a9b4a8";
+        g.fillRect(cx + ((rnd() * 8) | 0), cy + ((rnd() * 7) | 0), 2, 2);
+      }
+    }
+    // pale wet underside (bottom rows; flipY makes v=0 the canvas bottom)
+    for (let y = 54; y < 64; y++) {
+      g.fillStyle = y >= 58 ? "#93a196" : "#7d8c82";
+      g.fillRect(0, y, 64, 1);
+    }
+  });
+}
+
+/** Brushbuck coat: tawny brown fur, darker spine band, cream belly, pale eye patch. */
+function brushbuckTex(): THREE.CanvasTexture {
+  return canvasTex((g, rnd) => {
+    g.fillStyle = "#8f6b4a";
+    g.fillRect(0, 0, 64, 64);
+    for (let i = 0; i < 700; i++) {
+      g.fillStyle = rnd() > 0.5 ? "#a17e5a" : "#7c5a3c";
+      g.fillRect((rnd() * 64) | 0, (rnd() * 64) | 0, 1, 1);
+    }
+    // darker spine band (top rows)
+    for (let y = 0; y < 8; y++) {
+      g.fillStyle = y >= 4 ? "#6b4c30" : "#78583a";
+      g.fillRect(0, y, 64, 1);
+    }
+    // cream belly (bottom rows; flipY makes v=0 the canvas bottom)
+    for (let y = 52; y < 64; y++) {
+      g.fillStyle = y >= 56 ? "#e8dcc2" : "#d5c6a6";
+      g.fillRect(0, y, 64, 1);
+    }
+    // pale eye-ring patch (upper-left corner region)
+    g.fillStyle = "#d9cab0";
+    g.beginPath();
+    g.arc(10, 12, 8, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#3f2c19";
+    g.fillRect(8, 10, 4, 4);
+  });
+}
+
 interface SnakeMats { body: THREE.MeshLambertMaterial; ridge: THREE.MeshLambertMaterial; eye: THREE.MeshLambertMaterial; }
 interface RatMats { fur: THREE.MeshLambertMaterial; pale: THREE.MeshLambertMaterial; dark: THREE.MeshLambertMaterial; pink: THREE.MeshLambertMaterial; }
 interface ScorpionMats { shell: THREE.MeshLambertMaterial; claw: THREE.MeshLambertMaterial; stinger: THREE.MeshLambertMaterial; eye: THREE.MeshLambertMaterial; }
@@ -323,6 +435,9 @@ interface VultureMats { plumage: THREE.MeshLambertMaterial; skin: THREE.MeshLamb
 interface TortoiseMats { shell: THREE.MeshLambertMaterial; skin: THREE.MeshLambertMaterial; thorn: THREE.MeshLambertMaterial; beak: THREE.MeshLambertMaterial; eye: THREE.MeshLambertMaterial; }
 interface FennecMats { fur: THREE.MeshLambertMaterial; pale: THREE.MeshLambertMaterial; dark: THREE.MeshLambertMaterial; pink: THREE.MeshLambertMaterial; }
 interface TraderMats { robe: THREE.MeshLambertMaterial; sash: THREE.MeshLambertMaterial; skin: THREE.MeshLambertMaterial; scarf: THREE.MeshLambertMaterial; pouch: THREE.MeshLambertMaterial; coin: THREE.MeshLambertMaterial; eye: THREE.MeshLambertMaterial; }
+interface StalkerMats { fur: THREE.MeshLambertMaterial; dark: THREE.MeshLambertMaterial; pale: THREE.MeshLambertMaterial; eye: THREE.MeshLambertMaterial; }
+interface TidebackMats { hide: THREE.MeshLambertMaterial; skin: THREE.MeshLambertMaterial; barnacle: THREE.MeshLambertMaterial; beak: THREE.MeshLambertMaterial; eye: THREE.MeshLambertMaterial; }
+interface BrushbuckMats { fur: THREE.MeshLambertMaterial; pale: THREE.MeshLambertMaterial; dark: THREE.MeshLambertMaterial; pink: THREE.MeshLambertMaterial; }
 
 let snakeMats: SnakeMats | null = null;
 let ratMats: RatMats | null = null;
@@ -332,6 +447,9 @@ let vultureMats: VultureMats | null = null;
 let tortoiseMats: TortoiseMats | null = null;
 let fennecMats: FennecMats | null = null;
 let traderMats: TraderMats | null = null;
+let stalkerMats: StalkerMats | null = null;
+let tidebackMats: TidebackMats | null = null;
+let brushbuckMats: BrushbuckMats | null = null;
 
 function getSnakeMats(): SnakeMats {
   if (!snakeMats) {
@@ -430,6 +548,43 @@ function getTraderMats(): TraderMats {
     };
   }
   return traderMats;
+}
+
+function getStalkerMats(): StalkerMats {
+  if (!stalkerMats) {
+    stalkerMats = {
+      fur: new THREE.MeshLambertMaterial({ map: stalkerTex() }),
+      dark: new THREE.MeshLambertMaterial({ color: 0x5c6b78 }),
+      pale: new THREE.MeshLambertMaterial({ color: 0xf0f4f7 }),
+      eye: new THREE.MeshLambertMaterial({ color: 0x101820 }),
+    };
+  }
+  return stalkerMats;
+}
+
+function getTidebackMats(): TidebackMats {
+  if (!tidebackMats) {
+    tidebackMats = {
+      hide: new THREE.MeshLambertMaterial({ map: tidebackTex() }),
+      skin: new THREE.MeshLambertMaterial({ color: 0x77887c }),
+      barnacle: new THREE.MeshLambertMaterial({ color: 0xa9b4a8 }),
+      beak: new THREE.MeshLambertMaterial({ color: 0x9aa48e }),
+      eye: new THREE.MeshLambertMaterial({ color: 0x101a14 }),
+    };
+  }
+  return tidebackMats;
+}
+
+function getBrushbuckMats(): BrushbuckMats {
+  if (!brushbuckMats) {
+    brushbuckMats = {
+      fur: new THREE.MeshLambertMaterial({ map: brushbuckTex() }),
+      pale: new THREE.MeshLambertMaterial({ color: 0xe4d8be }),
+      dark: new THREE.MeshLambertMaterial({ color: 0x4c3620 }),
+      pink: new THREE.MeshLambertMaterial({ color: 0xc98f8f }),
+    };
+  }
+  return brushbuckMats;
 }
 
 // ---------------------------------------------------------------- visuals
@@ -980,6 +1135,212 @@ function makeTrader(): MobShape {
   return { group, animate };
 }
 
+// snow stalker: ~2.3 m lanky alpine hunter on four long legs; snake-model body
+// scaled up and raised off the ground; faces +Z (head at +Z)
+function makeStalker(): MobShape {
+  const mats = getStalkerMats();
+  const group = new THREE.Group();
+
+  const legH = 0.32;
+  const segs: Seg[] = [];
+  const ridges: Ridge[] = [];
+
+  // body segments (tail -> neck), same slinking chain as the snake, standing tall
+  const zs = [0.78, 0.44, 0.10, -0.24, -0.58, -0.90];
+  const ws = [0.28, 0.33, 0.34, 0.31, 0.24, 0.15];
+  const hs = [0.24, 0.29, 0.30, 0.27, 0.21, 0.13];
+  const d = 0.36;
+  for (let i = 0; i < zs.length; i++) {
+    const bx = Math.sin(i * 0.8) * 0.06; // shallow S at rest
+    const m = box(ws[i], hs[i] * 2, d, mats.fur, bx, legH + hs[i], zs[i]);
+    segs.push({ mesh: m, bx, w: ws[i], h: hs[i] * 2, d });
+    ridges.push({ mesh: box(ws[i] * 0.35, 0.04, d * 0.9, mats.dark, bx, legH + hs[i] * 2 + 0.015, zs[i]), w: ws[i] });
+    group.add(m, ridges[i].mesh);
+  }
+
+  // four slender legs with pale paws, planted under the mid and front segments
+  const legs: THREE.Mesh[] = [];
+  const paws: THREE.Mesh[] = [];
+  for (const side of [-1, 1]) {
+    for (const z of [0.44, -0.24]) {
+      const leg = box(0.09, legH + 0.02, 0.13, mats.fur, side * 0.26, (legH + 0.02) / 2, z);
+      legs.push(leg);
+      const paw = box(0.11, 0.06, 0.2, mats.pale, side * 0.26, 0.03, z + 0.03);
+      paws.push(paw);
+      group.add(leg, paw);
+    }
+  }
+
+  // narrow wedge head with small dark ears; headRoot sways independently
+  const headRoot = new THREE.Group();
+  headRoot.position.set(Math.sin(0) * 0.06, legH + 0.44, 1.02);
+  headRoot.add(box(0.28, 0.26, 0.42, mats.fur, 0, 0, 0.05));
+  headRoot.add(box(0.13, 0.11, 0.16, mats.pale, 0, -0.06, 0.28)); // pale muzzle
+  headRoot.add(box(0.04, 0.04, 0.03, mats.eye, -0.13, 0.07, 0.24));
+  headRoot.add(box(0.04, 0.04, 0.03, mats.eye, 0.13, 0.07, 0.24));
+  const earL = box(0.06, 0.11, 0.03, mats.dark, -0.1, 0.2, -0.05);
+  const earR = box(0.06, 0.11, 0.03, mats.dark, 0.1, 0.2, -0.05);
+  earL.rotation.z = 0.2;
+  earR.rotation.z = -0.2;
+  headRoot.add(earL, earR);
+  group.add(headRoot);
+
+  const animate = (t: number, moving: number): void => {
+    const mv = Math.max(0, Math.min(1, moving));
+    const amp = 0.02 + 0.09 * mv;
+    const ph = t * (3.5 + 3.5 * mv);
+    for (let i = 0; i < segs.length; i++) {
+      const s = segs[i];
+      const wob = Math.sin(ph - i * 0.85) * amp;
+      s.mesh.position.x = s.bx + wob;
+      s.mesh.rotation.y = -wob * 1.2;
+      const br = 1 + Math.sin(t * 1.9) * 0.03 * (1 - mv * 0.6); // faint breathing
+      s.mesh.scale.set(s.w * br, s.h, s.d);
+      const r = ridges[i];
+      r.mesh.position.x = s.mesh.position.x;
+      r.mesh.rotation.y = s.mesh.rotation.y;
+      r.mesh.scale.x = r.w * br;
+    }
+    // legs pump in diagonal pairs while running, planted at rest
+    const lp = t * (4.5 + 4.5 * mv);
+    for (let i = 0; i < legs.length; i++) {
+      const pair = (i % 2) * Math.PI + (i < 2 ? 0 : Math.PI); // front-left/back-right in phase
+      const sw = Math.sin(lp + pair) * 0.6 * mv;
+      legs[i].rotation.x = sw;
+      paws[i].rotation.x = sw * 0.5;
+    }
+    headRoot.position.x = Math.sin(ph + 0.85) * amp * 0.6;
+    headRoot.rotation.y = Math.sin(t * (2.4 + 2.8 * mv)) * (0.06 + 0.16 * mv);
+    headRoot.rotation.x = -0.08 * mv + Math.sin(t * 1.3) * 0.03 * (1 - mv);
+  };
+  return { group, animate };
+}
+
+// tideback: ~2 m long coastal mega-grazer, Tortoise-model scaled up; heavy
+// barnacle-crusted shell on tree-trunk legs; faces +Z
+function makeTideback(): MobShape {
+  const mats = getTidebackMats();
+  const group = new THREE.Group();
+  const pivot = new THREE.Group(); // slow plod bob
+  group.add(pivot);
+
+  const legH = 0.26;
+
+  // massive domed shell: flattened sphere
+  pivot.add(sph(1.7, 1.2, 1.85, mats.hide, 0, legH + 0.5, -0.05));
+
+  // barnacle clusters crusting the shell rim (skip the front where the head exits)
+  for (const a of [0.9, 1.5, 2.1, 2.7, Math.PI, 3.6, 4.3, 5.1]) {
+    const bump = sph(0.16, 0.13, 0.16, mats.barnacle, Math.sin(a) * 0.82, legH + 0.62, Math.cos(a) * 0.9 - 0.05);
+    pivot.add(bump);
+  }
+  pivot.add(sph(0.13, 0.11, 0.13, mats.barnacle, 0.35, legH + 1.12, -0.4));
+  pivot.add(sph(0.15, 0.12, 0.15, mats.barnacle, -0.3, legH + 1.16, 0.1));
+
+  // four stout column legs
+  const legs: THREE.Mesh[] = [];
+  for (const side of [-1, 1]) {
+    for (const z of [0.55, -0.55]) {
+      const leg = box(0.3, legH + 0.12, 0.34, mats.skin, side * 0.55, (legH + 0.12) / 2, z);
+      legs.push(leg);
+      pivot.add(leg);
+    }
+  }
+
+  // broad head with a thick beaky front; headRoot breathing in/out
+  const headRoot = new THREE.Group();
+  headRoot.position.set(0, legH + 0.32, 1.02);
+  headRoot.add(box(0.36, 0.32, 0.34, mats.skin, 0, 0, 0));
+  headRoot.add(box(0.22, 0.17, 0.17, mats.beak, 0, -0.06, 0.24));
+  headRoot.add(box(0.05, 0.05, 0.025, mats.eye, -0.14, 0.08, 0.16));
+  headRoot.add(box(0.05, 0.05, 0.025, mats.eye, 0.14, 0.08, 0.16));
+  pivot.add(headRoot);
+
+  // short heavy tail at the rear
+  pivot.add(box(0.15, 0.15, 0.28, mats.skin, 0, legH + 0.22, -1.02));
+
+  const animate = (t: number, moving: number): void => {
+    const mv = Math.max(0, Math.min(1, moving));
+    // ponderous plod: tiny body bob, legs shuffle in diagonal pairs
+    pivot.position.y = Math.abs(Math.sin(t * (1.1 + 0.9 * mv))) * 0.01 * mv;
+    const lp = t * (1.3 + 1.1 * mv);
+    for (let i = 0; i < legs.length; i++) legs[i].rotation.x = Math.sin(lp + (i % 2) * Math.PI + (i < 2 ? 0 : 0.6)) * 0.26 * mv;
+    // head breathes in/out at rest, extends forward while walking
+    const breath = Math.sin(t * 0.7);
+    headRoot.position.z = 1.02 + breath * 0.06 * (1 - mv) + 0.06 * mv;
+    headRoot.rotation.x = 0.05 * mv + breath * 0.03 * (1 - mv);
+  };
+  return { group, animate };
+}
+
+// brushbuck: ~1.2 m fleeing plains herd animal, Kangaroo-Rat model scaled up;
+// long hind legs, cream belly, dark tail tuft; faces +Z
+function makeBrushbuck(): MobShape {
+  const mats = getBrushbuckMats();
+  const group = new THREE.Group();
+  const pivot = new THREE.Group(); // bounded up/down by animate
+  group.add(pivot);
+
+  const body = box(0.5, 0.58, 0.78, mats.fur, 0, 0.6, -0.05);
+  pivot.add(body);
+
+  // head root (sway/nod), head + nose + eyes
+  const headRoot = new THREE.Group();
+  headRoot.position.set(0, 0.72, 0.42);
+  headRoot.add(box(0.3, 0.28, 0.3, mats.fur, 0, 0, 0.1));
+  headRoot.add(box(0.09, 0.07, 0.09, mats.pink, 0, -0.05, 0.28));
+  headRoot.add(box(0.05, 0.05, 0.035, mats.dark, -0.12, 0.06, 0.23));
+  headRoot.add(box(0.05, 0.05, 0.035, mats.dark, 0.12, 0.06, 0.23));
+  pivot.add(headRoot);
+
+  // upright ears, smaller than the rat's but still prominent
+  const earL = box(0.11, 0.26, 0.055, mats.fur, -0.15, 0.98, 0.34);
+  const earR = box(0.11, 0.26, 0.055, mats.fur, 0.15, 0.98, 0.34);
+  const earInL = box(0.065, 0.16, 0.045, mats.pink, -0.15, 0.97, 0.356);
+  const earInR = box(0.065, 0.16, 0.045, mats.pink, 0.15, 0.97, 0.356);
+  earL.rotation.z = 0.2;
+  earR.rotation.z = -0.2;
+  pivot.add(earL, earR, earInL, earInR);
+
+  // huge hind legs: thigh + long pale foot
+  const thighL = box(0.19, 0.3, 0.26, mats.fur, -0.26, 0.32, -0.13);
+  const thighR = box(0.19, 0.3, 0.26, mats.fur, 0.26, 0.32, -0.13);
+  const footL = box(0.15, 0.08, 0.46, mats.pale, -0.28, 0.06, 0.05);
+  const footR = box(0.15, 0.08, 0.46, mats.pale, 0.28, 0.06, 0.05);
+  pivot.add(thighL, thighR, footL, footR);
+
+  // small forepaws
+  pivot.add(box(0.075, 0.08, 0.15, mats.pale, -0.17, 0.26, 0.35));
+  pivot.add(box(0.075, 0.08, 0.15, mats.pale, 0.17, 0.26, 0.35));
+
+  // long tail with a dark tuft; tailRoot flicks from the base
+  const tailRoot = new THREE.Group();
+  tailRoot.position.set(0, 0.38, -0.44);
+  tailRoot.add(box(0.09, 0.09, 0.42, mats.fur, 0, 0, -0.21));
+  tailRoot.add(box(0.07, 0.07, 0.4, mats.fur, 0, -0.08, -0.6));
+  tailRoot.add(box(0.13, 0.1, 0.2, mats.dark, 0, -0.13, -0.88));
+  pivot.add(tailRoot);
+
+  const animate = (t: number, moving: number): void => {
+    const mv = Math.max(0, Math.min(1, moving));
+    const hop = Math.abs(Math.sin(t * (2.4 + 2.2 * mv)));
+    pivot.position.y = hop * 0.22 * mv + Math.sin(t * 1.6) * 0.006; // big hop + idle breath
+    body.scale.y = 0.58 * (1 + Math.sin(t * 1.8) * 0.03 * (1 - mv));
+    // hind feet tuck mid-hop
+    footL.rotation.x = footR.rotation.x = -0.5 * hop * mv;
+    thighL.rotation.x = thighR.rotation.x = -0.3 * hop * mv;
+    // tail flicks faster when running, droops at rest
+    tailRoot.rotation.y = Math.sin(t * (1.6 + 3.2 * mv)) * (0.1 + 0.28 * mv);
+    tailRoot.rotation.x = -0.1 - 0.15 * mv + Math.sin(t * (2.4 + 2.2 * mv)) * 0.06 * mv;
+    // idle ear twitch
+    const tw = Math.max(0, Math.sin(t * 5.1)) ** 8 * (1 - mv);
+    earL.rotation.z = 0.2 + tw * 0.25;
+    earR.rotation.z = -0.2 - Math.max(0, Math.sin(t * 5.1 + 2.1)) ** 8 * (1 - mv) * 0.25;
+    headRoot.rotation.x = -0.1 * hop * mv + Math.sin(t * 1.2) * 0.03 * (1 - mv);
+  };
+  return { group, animate };
+}
+
 // what the model factories build; the wrapper adds hit-flash
 type MobShape = { group: THREE.Group; animate(t: number, moving: number): void; setFlash?(on: boolean): void };
 
@@ -1004,5 +1365,75 @@ export function makeMobMesh(kind: MobKind): MobVisual {
     case "vulture": return attachFlash(makeVulture());
     case "tortoise": return attachFlash(makeTortoise());
     case "fennec": return attachFlash(makeFennec());
+    case "stalker": return attachFlash(makeStalker());
+    case "tideback": return attachFlash(makeTideback());
+    case "brushbuck": return attachFlash(makeBrushbuck());
   }
+}
+
+// ---------------------------------------------------------------- fauna modes
+
+// which planet the spawner is stocking. Game calls setFauna() on world switch;
+// never calling it leaves Desertis behavior exactly as it has always been.
+export type FaunaPlanet = "desertis" | "silvaris";
+
+let faunaPlanet: FaunaPlanet = "desertis";
+let faunaSeed = 0;
+
+export function setFauna(planet: FaunaPlanet, seed: number): void {
+  faunaPlanet = planet;
+  faunaSeed = seed >>> 0;
+}
+
+export function getFauna(): FaunaPlanet { return faunaPlanet; }
+
+// silvarisSpawns() tables are keyed by display name; map to registry kinds
+const SIL_MOB_KIND: Record<string, MobKind> = {
+  "Snow Stalker": "stalker",
+  "Tideback": "tideback",
+  "Brushbuck": "brushbuck",
+};
+
+/** Per-species live caps for the current planet (0 = never spawn here).
+ *  Desertis values are exactly the ones the top-up loop hardcoded before. */
+export function faunaTargets(): Record<MobKind, number> {
+  if (faunaPlanet === "desertis")
+    return { snake: 4, rat: 8, scorpion: 4, wurm: 1, trader: 0, vulture: 3, tortoise: 2, fennec: 2, stalker: 0, tideback: 0, brushbuck: 0 };
+  return { snake: 0, rat: 0, scorpion: 0, wurm: 0, trader: 0, vulture: 0, tortoise: 0, fennec: 0, stalker: 3, tideback: 3, brushbuck: 6 };
+}
+
+/** The kinds the top-up loop should try, in spawn order. */
+export function faunaSpawnKinds(): MobKind[] {
+  if (faunaPlanet === "desertis") return ["snake", "rat", "scorpion", "wurm", "vulture", "tortoise", "fennec"];
+  return ["stalker", "tideback", "brushbuck"];
+}
+
+/** Weighted species pick for a candidate Silvaris site at (x,z) — biome table
+ *  from silvaris.ts, plus the Snow Stalker's cold Boreal-edge fringe (weight 1).
+ *  null means the site's biome stands empty (the Scorch Belt, open ocean). */
+export function pickSilvarisMob(x: number, z: number): MobKind | null {
+  const biome = biomeAt(x, z, faunaSeed);
+  const table = silvarisSpawns(biome).slice();
+  if (biome === SB_BOREAL) table.push({ mob: "Snow Stalker", weight: 1 }); // Boreal edge: stalkers hunt down off the peaks
+  let total = 0;
+  for (const e of table) total += e.weight;
+  if (total <= 0) return null;
+  let roll = Math.random() * total;
+  for (const e of table) {
+    roll -= e.weight;
+    if (roll < 0) return SIL_MOB_KIND[e.mob] ?? null;
+  }
+  return null;
+}
+
+/** A Silvaris spawn site stands on GRASS/SNOW/SAND/BASALT and above sea level. */
+export function silvarisSiteOk(underfoot: number, y: number): boolean {
+  return y > SIL_SEA && (underfoot === GRASS || underfoot === SNOW || underfoot === SAND || underfoot === BASALT);
+}
+
+/** Roll the herd batch for one site (herd species move in groups; loners return 1). */
+export function herdSize(kind: MobKind): number {
+  const h = MOB_DEFS[kind].herd;
+  if (!h) return 1;
+  return h.min + Math.floor(Math.random() * (h.max - h.min + 1));
 }

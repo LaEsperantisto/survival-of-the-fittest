@@ -1,28 +1,57 @@
 import * as THREE from "three";
 import { World, ckey } from "./world";
 import { Player } from "./player";
-import { Survival, REGULATOR_ROOM_MAX, SAFE_HI } from "./survival";
+import { Survival, REGULATOR_ROOM_MAX, SAFE_HI, type StormKind } from "./survival";
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, sackUnits, sackFree, type ItemDef, type Slot } from "./items";
 import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_GROUP, ALAB_GATE, ALAB_GATE_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, CHEST_INTERFACE, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, INSERTER, PLANTER, HARVESTER, REFINERY, POLE_LINK, DEVICE_REACH, isPowerBlock, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable,
   COOKPOT, WATER_CAGE, WATER_CAGE_FULL, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING, APPLE_FRUIT,
-  FRAME_CORNER, FLIGHT_CONTROLS, OIL, isFluid } from "./blocks";
-import { Ship, SHIP, FWD_DIR, massOf, type ShipHit } from "./ship";
+  FRAME_CORNER, FLIGHT_CONTROLS, OIL, isFluid,
+  HULL, CURVED_HULL, INSCRIPTION, DOCK_PAD, GLASS,
+  ELECTRIC_BENCH, ASSEMBLY_BENCH, FUEL_WORKS, FOUNDRY } from "./blocks";
+import { Ship, SHIP, FWD_DIR, massOf, emptyPort, migratePorts, rocketCharges, type Port, type ShipHit } from "./ship";
 import { computeFrame, type Box3, type FrameResult } from "./shipframe";
 import { meshShipCells } from "./renderer";
 
 /** One Battery stores this many Grid-units. */
 const POWER_BATT_CAP = 120;
-import { MOB_DEFS, makeMobMesh, type MobKind, type MobVisual } from "./mobs";
+/** the dark between worlds the Leave Planet climb fades to */
+const LEAVE_BLACK = new THREE.Color(0x04050a);
+/** the Chronicle beats that belong to the Second Planet: unlike the desert
+ *  lessons, a Phase-2 run has still to live through them. */
+const PHASE2_LESSONS: Record<string, true> = { leave: true, arrive: true, dock: true, settle: true, superfuel: true };
+/** where a craft happens: every station kind in the recipe table */
+type StationMode = NonNullable<Recipe["station"]>;
+const STATION_TITLES: Record<StationMode, string> = {
+  bench: "Crafting Bench",
+  armory: "Armoury — gear that guards the body",
+  refinery: "Refinery — oil and coal, cooked into flight",
+  electric: "Electric Bench — power, machines, and wired work",
+  foundry: "Foundry — new ores, cooked to metal",
+  assembly: "Assembly Bench — the Ship's heavy parts",
+  fuel: "Fuel Works — rocket fuel, cooked into the blue canister",
+};
+/** the HUD's words when each storm regime arrives and leaves */
+const STORM_TOASTS: Record<StormKind, { in: string; out: string }> = {
+  sand: { in: "A Sandstorm rolls in — get out of the open.", out: "The Sandstorm passes." },
+  blizzard: { in: "A Blizzard rolls in — the cold bites harder.", out: "The Blizzard passes." },
+  ash: { in: "An Ashstorm darkens the sky.", out: "The Ashstorm passes." },
+};
+import { MOB_DEFS, makeMobMesh, setFauna, faunaTargets, faunaSpawnKinds, pickSilvarisMob, silvarisSiteOk, herdSize, type MobKind, type MobVisual } from "./mobs";
 import { hashStr, hash2 } from "./noise";
 import { heightAt, biomeAt, TOWN_L, CAMP_L, CAVE_MOUTH_L, OUTPOST_L, OASIS_L, SEEP_L, CANISTER_L, PHASE2_CORE, treePlan, appleTreePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
-import { offersFor, Offer } from "./trades";
-import { RECIPES, SMELT, canCraft, doCraft, FIRE_FUEL, GEN_FUEL, POT_RECIPES, potHas, potConsume, type PotRecipe } from "./crafting";
+import {
+  ARR_Y, SIL_SEA, SETTLE_L, TRADER_L, SB_ALPINE, SB_BOREAL, SB_SCORCH,
+  biomeAt as silBiomeAt, heightAt as silHeightAt, settleAt as silSettleAt, traderAt as silTraderAt,
+  getSilvarisLoot, getSilvarisTraderLoot,
+} from "./silvaris";
+import { offersFor, SILVARIS_GOODS, type Offer } from "./trades";
+import { RECIPES, SMELT, canCraft, doCraft, FIRE_FUEL, GEN_FUEL, POT_RECIPES, potHas, potConsume, type PotRecipe, type Recipe } from "./crafting";
 import { QUESTS, currentQuest, loadQuestState, questEvent, recordDeed, reconcile, type QuestDef, type QuestState } from "./quests";
-import { LESSON_BY_ID, LESSONS, loadIdSet } from "./chronicle";
+import { LESSON_BY_ID, LESSONS, INSCRIPTION_TEXTS, loadIdSet } from "./chronicle";
 import { Tutorial, INTRO_CINE, type CineSeg } from "./tutorial";
-import { WorldMeta, RunSave, FireSave, PotSave, saveRun, exportRun, Settings } from "./save";
+import { WorldMeta, RunSave, FireSave, PotSave, Planet, WorldRun, migrateRun, emptyWorldRun, saveRun, exportRun, Settings } from "./save";
 import { itemArtUrl } from "./icons";
 import * as hud from "./hud";
 
@@ -87,6 +116,7 @@ export interface Mob {
   bank: number;    // circling direction (±1) while soaring
   hitFlash?: number;  // seconds left of the red damage flash
   flashOn?: boolean;  // whether the visual currently has flash materials swapped in
+  enraged?: number;   // seconds left of payback: a retaliating species chases the player inside its radius
   vis: MobVisual;
 }
 export interface Raycast { hit: { x: number; y: number; z: number } | null; water: { x: number; y: number; z: number } | null; face: THREE.Vector3; /** set when the crosshair is on an airborne hull: the EXACT ship-local cell behind the coarse display cell in `hit`, plus the ship-local face it was entered through */ ship?: { sh: Ship; ix: number; iy: number; iz: number; fx: number; fy: number; fz: number } }
@@ -103,6 +133,11 @@ export interface BlockAt {
 
 export class Game {
   seed: number;
+  /** the planet the player is standing on (ADR-0010) */
+  planet: Planet = "desertis";
+  /** one record per planet: the ground's edits, Grid, farms, Ships, Pins and
+   *  explored map. Absent means the run has never played that planet. */
+  planets: { desertis?: WorldRun; silvaris?: WorldRun } = {};
   world: World;
   survival: Survival;
   player: Player;
@@ -167,7 +202,7 @@ export class Game {
   private prevHp = 100;
   private lastHitFlash = -10;
   private lastDmgAt = -10;
-  ui: null | "inv" | "bench" | "cache" | "flycheck" | "trade" = null;
+  ui: null | "inv" | "bench" | "cache" | "flycheck" | "trade" | "core" | "leave" = null;
   openCacheId: number | null = null;
   openStation: [number, number, number] | null = null;
   private breaking: { x: number; y: number; z: number; need: number; elapsed: number; shId?: number; ix?: number; iy?: number; iz?: number } | null = null;
@@ -270,23 +305,37 @@ export class Game {
   private worldCorners = new Set<string>();       // Frame Corners still living in chunks
   private frameSeq = 0;                           // bumped whenever corner cells change
   private pendingCache: { n: number; comps: PendingFrame[] } | null = null;
-  private coreFuel = new Map<string, number[]>(); // Engine Core before takeoff: world cell -> port charges
+  private coreFuel = new Map<string, [Port, Port]>(); // Engine Core before takeoff: world cell -> its two fuel ports
   piloting: Ship | null = null;
   private flyPending: PendingFrame | null = null; // yoke panel open on an unfinished Frame
   private flyOutlineOn = true;
   private pilotLand = false;                      // Set-down button: sink until touchdown, then land
   private flightBump = 0;                         // toast cooldown for bumps / dry tanks
+  private openCore: BlockAt | null = null;        // the Core whose port panel is open
+  private leaveShip: Ship | null = null;          // the Ship committed in the Leave Planet panel
+  leaving: { t: number; sh: Ship } | null = null; // the Leave Planet climb cinematic, ~6 s
   shipGridDone = false;                           // Panel + Battery + Core once on one Grid
 
   constructor(public meta: WorldMeta, run: RunSave | null, parent: HTMLElement, private settings: Settings, private audio: Audio) {
     this.seed = hashStr(meta.seedStr || meta.id);
     // Easy/Hard Start is fixed when the world is created; the run copy wins on load
     this.worldMode = run?.worldMode ?? meta.mode ?? "easy";
-    this.world = new World(this.seed, this.worldMode);
-    // Phase 2 Start: the wreck's Engine Core already holds two canisters'
-    // worth of Rocket Fuel in its ports
-    if (!run && this.worldMode === "phase2")
-      this.coreFuel.set(PHASE2_CORE.join(","), [SHIP.canisterCharges, SHIP.canisterCharges]);
+    // the World is built with its planet so the first chunk comes from the right
+    // generator; restore() re-points it at the planet record's seed and deltas.
+    // Phase 2 Start begins its life on the Second Planet (ADR-0011): the run
+    // record is made empty and the flight-capable Ship is standing pre-DOCKED
+    // on the arrival pad — seeded below, once the renderer exists.
+    this.planet = run?.planet ?? (this.worldMode === "phase2" ? "silvaris" : "desertis");
+    this.world = new World(this.seed, this.worldMode, this.planet);
+    // Phase 2 Start on Desertis is gone: the Core that held two canisters in
+    // the old flight-capable wreck keeps its seed only for that old world
+    if (!run && this.worldMode === "phase2" && this.planet === "desertis")
+      this.coreFuel.set(PHASE2_CORE.join(","), [
+        { k: 1, c: SHIP.canisterCharges, l: false },
+        { k: 1, c: SHIP.canisterCharges, l: false },
+      ]);
+    // the fauna follows the planet from the first chunk in
+    setFauna(this.planet, this.world.seed);
     // the world sees grounded AND airborne Ships through this one hook:
     // a claimed cell reads as the Ship's block, never as the chunk under it
     this.world.cellProvider = (x, y, z) => {
@@ -320,6 +369,8 @@ export class Game {
     this.quests = loadQuestState(run?.quest);
     this.renderer = new Renderer(parent);
     this.renderer.fires = this.gauges;
+    this.renderer.setPlanetPalette(this.planet);
+    this.survival.silvaris = this.planet === "silvaris";
     this.player = new Player(this.world);
     this.inv.learn = (id) => this.codex.add(id); // the Codex learns on first pickup, not at save
     this.timeSec = run?.time ?? DAY_SECONDS * 0.7; // new worlds start mid-afternoon, near the day's hottest
@@ -328,7 +379,7 @@ export class Game {
     document.addEventListener("touchstart", () => { this.lastTouchTs = Date.now(); }, { passive: true, capture: true });
 
     if (run) this.restore(run);
-    else this.spawnStarterEntities();
+    else { this.spawnStarterEntities(); this.seedPhase2Run(); }
     if (run) this.reconcileQuests(); // deeds from before the save, paid on return
     // the wreck's ceiling lamps have no Panel — dark until the player wires power
     // Sandstorm Breakers: the wreck's pylon is worldgen (not a delta) — scan the
@@ -362,11 +413,108 @@ export class Game {
   }
 
   private spawnStarterChest() {
-    // the cockpit's Chest is a real chest block, stocked with three full canisters
+    // the cockpit's Chest is a real chest block, stocked with three full canisters.
+    // Phase 2 Start has no wreck to put it in: the docked Ship carries its own
+    // cockpit Chest (seedPhase2Ship), and (3,31,0) sits buried under the pad.
+    if (this.planet === "silvaris") return;
     const [x, y, z] = [3, 31, 0];
     if (this.world.get(x, y, z) !== AIR) return;
     this.wset(x, y, z, CHEST);
     this.chests.set(this.chestKey([[x, y, z]]), [
+      { itemId: "canister_full", x: 0, y: 0 },
+      { itemId: "canister_full", x: 1, y: 0 },
+      { itemId: "canister_full", x: 2, y: 0 },
+    ]);
+  }
+
+  // ---------- Phase 2 Start: the Second Planet, already reached ----------
+  // The old Phase-2 meaning (a flight-capable wreck on Desertis) is deleted
+  // (ADR-0011): a Phase-2 run opens on Silvaris, in a Ship that already made
+  // the jump. Everything Phase 1 taught is already achieved - the chain opens
+  // at "First Light", the Chronicle already remembers the desert.
+
+  private seedPhase2Run() {
+    if (this.planet !== "silvaris") return;
+    this.seedPhase2Quests();
+    // the Chronicle a Phase-1 player would arrive holding: every desert lesson,
+    // none of the Phase-2 beats - those still have to be lived here
+    for (const l of LESSONS) if (!PHASE2_LESSONS[l.id]) this.chronicle.add(l.id);
+    this.seedPhase2Ship();
+    this.player.pos.set(3.5, ARR_Y + 2.01, 1.5); // on the deck, beside the yoke
+    hud.toast("Silvaris. The Ship is docked at the pad — the Settlements are out there.");
+  }
+
+  /** Phase 1 is over before a Phase-2 run begins: every quest before
+   *  "First Light" is marked done (with its reward paid off in the ledger),
+   *  so nothing in that half can re-fire. "First Light" itself stays current:
+   *  it waits for the deed, not the calendar — the player earns it the moment
+   *  they stand under the Second Planet's open sky (questFrame). */
+  private seedPhase2Quests() {
+    const first = QUESTS.findIndex((q) => q.kind === "arrive");
+    if (first < 0) return;
+    this.quests.i = first;
+    this.quests.p = QUESTS.map(() => 0);
+    for (let i = 0; i < first; i++) {
+      this.quests.p[i] = QUESTS[i].goal;
+      const q = QUESTS[i];
+      recordDeed(this.quests, q.kind, q.goal);
+    }
+  }
+
+  /** The flight-capable Ship, standing pre-DOCKED on the arrival pad — the
+   *  same pose a landing writes (finishDeparture): cells on the lattice, the
+   *  hull's bbox centre on the pad centre, its bottom row resting on the
+   *  DOCK_PAD surface. Built as a Ship entity because Silvaris' generator
+   *  paints the pad cross and no wreck: there is nothing here to capture. */
+  private seedPhase2Ship() {
+    const y0 = ARR_Y + 1;                 // the Pad blocks sit at ARR_Y: this row rests on them
+    const X = 5, Z = 6, H = 6;            // 11 x 7 x 13: about 520 blocks, well under 4 x 250 lift
+    const sh = new Ship(this.shipSeq++, this.world.worldH);
+    for (let x = -X; x <= X; x++) for (let z = -Z; z <= Z; z++) for (let y = 0; y <= H; y++) {
+      const post = Math.abs(x) === X && Math.abs(z) === Z;
+      if (post && (y === 0 || y === H)) continue; // corners clipped at both decks
+      if (Math.abs(x) !== X && Math.abs(z) !== Z && y !== 0 && y !== H) continue; // hollow
+      sh.setCell(x, y, z, post ? CURVED_HULL : HULL);
+    }
+    // windows: three panes at each end, four along each quarter
+    for (const z of [-2, 0, 2]) { sh.setCell(X, 4, z, GLASS); sh.setCell(-X, 4, z, GLASS); }
+    for (const x of [-4, -2, 2, 4]) { sh.setCell(x, 4, Z, GLASS); sh.setCell(x, 4, -Z, GLASS); }
+    // three hatchways: the bow and both gangway quarters, lower + upper half
+    for (const [dx, dz] of [[X, 0], [0, Z], [0, -Z]] as const) {
+      sh.setCell(dx, 1, dz, DOOR_CLOSED);
+      sh.setCell(dx, 2, dz, DOOR_UPPER);
+    }
+    // the drive never died: four lit engines seated in the hull's floor
+    for (const [tx, tz] of [[X, 4], [X, -4], [-X, 4], [-X, -4]] as const) sh.setCell(tx, 0, tz, THRUSTER_LIT);
+    // the flight fit: yoke in the cockpit, Core in the hall, Panel + Battery wired to it
+    sh.setCell(3, 1, 0, FLIGHT_CONTROLS);
+    sh.setCell(0, 1, 0, ENGINECORE);
+    sh.setCell(-2, 1, 3, POWER_PANEL);
+    sh.setCell(-1, 1, 3, BATTERY);
+    sh.setCell(-4, 1, -4, BEACON);
+    sh.setCell(4, 1, 2, CHEST);
+    // the pose finishDeparture writes: bbox centre on the pad centre, bottom
+    // row resting on the Pad surface, flat and lattice-aligned
+    const [cx, cy, cz] = sh.centerLocal();
+    sh.pos = { x: cx, y: y0 + cy, z: cz };
+    sh.grounded = true;
+    // two pristine Rocket Fuel ports, full: the leap was already paid for, and
+    // the canisters are still there if the player wants them back
+    const ports: [Port, Port] = [
+      { k: 1, c: SHIP.canisterCharges, l: false },
+      { k: 1, c: SHIP.canisterCharges, l: false },
+    ];
+    sh.fuel = ports;
+    // the ports ride the hull: a Ship's Engine Core reads sh.fuel, never the
+    // world-cell coreFuel map (that is for a Frame standing in the ground)
+    this.ships.set(sh.id, sh);
+    this.buildShipGroup(sh);
+    for (const [k, c] of sh.cells) if (isPowerBlock(c.id)) this.powerCells.set(`s${sh.id},${k}`, c.id);
+    this.powerDirty = true;
+    // the Ship's Save Beacon is a save point aboard the hull
+    this.beaconMarks.push({ x: -4, y: 1, z: -4, ship: sh.id });
+    // and its cockpit Chest holds the jump's spare canisters
+    this.chests.set(this.chestKey([[4, y0 + 1, 2]]), [
       { itemId: "canister_full", x: 0, y: 0 },
       { itemId: "canister_full", x: 1, y: 0 },
       { itemId: "canister_full", x: 2, y: 0 },
@@ -526,7 +674,8 @@ export class Game {
     // opened before rolls its loot now, and every later opening is bare.
     // A Ship's own Chests were built, not buried — they never roll.
     const aboard = cells.some((c) => c.sh);
-    if (!known && !aboard && cells.some((c) => this.inTown(c.x, c.z))) {
+    const desert = this.planet !== "silvaris"; // the desert lattices hold no sites here
+    if (desert && !known && !aboard && cells.some((c) => this.inTown(c.x, c.z))) {
       for (const it of this.townLoot(cells[0].x, cells[0].z)) {
         // every instance gets its own slot — chest stores never stack
         for (let i = 0; i < it.count; i++) {
@@ -536,7 +685,7 @@ export class Game {
       }
       hud.toast("Someone's stores — untouched since the town emptied.");
       this.questBump("supplies");
-    } else if (!known && !aboard && cells.some((c) => this.inOutpost(c.x, c.z))) {
+    } else if (desert && !known && !aboard && cells.some((c) => this.inOutpost(c.x, c.z))) {
       // the relic crew's stores: copper for their wires, salt for their food,
       // one precious iron rod for whatever else survived
       for (const it of [{ itemId: "copperrod", count: 3 }, { itemId: "salt", count: 2 }, { itemId: "metal", count: 1 }]) {
@@ -547,6 +696,45 @@ export class Game {
       }
       hud.toast("A Grid Relic's stores — copper wire, salt, and one last iron rod.");
       this.questBump("supplies");
+    } else if (!aboard && this.planet === "silvaris") {
+      // the Dueliers' stores. A trader camp's Chest is the stall's counter: it
+      // never holds loot — it opens the camp's barter table. There are no
+      // walking Traders on Silvaris (fauna keeps the camps quiet), so the
+      // counter itself is the shop.
+      const c = cells[0];
+      const camp = silTraderAt(c.x, c.z, this.world.seed);
+      if (camp) {
+        // the stall counter (a chest at the awning, east of the fire) barters;
+        // the camp's own stores to the west hold its kit, once
+        if (Math.abs(c.x - (camp.x + 2)) <= 1 && Math.abs(c.z - (camp.z + 2)) <= 1) { this.openSilTrade(camp); return; }
+        if (!known) {
+          let salt = 0;
+          const r = () => hash2(c.x, c.z, this.world.seed + (++salt) * 7);
+          for (const it of getSilvarisTraderLoot(r)) {
+            for (let i = 0; i < it.n; i++) {
+              const s: Slot = { itemId: it.item, x: 0, y: 0 };
+              if (!Game.placeSlotFree(ci, s)) this.dropEntity(it.item, 1, 2);
+            }
+          }
+          hud.toast("A trader camp's stores — goods carried between the worlds.");
+        }
+      } else {
+        const sit = silSettleAt(c.x, c.z, this.world.seed);
+        if (sit && !known) {
+          let salt = 0;
+          const r = () => hash2(c.x, c.z, this.world.seed + (++salt) * 7);
+          for (const it of getSilvarisLoot(r)) {
+            for (let i = 0; i < it.n; i++) {
+              const s: Slot = { itemId: it.item, x: 0, y: 0 };
+              if (!Game.placeSlotFree(ci, s)) this.dropEntity(it.item, 1, 2);
+            }
+          }
+          hud.toast("A Settlement's stores — kit for the second world.");
+          // "The Settlements" is earned by walking into one and opening a Chest:
+          // the chest has to stand on the site, near its centre
+          if (Math.max(Math.abs(sit.x - c.x), Math.abs(sit.z - c.z)) <= 20) this.questBump("settle");
+        }
+      }
     }
     this.chestInv = ci;
     this.ifcMode = ifc;
@@ -599,7 +787,11 @@ export class Game {
   }
 
   private restore(run: RunSave) {
-    this.world.loadDeltas(run.deltas);
+    run = migrateRun(run); // readers hand back v3; a hand-built run might not
+    // ---- the run: the player and their things, on whatever planet they stand ----
+    this.worldMode = run.worldMode ?? "easy";
+    this.planet = run.planet ?? "desertis";
+    this.planets = { ...run.worlds };
     this.player.pos.set(run.player.x, run.player.y, run.player.z);
     this.player.yaw = run.player.yaw; this.player.pitch = run.player.pitch;
     this.survival.health = run.survival.health;
@@ -615,7 +807,6 @@ export class Game {
       for (let i = 1; i < n; i++) legacyExtras.push({ itemId: s.itemId });
       return { itemId: s.itemId, x: s.x, y: s.y, rot: s.rot, charges: s.charges, blockRot: s.blockRot, stack: s.stack };
     });
-    for (const s of legacyExtras) this.giveOrDrop(s.itemId, 1);
     this.inv.selected = run.inventory.selected;
     if (run.inventory.w !== this.inv.w || run.inventory.h !== this.inv.h) {
       this.inv.w = run.inventory.w; this.inv.h = run.inventory.h;
@@ -625,160 +816,37 @@ export class Game {
       const id = run.equip?.[slot];
       if (id && known(id)) this.equip[slot] = { itemId: id, x: 0, y: 0, charges: run.equip?.charges?.[slot as "regulator" | "light"] };
     }
-    this.beaconMarks = run.beaconMarks ?? [];
-    // Ships ride outside the chunks: restore the entities, re-index their power
-    this.ships = new Map((run.ships ?? []).map((s) => [s.id, Ship.restore(s)]));
-    this.shipSeq = [...this.ships.keys()].reduce((m, i) => Math.max(m, i), 0) + 1;
-    this.coreFuel = new Map(run.coreFuel ?? []);
-    for (const sh of this.ships.values())
-      for (const [k, c] of sh.cells) if (isPowerBlock(c.id)) this.powerCells.set("s" + sh.id + "," + k, c.id);
-    for (const sh of this.ships.values()) this.buildShipGroup(sh);
-    this.worldMode = run.worldMode ?? "easy";
     this.cheatInvincible = run.cheats?.immortal ?? false;
     this.keepInventory = run.cheats?.keep ?? false;
     this.survival.invincible = this.cheatInvincible;
-    this.pins = run.pins ?? [];
-    this.pinSeq = this.pins.reduce((m, p) => Math.max(m, p.id), 0);
-    this.revealed = new Set(run.revealed ?? []);
-    this.visited = new Set(run.visited ?? []);
     this.chronicle = loadIdSet(run.chronicle, new Set(LESSONS.map((l) => l.id)));
     this.chronLast = this.chronicle.size ? [...this.chronicle].pop()! : null;
     this.codex = loadIdSet(run.codex, new Set([...Object.keys(ITEMS), ...BLOCKS.map((_, i) => "b:" + i)]));
-    this.trees = new Map(run.trees ?? []);
-    this.collected = new Set((run.collected ?? []).map((c) => String(c)));
-    const fresh: typeof this.entities = [];
-    for (const e of run.entities) {
-      // old saves may hold stacked drops; split them — one item per entity
-      const n = e.count ?? 1;
-      if (!known(e.itemId)) continue; // a removed item's drop is quietly gone
-      for (let i = 0; i < n; i++) fresh.push({ id: this.entitySeq++, x: e.x, y: e.y, z: e.z, itemId: e.itemId, age: e.age, stack: e.stack });
-    }
-    this.entities = fresh;
-    // chest grids: split any legacy stacked slots into individual items
-    this.chests = new Map((run.chests ?? []).map((c) => {
-      const ci = this.emptyChestGrid(c.cells.split("|").length);
-      for (const s of c.slots) {
-        if (!known(s.itemId)) continue; // a removed item in a Chest is quietly gone
-        ci.slots.push({ itemId: s.itemId, x: s.x, y: s.y, rot: s.rot, blockRot: s.blockRot, charges: s.charges, stack: s.stack });
-        for (let i = 1; i < (s.count ?? 1); i++) {
-          const extra: Slot = { itemId: s.itemId, x: 0, y: 0 };
-          if (!Game.placeSlotFree(ci, extra)) this.giveOrDrop(s.itemId, 1);
-        }
-      }
-      return [c.cells, ci.slots];
-    }));
-    const legacyChests: { x: number; y: number; z: number; items: { itemId: string; count: number }[] }[] = [];
-    for (const c of run.caches) {
-      const kind = c.kind ?? "death";
-      // old saves model Chests as caches; they now live on as chest-block grids
-      if (kind === "chest") { legacyChests.push(c); continue; }
-      const cache: DeathCache = { id: this.entitySeq++, x: c.x, y: c.y, z: c.z, kind, items: c.items.map((i) => ({ ...i })) };
-      this.caches.push(cache); // crate, ring and beam get (re)built by the marker loop
-    }
-    this.fires.clear();
-    this.gauges.clear();
-    for (const [k, v] of Object.entries(run.campfires ?? {})) {
-      const f = Game.newFire();
-      if (typeof v === "number") {
-        // old saves already model the coals as a raw charge pool
-        f.charge = v;
-        f.lit = v > 0;
-      } else {
-        f.lit = !!v.lit;
-        f.drip = v.drip ?? 0;
-        // pre-pool saves banked charges on fuel items themselves: melt them into the coals
-        f.charge = v.charge ?? (v.fuel ?? []).reduce((t, s) =>
-          t + (s.charges ?? (FIRE_FUEL[s.itemId] ?? 0) * (s.stack?.count ?? 1)), 0);
-        for (const s of v.input ?? []) f.input.addSlot({ ...s });
-        for (const s of v.output ?? []) f.output.addSlot({ ...s });
-      }
-      this.gauges.set(k, f.lit ? Game.fireFuel(f) : 0);
-      this.fires.set(k, f);
-    }
-    this.pots.clear();
-    for (const [k, v] of Object.entries(run.pots ?? {})) {
-      const p = Game.newPot();
-      p.lit = !!v.lit;
-      p.drip = v.drip ?? 0;
-      p.charge = v.charge ?? 0;
-      for (const s of v.input ?? []) p.input.addSlot({ ...s });
-      for (const s of v.output ?? []) p.output.addSlot({ ...s });
-      for (const j of v.jobs ?? []) {
-        const r = POT_RECIPES.find((r) => r.out === j.out);
-        if (r) p.jobs.push({ r, cook: j.cook, done: j.cook >= r.seconds });
-      }
-      this.pots.set(k, p);
-      this.gauges.set(k, this.potLit(k) ? p.charge : 0);
-    }
-    this.batteryCharge = new Map(run.battery ?? []);
-    this.genFuel = new Map(run.genFuel ?? []);
-    this.trippedPanels = new Set(run.trippedPanels ?? []);
-    this.renderer.fires = this.gauges;
-    this.world.loadRots(run.rots ?? {});
-    this.crops = new Map(run.crops ?? []);
-    this.appleTrees = new Map(run.appleTrees ?? []);
-    this.fruitRegrow = new Map(run.fruitRegrow ?? []);
     if (run.lastSleep) this.lastSleep = run.lastSleep;
-    if (run.melonHint) this.melonHintShown = true;
-    for (const c of legacyChests) this.adoptLegacyChest(c);
-    this.pods = (run.pods ?? []).map((p) => ({
-      ...p,
-      ringEid: this.renderer.addGroundRing(p.x + 0.5, Math.round(heightAt(this.seed, p.x, p.z)), p.z + 0.5, 0xcc3322, 1.1),
-      beamEid: this.renderer.addBeam(p.x + 0.5, Math.round(heightAt(this.seed, p.x, p.z)), p.z + 0.5, 0xcc3322),
-    }));
     this.won = !!run.won;
-    // re-light campfires that live in the saved deltas; a campfire
-    // without fuel charges stays cold charcoal and keeps no light
-    // (Lamps wait for the power tick — they glow only on a live Grid)
-    for (const [k, m] of this.world.deltas) {
-      const [cx, cz] = k.split(",").map(Number);
-      for (const [i, id] of m) {
-        const isPower = isPowerBlock(id);
-        if (id !== LAMP && id !== CAMPFIRE && id !== COOKPOT && !isPower) continue;
-        const lx = Math.floor(i / (CS * CH)), rem = i % (CS * CH);
-        const wx = cx * CS + lx, wy = rem % CH, wz = cz * CS + Math.floor(rem / CH);
-        if (isPower) { this.powerCells.set(`${wx},${wy},${wz}`, id); continue; }
-        if (id === LAMP) continue; // the power tick relights it if a live Panel feeds it
-        if (id === CAMPFIRE && !this.fireLit(`${wx},${wy},${wz}`)) continue;
-        if (id === COOKPOT && !this.potLit(`${wx},${wy},${wz}`)) continue;
-        this.renderer.addPointLight(wx, wy, wz, "fire");
-      }
-    }
-    this.rebuildPower();
+    // ---- the ground under them ----
+    this.restorePlanet(this.planet, this.planetRun(this.planet));
+    for (const s of legacyExtras) this.giveOrDrop(s.itemId, 1);
   }
 
-  snapshot(): RunSave {
-    // the Codex learns whatever you are carrying or wearing right now
-    for (const s of this.inv.slots) this.codex.add(s.itemId);
-    for (const slot of ["backpack", "head", "body", "regulator", "light"] as const) {
-      const e = this.equip[slot];
-      if (e) this.codex.add(e.itemId);
-    }
+  /** The record for `planet`: the run's if it has one, else a fresh one, parked
+   *  in the store so the next snapshot fills it in. */
+  planetRun(planet: Planet): WorldRun {
+    let w = this.planets[planet];
+    if (!w) { w = emptyWorldRun(this.meta.seedStr); this.planets[planet] = w; }
+    return w;
+  }
+
+  /** The live planet-scoped state as a record (ADR-0010): everything that belongs
+   *  to the ground, not to the run. */
+  snapshotPlanet(): WorldRun {
     return {
-      v: 2,
       seedStr: this.meta.seedStr,
-      time: this.timeSec, playSec: this.playSec,
-      days: this.dayNumber(),
-      player: { x: this.player.pos.x, y: this.player.pos.y, z: this.player.pos.z, yaw: this.player.yaw, pitch: this.player.pitch },
-      survival: { health: this.survival.health, water: this.survival.water, body: this.survival.body },
-      quest: { i: this.quests.i, p: this.quests.p.slice(), e: { ...this.quests.e } },
-      inventory: { slots: this.inv.slots.map((s) => ({ ...s })), selected: this.inv.selected, w: this.inv.w, h: this.inv.h },
-      equip: {
-        backpack: this.equip.backpack?.itemId, head: this.equip.head?.itemId, body: this.equip.body?.itemId,
-        regulator: this.equip.regulator?.itemId, light: this.equip.light?.itemId,
-        charges: {
-          regulator: this.equip.regulator?.charges,
-          light: this.equip.light?.charges,
-        },
-      },
-      beaconMarks: this.beaconMarks,
-      ships: [...this.ships.values()].map((s) => s.snapshot()),
-      coreFuel: [...this.coreFuel],
-      collected: [...this.collected],
-      entities: this.entities.filter((e) => !e.buried).map((e) => ({ x: e.x, y: e.y, z: e.z, itemId: e.itemId, charges: e.charges, age: Math.floor(e.age ?? 0), stack: e.stack })),
-      pods: this.pods,
-      won: this.won || undefined,
-      caches: this.caches.map((c) => ({ x: c.x, y: c.y, z: c.z, kind: c.kind, items: c.items.map((i) => ({ ...i })) })),
+      deltas: this.world.serializeDeltas(),
+      rots: this.world.serializeRots(),
+      visited: [...this.visited],
+      revealed: [...this.revealed],
+      pins: this.pins,
       chests: [...this.chests].map(([cells, slots]) => ({ cells, slots: slots.map((s) => ({ ...s })) })),
       campfires: Object.fromEntries([...this.fires].map(([k, f]) => [k, {
         lit: f.lit, drip: Math.floor(f.drip), charge: f.charge,
@@ -798,17 +866,243 @@ export class Game {
       trees: [...this.trees],
       appleTrees: [...this.appleTrees],
       fruitRegrow: [...this.fruitRegrow],
-      lastSleep: this.lastSleep > 0 ? this.lastSleep : undefined,
+      coreFuel: [...this.coreFuel].map(([k, f]) => [k, f.map((pt) => ({ ...pt }))] as [string, Port[]]),
+      ships: [...this.ships.values()].map((s) => s.snapshot()),
+      beaconMarks: this.beaconMarks,
+      entities: this.entities.filter((e) => !e.buried).map((e) => ({ x: e.x, y: e.y, z: e.z, itemId: e.itemId, charges: e.charges, age: Math.floor(e.age ?? 0), stack: e.stack })),
+      pods: this.pods,
+      caches: this.caches.map((c) => ({ x: c.x, y: c.y, z: c.z, kind: c.kind, items: c.items.map((i) => ({ ...i })) })),
+      collected: [...this.collected],
       melonHint: this.melonHintShown || undefined,
-      deltas: this.world.serializeDeltas(),
-      rots: this.world.serializeRots(),
+    };
+  }
+
+  /** Swap the whole active record (ADR-0010): `w`'s planet-scoped state becomes
+   *  live, the World is re-pointed at that planet's seed and deltas, and the old
+   *  planet's meshes, lights and Grid state go away so the new one streams in the
+   *  way a fresh load does. Putting the player and the Ship on the new ground is
+   *  the caller's job (Leave Planet); this is the mechanism. */
+  restorePlanet(planet: Planet, w: WorldRun) {
+    // the old planet's furniture leaves the scene with it
+    for (const e of this.entities) this.renderer.removeEntityMesh(e.id);
+    for (const c of this.caches) {
+      this.renderer.removeEntityMesh(c.id);
+      if (c.markerEid !== undefined) this.renderer.removeEntityMesh(c.markerEid);
+      if (c.beamEid !== undefined) this.renderer.removeEntityMesh(c.beamEid);
+    }
+    for (const p of this.pods) { this.renderer.removeEntityMesh(p.ringEid); this.renderer.removeEntityMesh(p.beamEid); }
+    for (const eid of this.visorBeams.values()) this.renderer.removeEntityMesh(eid);
+    for (const eid of this.beaconBeams.values()) this.renderer.removeEntityMesh(eid);
+    for (const eid of this.regGlow.values()) this.renderer.removeEntityMesh(eid);
+    this.visorBeams.clear(); this.beaconBeams.clear(); this.regGlow.clear();
+    for (const g of this.shipGroups.values()) this.renderer.removeEntityGroup(g);
+    for (const m of this.mobs) this.renderer.removeSceneObject(m.vis.group);
+    this.mobs = []; this.traderAt.clear();
+    this.clearPlanetLights();
+    // the ground itself: same World object, so Player and the cell hooks follow
+    this.world.resetFor(hashStr(w.seedStr || this.meta.seedStr || this.meta.id), this.worldMode, planet, w.deltas, w.rots);
+    this.planet = planet;
+    this.piloting = null;
+    // Ships ride outside the chunks: restore the entities; their power cells are
+    // indexed with the rest of the Grid state below
+    this.beaconMarks = w.beaconMarks ?? [];
+    this.ships = new Map((w.ships ?? []).map((s) => [s.id, Ship.restore(s, this.world.worldH)]));
+    this.shipSeq = [...this.ships.keys()].reduce((m, i) => Math.max(m, i), 0) + 1;
+    this.coreFuel = new Map((w.coreFuel ?? []).map(([k, f]) => [k, migratePorts(f)] as [string, [Port, Port]]));
+    for (const sh of this.ships.values()) this.buildShipGroup(sh);
+    this.pins = w.pins ?? [];
+    this.pinSeq = this.pins.reduce((m, p) => Math.max(m, p.id), 0);
+    this.revealed = new Set(w.revealed ?? []);
+    this.visited = new Set(w.visited ?? []);
+    this.trees = new Map(w.trees ?? []);
+    this.collected = new Set((w.collected ?? []).map((c) => String(c)));
+    const known = (id: string) => !!ITEMS[id];
+    const fresh: typeof this.entities = [];
+    for (const e of w.entities ?? []) {
+      // old saves may hold stacked drops; split them — one item per entity
+      const n = e.count ?? 1;
+      if (!known(e.itemId)) continue; // a removed item's drop is quietly gone
+      for (let i = 0; i < n; i++) fresh.push({ id: this.entitySeq++, x: e.x, y: e.y, z: e.z, itemId: e.itemId, age: e.age, stack: e.stack });
+    }
+    this.entities = fresh;
+    // chest grids: split any legacy stacked slots into individual items
+    this.chests = new Map((w.chests ?? []).map((c) => {
+      const ci = this.emptyChestGrid(c.cells.split("|").length);
+      for (const s of c.slots) {
+        if (!known(s.itemId)) continue; // a removed item in a Chest is quietly gone
+        ci.slots.push({ itemId: s.itemId, x: s.x, y: s.y, rot: s.rot, blockRot: s.blockRot, charges: s.charges, stack: s.stack });
+        for (let i = 1; i < (s.count ?? 1); i++) {
+          const extra: Slot = { itemId: s.itemId, x: 0, y: 0 };
+          if (!Game.placeSlotFree(ci, extra)) this.giveOrDrop(s.itemId, 1);
+        }
+      }
+      return [c.cells, ci.slots];
+    }));
+    const legacyChests: { x: number; y: number; z: number; items: { itemId: string; count: number }[] }[] = [];
+    for (const c of w.caches ?? []) {
+      const kind = c.kind ?? "death";
+      // old saves model Chests as caches; they now live on as chest-block grids
+      if (kind === "chest") { legacyChests.push(c); continue; }
+      const cache: DeathCache = { id: this.entitySeq++, x: c.x, y: c.y, z: c.z, kind, items: c.items.map((i) => ({ ...i })) };
+      this.caches.push(cache); // crate, ring and beam get (re)built by the marker loop
+    }
+    this.fires.clear();
+    this.gauges.clear();
+    for (const [k, v] of Object.entries(w.campfires ?? {})) {
+      const f = Game.newFire();
+      if (typeof v === "number") {
+        // old saves already model the coals as a raw charge pool
+        f.charge = v;
+        f.lit = v > 0;
+      } else {
+        f.lit = !!v.lit;
+        f.drip = v.drip ?? 0;
+        // pre-pool saves banked charges on fuel items themselves: melt them into the coals
+        f.charge = v.charge ?? (v.fuel ?? []).reduce((t, s) =>
+          t + (s.charges ?? (FIRE_FUEL[s.itemId] ?? 0) * (s.stack?.count ?? 1)), 0);
+        for (const s of v.input ?? []) f.input.addSlot({ ...s });
+        for (const s of v.output ?? []) f.output.addSlot({ ...s });
+      }
+      this.gauges.set(k, f.lit ? Game.fireFuel(f) : 0);
+      this.fires.set(k, f);
+    }
+    this.pots.clear();
+    for (const [k, v] of Object.entries(w.pots ?? {})) {
+      const p = Game.newPot();
+      p.lit = !!v.lit;
+      p.drip = v.drip ?? 0;
+      p.charge = v.charge ?? 0;
+      for (const s of v.input ?? []) p.input.addSlot({ ...s });
+      for (const s of v.output ?? []) p.output.addSlot({ ...s });
+      for (const j of v.jobs ?? []) {
+        const r = POT_RECIPES.find((r) => r.out === j.out);
+        if (r) p.jobs.push({ r, cook: j.cook, done: j.cook >= r.seconds });
+      }
+      this.pots.set(k, p);
+      this.gauges.set(k, this.potLit(k) ? p.charge : 0);
+    }
+    this.batteryCharge = new Map(w.battery ?? []);
+    this.genFuel = new Map(w.genFuel ?? []);
+    this.trippedPanels = new Set(w.trippedPanels ?? []);
+    this.renderer.fires = this.gauges;
+    this.crops = new Map(w.crops ?? []);
+    this.appleTrees = new Map(w.appleTrees ?? []);
+    this.fruitRegrow = new Map(w.fruitRegrow ?? []);
+    if (w.melonHint) this.melonHintShown = true;
+    for (const c of legacyChests) this.adoptLegacyChest(c);
+    this.pods = (w.pods ?? []).map((p) => ({
+      ...p,
+      ringEid: this.renderer.addGroundRing(p.x + 0.5, Math.round(heightAt(this.world.seed, p.x, p.z)), p.z + 0.5, 0xcc3322, 1.1),
+      beamEid: this.renderer.addBeam(p.x + 0.5, Math.round(heightAt(this.world.seed, p.x, p.z)), p.z + 0.5, 0xcc3322),
+    }));
+    // Grid state is rebuilt from this planet's blocks, not the old planet's
+    this.powerCells.clear();
+    this.breakers.clear();
+    this.stormShieldOn = false;
+    this.renderer.setStormDome(null);
+    this.breakerTick = -1; this.regTick = -1; this.cozyTickId = -1;
+    for (const sh of this.ships.values())
+      for (const [k, c] of sh.cells) if (isPowerBlock(c.id)) this.powerCells.set("s" + sh.id + "," + k, c.id);
+    // Sandstorm Breakers the player placed live in the deltas (worldgen ones are
+    // scanned by the caller that knows the planet's structures)
+    for (const [k, d] of this.world.deltas) {
+      const [cx, cz] = k.split(",").map(Number);
+      for (const [i, id] of d) {
+        if (id !== STORM_BREAKER) continue;
+        const y = i % CH, rest = (i - y) / CH, lx = rest % CS;
+        this.breakers.add(`${cx * CS + lx},${y},${cz * CS + (rest - lx) / CS}`);
+      }
+    }
+    // re-light campfires that live in the saved deltas; a campfire
+    // without fuel charges stays cold charcoal and keeps no light
+    // (Lamps wait for the power tick — they glow only on a live Grid)
+    for (const [k, m] of this.world.deltas) {
+      const [cx, cz] = k.split(",").map(Number);
+      for (const [i, id] of m) {
+        const isPower = isPowerBlock(id);
+        if (id !== LAMP && id !== CAMPFIRE && id !== COOKPOT && !isPower) continue;
+        const lx = Math.floor(i / (CS * CH)), rem = i % (CS * CH);
+        const wx = cx * CS + lx, wy = rem % CH, wz = cz * CS + Math.floor(rem / CH);
+        if (isPower) { this.powerCells.set(`${wx},${wy},${wz}`, id); continue; }
+        if (id === LAMP) continue; // the power tick relights it if a live Panel feeds it
+        if (id === CAMPFIRE && !this.fireLit(`${wx},${wy},${wz}`)) continue;
+        if (id === COOKPOT && !this.potLit(`${wx},${wy},${wz}`)) continue;
+        this.renderer.addPointLight(wx, wy, wz, "fire");
+      }
+    }
+    this.rebuildPower();
+    // the new planet renders from scratch: light maps, chunk meshes, Map tiles
+    this.renderer.rebuildLights(this.world);
+    this.renderer.resetChunkMeshes();
+    this.tileCache.clear();
+    this.canisterSeen.clear();
+    this.treePlanCache.clear();
+    this.worldCorners.clear(); this.frameSeq++;
+    this.shipDirty.clear();
+    // the new planet's fauna from the first top-up on
+    setFauna(planet, this.world.seed);
+    this.renderer.setPlanetPalette(planet);
+    this.survival.silvaris = planet === "silvaris";
+    const pcx = Math.floor(this.player.pos.x / CS), pcz = Math.floor(this.player.pos.z / CS);
+    this.renderer.ensureChunks(this.world, pcx, pcz);
+  }
+
+  /** Drop every dynamic light the outgoing planet's stations added — Campfire
+   *  and Cooking Pot coals, Generator/Panel/Elec-Lamp Grid light, the cool glow
+   *  of working Regulators — so none of them light the new planet's ground. The
+   *  planet's own delta scan and power tick put its lights back. */
+  private clearPlanetLights() {
+    const cell = (k: string) => k.split(",").map(Number) as [number, number, number];
+    for (const k of this.fires.keys()) { const [x, y, z] = cell(k); this.renderer.removePointLight(x, y, z); }
+    for (const k of this.pots.keys()) { const [x, y, z] = cell(k); this.renderer.removePointLight(x, y + 0.2, z); }
+    for (const [k, , ] of this.regGlow) { const [x, y, z] = cell(k); this.renderer.removePointLight(x, y, z); }
+    for (const k of this.powerCells.keys()) {
+      if (k[0] !== "s") { const [x, y, z] = cell(k); this.renderer.removePointLight(x, y, z); continue; }
+      // a lamp or panel aboard a grounded Ship lights at its world position
+      const sh = this.ships.get(Number(k.slice(1, k.indexOf(","))));
+      if (!sh || !sh.grounded) continue;
+      const [ix, iy, iz] = cell(k.slice(k.indexOf(",") + 1));
+      const p = sh.localToWorld(ix, iy, iz);
+      this.renderer.removePointLight(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z));
+    }
+  }
+
+  snapshot(): RunSave {
+    // the Codex learns whatever you are carrying or wearing right now
+    for (const s of this.inv.slots) this.codex.add(s.itemId);
+    for (const slot of ["backpack", "head", "body", "regulator", "light"] as const) {
+      const e = this.equip[slot];
+      if (e) this.codex.add(e.itemId);
+    }
+    // the record for the planet the player is standing on catches up to the live
+    // state; the other planet's record stays exactly as it was left (ADR-0010)
+    this.planets[this.planet] = this.snapshotPlanet();
+    const desertis = this.planets.desertis ?? emptyWorldRun(this.meta.seedStr);
+    return {
+      v: 3,
+      seedStr: this.meta.seedStr,
+      time: this.timeSec, playSec: this.playSec,
+      days: this.dayNumber(),
+      player: { x: this.player.pos.x, y: this.player.pos.y, z: this.player.pos.z, yaw: this.player.yaw, pitch: this.player.pitch },
+      survival: { health: this.survival.health, water: this.survival.water, body: this.survival.body },
+      quest: { i: this.quests.i, p: this.quests.p.slice(), e: { ...this.quests.e } },
+      inventory: { slots: this.inv.slots.map((s) => ({ ...s })), selected: this.inv.selected, w: this.inv.w, h: this.inv.h },
+      equip: {
+        backpack: this.equip.backpack?.itemId, head: this.equip.head?.itemId, body: this.equip.body?.itemId,
+        regulator: this.equip.regulator?.itemId, light: this.equip.light?.itemId,
+        charges: {
+          regulator: this.equip.regulator?.charges,
+          light: this.equip.light?.charges,
+        },
+      },
+      won: this.won || undefined,
+      lastSleep: this.lastSleep > 0 ? this.lastSleep : undefined,
       worldMode: this.worldMode,
       cheats: { immortal: this.cheatInvincible, keep: this.keepInventory },
-      pins: this.pins,
-      visited: [...this.visited],
-      revealed: [...this.revealed],
       chronicle: [...this.chronicle],
       codex: [...this.codex],
+      planet: this.planet,
+      worlds: { desertis, ...(this.planets.silvaris ? { silvaris: this.planets.silvaris } : {}) },
     };
   }
 
@@ -983,7 +1277,7 @@ export class Game {
   // on roofs and dune tops, not at raw terrain height under a structure, and
   // never inside the block itself (matches the heightAt surface convention)
   private columnTop(x: number, z: number): number {
-    for (let y = CH - 1; y >= 0; y--) if (this.world.get(x, y, z)) return y + 1;
+    for (let y = this.world.worldH - 1; y >= 0; y--) if (this.world.get(x, y, z)) return y + 1;
     return Math.round(heightAt(this.seed, x, z));
   }
 
@@ -1126,6 +1420,43 @@ export class Game {
     }
   }
 
+  /** Silvaris jitters its sites off their lattice nodes, and silvaris.ts only
+   *  answers "which site holds this cell" — so a node's site is found by
+   *  sweeping around the node on a reach-sized grid. Pure in the seed, so each
+   *  node is swept once and remembered. */
+  private silSites = new Map<string, { x: number; y: number; z: number } | null>();
+  private silSiteNode(kind: "settle" | "trader", tx: number, tz: number): { x: number; y: number; z: number } | null {
+    const k = `${kind}:${tx},${tz}`;
+    if (this.silSites.has(k)) return this.silSites.get(k)!;
+    const settle = kind === "settle";
+    const L = settle ? SETTLE_L : TRADER_L, step = settle ? 12 : 6;
+    const at = settle ? silSettleAt : silTraderAt;
+    let hit: { x: number; y: number; z: number } | null = null;
+    // a site never drifts past half its spacing (the generators guard that), so
+    // sweeping the node's half-cell at reach-sized steps must find it
+    for (let ox = -(L / 2 - 1); !hit && ox <= L / 2 - 1; ox += step)
+      for (let oz = -(L / 2 - 1); !hit && oz <= L / 2 - 1; oz += step) {
+        const s = at(tx * L + ox, tz * L + oz, this.world.seed);
+        if (s && Math.max(Math.abs(s.x - tx * L), Math.abs(s.z - tz * L)) < L / 2)
+          hit = { x: s.x, y: s.y, z: s.z };
+      }
+    this.silSites.set(k, hit);
+    return hit;
+  }
+
+  private nearestSilSite(kind: "settle" | "trader", x: number, z: number) {
+    const L = kind === "settle" ? SETTLE_L : TRADER_L;
+    const tx = Math.floor(x / L), tz = Math.floor(z / L);
+    let best: { x: number; y: number; z: number } | null = null, bd = Infinity;
+    for (let ax = tx - 1; ax <= tx + 1; ax++) for (let az = tz - 1; az <= tz + 1; az++) {
+      const c = this.silSiteNode(kind, ax, az);
+      if (!c) continue;
+      const d = (c.x - x) ** 2 + (c.z - z) ** 2;
+      if (d < bd) { bd = d; best = c; }
+    }
+    return best;
+  }
+
   private waypointTarget(): { name: string; x: number; y: number; z: number; lmKey?: string } | null {
     const q = currentQuest(this.quests);
     if (!q) return null;
@@ -1194,6 +1525,29 @@ export class Game {
         if (!at) return null;
         return { name: "Your Farm", x: at.x + 0.5, y: at.y + 1, z: at.z + 0.5 };
       }
+      case "settle": {
+        if (this.planet !== "silvaris") return null;
+        // the nearest Settlement: the guide beams its plaza and the Landmark
+        // on the Map lights up with it
+        const c = this.nearestSilSite("settle", p.x, p.z);
+        if (!c) return null;
+        return {
+          name: "Settlement", x: c.x + 0.5, y: c.y + 1, z: c.z + 0.5,
+          lmKey: `settle:${Math.round(c.x / SETTLE_L)},${Math.round(c.z / SETTLE_L)}`,
+        };
+      }
+      case "leave": {
+        // the leap begins at the controls: point at the Ship's yoke
+        for (const sh of this.ships.values()) {
+          for (const [k, cell] of sh.cells) {
+            if (cell.id !== FLIGHT_CONTROLS) continue;
+            const [lx, ly, lz] = k.split(",").map(Number);
+            const [wx, wy, wz] = sh.cellToWorld(lx, ly, lz);
+            return { name: "The Ship", x: wx + 0.5, y: wy + 1, z: wz + 0.5 };
+          }
+        }
+        return null;
+      }
       default: return null; // sky / mine / day: nothing to point at
     }
   }
@@ -1203,14 +1557,19 @@ export class Game {
     if (!q) return;
     const p = this.player.pos;
     if (q.kind === "sky" && this.survival.lastOpenSky) this.questBump("sky");
-    else if (q.kind === "oasis" && this.world.gen.nearOasis(Math.floor(p.x), Math.floor(p.z))) this.questBump("oasis");
-    else if (q.kind === "water_home" && this.inv.slots.some((s) => s.itemId === "canister_full") &&
+    // "First Light" is the leap's own reward: on Silvaris it pays off the
+    // moment the player stands under the second world's open sky — whether
+    // they arrived by Ship (the deed is already banked at landing) or began
+    // the run here
+    else if (q.kind === "arrive" && this.planet === "silvaris" && this.survival.lastOpenSky) this.questBump("arrive");
+    else if (q.kind === "oasis" && this.planet !== "silvaris" && this.world.gen.nearOasis(Math.floor(p.x), Math.floor(p.z))) this.questBump("oasis");
+    else if (q.kind === "water_home" && this.planet !== "silvaris" && this.inv.slots.some((s) => s.itemId === "canister_full") &&
       [...this.beaconMarks, { x: -4, y: 31, z: -1 }].some((b) => {
         if (!this.beaconAlive(b)) return false;
         const [bx, by, bz] = this.beaconWorld(b);
         return (bx + 0.5 - p.x) ** 2 + (by + 1 - p.y) ** 2 + (bz + 0.5 - p.z) ** 2 < 25;
       })) this.questBump("water_home");
-    else if (q.kind === "wreck") {
+    else if (q.kind === "wreck" && this.planet !== "silvaris") {
       const s = this.world.gen.secondShip;
       if ((s.x + 0.5 - p.x) ** 2 + (s.z + 0.5 - p.z) ** 2 < 169) this.questBump("wreck");
     }
@@ -1236,9 +1595,11 @@ export class Game {
     if (!q) {
       if (this.questShown !== "done") {
         this.questShown = "done";
-        el.innerHTML = this.won
-          ? `<div class="q-title">Main Quest complete</div><div class="q-desc">The beacon relay is live. Survive as long as you can while you wait for the rescue ship.</div>`
-          : `<div class="q-title">All quests complete</div><div class="q-desc">Now just survive as long as you can.</div>`;
+        // the chain's last quest carries its own ending words: the leap to
+        // Silvaris closes Phase 1, and the fuel the player cooked themselves
+        // closes Phase 2 — no rescue ship, no waiting
+        const last = QUESTS[QUESTS.length - 1];
+        el.innerHTML = `<div class="q-title">Main Quest complete</div><div class="q-desc">${last.completionText ?? "Now just survive as long as you can."}</div>`;
       }
       return;
     }
@@ -1311,7 +1672,24 @@ export class Game {
 
   private landmarkList(px: number, pz: number, rad: number): { key: string; x: number; z: number; kind: string; label: string }[] {
     const g = this.world.gen, out: { key: string; x: number; z: number; kind: string; label: string }[] = [];
-    out.push({ key: "ship", x: 0, z: 0, kind: "ship", label: "The Crash" }); // you started here — always known
+    out.push({ key: "ship", x: 0, z: 0, kind: "ship", label: this.planet === "silvaris" ? "The Arrival" : "The Crash" }); // you started here — always known
+    if (this.planet === "silvaris") {
+      // the second world's own Landmarks: the Dueliers' Settlements and the
+      // trader camps that barter with them. Desert lattices hold nothing here.
+      const lat = (L: number, kind: "settle" | "trader", mapKind: string, label: string) => {
+        const t0 = Math.floor((px - rad) / L) - 1, t1 = Math.floor((px + rad) / L) + 1;
+        const s0 = Math.floor((pz - rad) / L) - 1, s1 = Math.floor((pz + rad) / L) + 1;
+        for (let tx = t0; tx <= t1; tx++) for (let tz = s0; tz <= s1; tz++) {
+          const c = this.silSiteNode(kind, tx, tz);
+          if (!c) continue;
+          const k = `${kind}:${tx},${tz}`;
+          if (this.landmarkKnown(k, c.x, c.z)) out.push({ key: k, x: c.x, z: c.z, kind: mapKind, label });
+        }
+      };
+      lat(SETTLE_L, "settle", "town", "Settlement");
+      lat(TRADER_L, "trader", "camp", "Trader Camp");
+      return out;
+    }
     const s = g.secondShip;
     if (this.landmarkKnown("wreck2", s.x, s.z)) out.push({ key: "wreck2", x: s.x, z: s.z, kind: "wreck", label: "Second Wreck" });
     { // Oases on their lattice: known = walked, quest-guided or Tracker-revealed
@@ -1448,11 +1826,19 @@ export class Game {
       }
     } else {
       // remembered terrain: relief sketch from the height field alone
-      const BIOME_RGB = [[150, 128, 86], [104, 92, 74], [150, 158, 156], [120, 84, 58], [88, 66, 52]];
+      const BIOME_RGB = this.planet === "silvaris"
+        ? [[150, 128, 86], [86, 128, 138], [112, 148, 84], [58, 96, 70], [158, 158, 166], [126, 74, 56]]
+        : [[150, 128, 86], [104, 92, 74], [150, 158, 156], [120, 84, 58], [88, 66, 52]];
+      const hAt = this.planet === "silvaris"
+        ? (wx: number, wz: number) => silHeightAt(wx, wz, this.world.seed)
+        : (wx: number, wz: number) => heightAt(this.seed, wx, wz);
+      const bAt = this.planet === "silvaris"
+        ? (wx: number, wz: number) => silBiomeAt(wx, wz, this.world.seed)
+        : (wx: number, wz: number) => biomeAt(wx, wz, this.seed);
       for (let lx = 0; lx < CS; lx++) for (let lz = 0; lz < CS; lz++) {
         const wx = cx * CS + lx, wz = cz * CS + lz;
-        const h = heightAt(this.seed, wx, wz);
-        const base = BIOME_RGB[biomeAt(wx, wz, this.seed)] ?? BIOME_RGB[0];
+        const h = hAt(wx, wz);
+        const base = BIOME_RGB[bAt(wx, wz)] ?? BIOME_RGB[0];
         const sh = 0.45 + 0.55 * Math.min(1, Math.max(0, h / 40));
         g2.fillStyle = `rgb(${Math.round(base[0] * sh)},${Math.round(base[1] * sh)},${Math.round(base[2] * sh)})`;
         g2.fillRect(lx, lz, 1, 1);
@@ -1622,6 +2008,12 @@ export class Game {
     on("keyup", (e) => this.keys.delete((e as KeyboardEvent).code));
     document.getElementById("surge-btn")!.onclick = () => this.surge();
     this.wireFlightUI();
+    document.getElementById("flight-leave")!.onclick = () => this.openLeave();
+    document.getElementById("core-slot-0")!.onclick = () => this.coreSlotClick(0);
+    document.getElementById("core-slot-1")!.onclick = () => this.coreSlotClick(1);
+    (document.getElementById("btn-leave") as HTMLButtonElement).onclick = () => this.confirmLeave();
+    for (const id of ["ui-core", "ui-leave"])
+      document.querySelector("#" + id + " .close-btn")?.addEventListener("click", () => this.closeUI());
     document.getElementById("btn-inv-craft")!.onclick = () => { this.invCraft = !this.invCraft; this.renderCraftTab(); };
     document.getElementById("hotbar")!.addEventListener("pointerdown", (e) => {
       const b = (e.target as HTMLElement).closest("[data-hb]");
@@ -1921,7 +2313,20 @@ export class Game {
     this.renderer.rebuildDirty(this.world);
 
     const kf = this.renderer.updateSky(this.timeSec, this.player.pos);
-    const biome = biomeAt(Math.floor(this.player.pos.x), Math.floor(this.player.pos.z), this.seed);
+    if (this.leaving) {
+      // the climb's whole weather pass: fog closes in and the sky drains to
+      // the dark between worlds (the Slice R cinematic hook, from game side)
+      const k = Math.min(1, this.leaving.t / 5);
+      const sc = this.renderer.scene;
+      const fog = sc.fog as THREE.Fog;
+      fog.color.lerp(LEAVE_BLACK, k);
+      sc.background = fog.color;
+      fog.near = THREE.MathUtils.lerp(fog.near, 3, k);
+      fog.far = THREE.MathUtils.lerp(fog.far, 26, k);
+    }
+    const biome = this.planet === "silvaris"
+      ? silBiomeAt(Math.floor(this.player.pos.x), Math.floor(this.player.pos.z), this.world.seed)
+      : biomeAt(Math.floor(this.player.pos.x), Math.floor(this.player.pos.z), this.seed);
     const fr = (this.timeSec % DAY_SECONDS) / DAY_SECONDS;
     const sa = (fr - 0.25) * Math.PI * 2;
     this.sunElev = kf.sunElev;
@@ -1929,7 +2334,7 @@ export class Game {
       ? (() => { const inv = 1 / Math.hypot(Math.cos(sa), kf.sunElev, 0.4); return { x: Math.cos(sa) * inv, y: kf.sunElev * inv, z: 0.4 * inv }; })()
       : null;
 
-    if (!this.ui && !this.cine) {
+    if (!this.ui && !this.cine && !this.leaving) {
       let mx = this.stick.x, mz = -this.stick.y;
       // at the yoke the keys fly the Ship; the player is bolted to the deck
       const hands = !this.piloting;
@@ -1968,23 +2373,37 @@ export class Game {
       }
       }
       this.stormShieldTick();
+      this.dockTick();
       this.cozyTick(dt);
+      // the storm regime follows the ground under the player: Desertis always
+      // blows sand; Silvaris raises a Blizzard over the peaks and the cold
+      // forest, Ash over the Scorch Belt, and keeps the plain and the sea wind
+      // under the sand regime (it is wind, and the Breaker calms every kind)
+      const pp = this.player.pos;
+      if (this.planet === "silvaris") {
+        const sb = silBiomeAt(Math.floor(pp.x), Math.floor(pp.z), this.world.seed);
+        this.survival.stormKind = sb === SB_SCORCH ? "ash"
+          : sb === SB_ALPINE || (sb === SB_BOREAL && pp.y >= SIL_SEA + 40) ? "blizzard" : "sand";
+      } else this.survival.stormKind = "sand";
       this.survival.update(dt, this.world, this.player.pos, {
         sprinting: this.player.sprinting && (mx !== 0 || mz !== 0),
         biome, tSec: this.timeSec, sunElev: this.sunElev, sunDir: this.sunDir, inWater: this.player.inWater,
         warmth: this.fireWarmth(this.player.pos),
         regulator: (this.equip.regulator?.charges ?? 0) > 0,
-        terrainH: (x, z) => heightAt(this.seed, x, z),
+        terrainH: this.planet === "silvaris"
+          ? (x, z) => silHeightAt(x, z, this.world.seed)
+          : (x, z) => heightAt(this.seed, x, z),
         stormShield: this.stormShieldOn,
         stormMul: this.equip.body && ITEMS[this.equip.body.itemId].stormResist ? 0.25 : 1,
       });
-      // sandstorm: visuals follow the Survival intensity; announce the turn
+      // storms: visuals follow the Survival intensity; announce the turn
       this.renderer.setStorm(this.survival.storm, this.survival.lastOpenSky);
       this.audio.setStorm(this.survival.storm);
       if (this.survival.storm > 0.5 && !this.stormToast) {
-        this.stormToast = true; this.lesson("storm"); hud.toast("A Sandstorm rolls in — get out of the open."); this.audio.error();
+        this.stormToast = true; this.lesson("storm");
+        hud.toast(STORM_TOASTS[this.survival.stormKind].in); this.audio.error();
       } else if (this.survival.storm < 0.3 && this.stormToast) {
-        this.stormToast = false; hud.toast("The Sandstorm passes.");
+        this.stormToast = false; hud.toast(STORM_TOASTS[this.survival.stormKind].out);
       }
       // machine animations: refresh the near-player set a few times a second
       this.fxAcc += dt;
@@ -2020,6 +2439,7 @@ export class Game {
     this.audio.heartbeat(dt, this.survival.health);
 
     if (this.cine) this.cineFrame(dt);
+    else if (this.leaving) this.leaveFrame(dt);
     else {
       const cam = this.renderer.camera;
       cam.position.copy(this.player.eye());
@@ -2174,7 +2594,7 @@ export class Game {
     this.audio.setDay(kf.sunElev > 0);
 
     this.autosaveAcc += dt;
-    if (this.autosaveAcc > 30) { this.autosaveAcc = 0; this.saveNow(); }
+    if (this.autosaveAcc > 30 && !this.leaving) { this.autosaveAcc = 0; this.saveNow(); }
 
     const dhp = this.prevHp - this.survival.health;
     if (dhp > 0) {
@@ -2273,6 +2693,11 @@ export class Game {
       if (id === BENCH || id === BENCH_EXT) return "E: Craft";
       if (id === ARMORY) return "E: Forge armour and gear";
       if (id === REFINERY) return "E: Cook rocket fuel";
+      if (id === ELECTRIC_BENCH) return "E: Craft at the Electric Bench";
+      if (id === FOUNDRY) return "E: Smelt at the Foundry";
+      if (id === ASSEMBLY_BENCH) return "E: Assemble at the Bench";
+      if (id === FUEL_WORKS) return "E: Cook Super Rocket Fuel";
+      if (id === INSCRIPTION) return "E: Read the Inscription";
       if (id === CAMPFIRE) return "E: Cook at the Campfire";
       if (id === COOKPOT) return "E: Cook at the Cooking Pot";
       if (id === MELON_2 || id === WHEAT_2 || id === CACTUS_FRUIT || id === SUGARCANE_2 || id === APPLE_FRUIT) return "E: Harvest";
@@ -2282,7 +2707,7 @@ export class Game {
       if (id === POWER_PANEL) return this.trippedPanels.has(this.atKey(at))
         ? "E: Reset the tripped Power Panel" : "E: Power Panel — check the meters";
       if (id === THRUSTER) return this.inv.has("thruster_nozzle", 1) ? "E: Install Thruster Nozzle" : null;
-      if (id === ENGINECORE) return "E: Engine Core — load Rocket Fuel";
+      if (id === ENGINECORE) return "E: Engine Core — open the fuel ports";
       if (id === FLIGHT_CONTROLS) return (at.sh ?? this.shipAt(at.x, at.y, at.z)) ? "E: Take the controls" : "E: Flight Controls — read what the Ship still needs";
     }
     if (t.water) return this.world.get(t.water.x, t.water.y, t.water.z) === OIL ? null : "E: Refill canister";
@@ -2331,6 +2756,8 @@ export class Game {
         const weapon = it?.weapon;
         mb.hp -= weapon ? weapon.dmg : 3 + (it?.tool?.tier ?? 0);
         mb.hitFlash = 0.18;
+        // neutral until struck: a Tideback remembers who hit it while payback burns
+        if (MOB_DEFS[mb.kind].retaliateR) mb.enraged = 12;
         this.audio.thud();
         const kx = mb.x - this.player.pos.x, kz = mb.z - this.player.pos.z;
         const kl = Math.max(0.2, Math.hypot(kx, kz));
@@ -2574,11 +3001,19 @@ export class Game {
     }
     if (id === ENGINECORE) {
       this.atSet(a, AIR);
-      if (a.sh) {
-        // a flying heart: its Rocket Fuel spills as canisters with it
-        for (const ch of a.sh.fuel) if (ch > 0) this.dropEntity("rocket_fuel", 1, 2, ch);
-        a.sh.fuel = [0, 0];
+      // the ports spill with the Core: untouched canisters come out whole,
+      // a locked one — already drunk from — burns with it
+      const sh = a.sh ?? this.claimShip(x, y, z);
+      const ports = sh ? sh.fuel : this.coreFuel.get(this.atKey(a));
+      if (sh) sh.fuel = [emptyPort(), emptyPort()];
+      else this.coreFuel.delete(this.atKey(a));
+      let lockedLost = 0;
+      for (const pt of ports ?? []) {
+        if (!pt.k) continue;
+        if (pt.l) { lockedLost++; continue; }
+        this.dropEntity(pt.k === 2 ? "super_fuel" : "rocket_fuel", 1, 2, pt.k === 1 ? pt.c : undefined);
       }
+      if (lockedLost) { hud.toast("A locked canister burns with the Core — the engines already drank from it."); this.audio.error(); }
       this.giveOrDrop("engine_core", 1);
       this.questBump("core");
       this.audio.blockBreak();
@@ -2707,14 +3142,16 @@ export class Game {
     hud.toast(`${def.name} killed.`);
   }
 
-  /** Keep the desert stocked: a stable surface community (snakes, rats,
-   *  vultures, tortoises, fennecs) and the Caves' own fauna — up to 4 Dust
-   *  Scorpions and a lone Sand Wurm, spawned only while you are down in
-   *  them. Traders are not spawned by chance: each Trader Camp within reach
-   *  gets exactly one, and it never despawns while you keep coming back. */
+  /** Keep the current planet stocked: Desertis runs a stable surface
+   *  community (snakes, rats, vultures, tortoises, fennecs) plus the Caves'
+   *  own fauna; Silvaris answers to its biome tables - Brushbuck herds on the
+   *  plains, Tidebacks along the shallows, Snow Stalkers off the peaks.
+   *  Traders are not spawned by chance: each Desertis camp within reach gets
+   *  exactly one, and it never despawns while you keep coming back. */
   private topUpMobs() {
-    const targets: Record<MobKind, number> = { snake: 4, rat: 8, scorpion: 4, wurm: 1, trader: 0, vulture: 3, tortoise: 2, fennec: 2 };
-    const counts: Record<MobKind, number> = { snake: 0, rat: 0, scorpion: 0, wurm: 0, trader: 0, vulture: 0, tortoise: 0, fennec: 0 };
+    // species and caps come from the fauna layer (setFauna keyed it to planet+seed)
+    const targets = faunaTargets();
+    const counts = Object.fromEntries(Object.keys(targets).map((k) => [k, 0])) as Record<MobKind, number>;
     // anything strayed far from the player gives its slot back — except a Trader
     const p0 = this.player.pos;
     this.mobs = this.mobs.filter((m) => {
@@ -2723,14 +3160,33 @@ export class Game {
     });
     for (const m of this.mobs) counts[m.kind]++;
     const p = this.player.pos;
-    for (const kind of ["snake", "rat", "scorpion", "wurm", "vulture", "tortoise", "fennec"] as MobKind[]) {
+    for (const kind of faunaSpawnKinds()) {
       const underground = kind === "scorpion" || kind === "wurm";
       if (underground && p.y > 27) continue; // the deep fauna only stirs when you are down there
       while (counts[kind] < targets[kind]) {
         counts[kind]++; // every attempt, successful or not, spends a slot this round
         const a = Math.random() * Math.PI * 2, r = 30 + Math.random() * 30;
         const x = Math.floor(p.x + Math.cos(a) * r) + 0.5, z = Math.floor(p.z + Math.sin(a) * r) + 0.5;
-        if (!underground) {
+        if (this.planet === "silvaris") {
+          if (Math.hypot(x, z) < 24) continue; // the Dock plaza stays quiet
+          const gy = this.mobSurface(x, z);
+          if (gy <= 1 || this.world.get(Math.floor(x), gy, Math.floor(z)) !== AIR ||
+              this.world.get(Math.floor(x), gy + 1, Math.floor(z)) !== AIR) continue;
+          if (!silvarisSiteOk(this.world.get(Math.floor(x), gy - 1, Math.floor(z)), gy)) continue;
+          if (pickSilvarisMob(x, z) !== kind) continue; // the biome's own species fills its slot
+          this.spawnMob(kind, x, gy, z);
+          // herd species move in packs: seat the rest of the batch around the site
+          const n = Math.min(herdSize(kind) - 1, targets[kind] - counts[kind]);
+          for (let i = 0; i < n; i++) {
+            const ha = Math.random() * Math.PI * 2, hr = 1.5 + Math.random() * 3;
+            const hx = Math.floor(x + Math.cos(ha) * hr) + 0.5, hz = Math.floor(z + Math.sin(ha) * hr) + 0.5;
+            const hy = this.mobSurface(hx, hz);
+            if (hy <= 1 || this.world.get(Math.floor(hx), hy, Math.floor(hz)) !== AIR) continue;
+            if (!silvarisSiteOk(this.world.get(Math.floor(hx), hy - 1, Math.floor(hz)), hy)) continue;
+            counts[kind]++;
+            this.spawnMob(kind, hx, hy, hz);
+          }
+        } else if (!underground) {
           if (Math.hypot(x, z) < 24) continue; // keep the crash site quiet
           if (this.beaconMarks.some((b) => { const [bx, , bz2] = this.beaconWorld(b); return Math.hypot(bx + 0.5 - x, bz2 + 0.5 - z) < 16; })) continue; // save points stay safe
           const camp = structuresOf(this.seed).nearestCamp(x, z);
@@ -2747,7 +3203,7 @@ export class Game {
         }
       }
     }
-    this.ensureTraders();
+    if (this.planet === "desertis") this.ensureTraders();
   }
 
   /** One immovable Trader standing in front of each nearby camp's stall. */
@@ -2794,6 +3250,19 @@ export class Game {
     const camp = structuresOf(this.seed).nearestCamp(trader.x, trader.z);
     this.tradeCamp = camp ? { x: camp.x, z: camp.z } : { x: trader.x, z: trader.z };
     this.tradeOffers = offersFor(this.seed, this.tradeCamp.x, this.tradeCamp.z, this.dayNumber());
+    this.ui = "trade";
+    this.unlockPointer();
+    this.renderTrade();
+    document.getElementById("ui-trade")!.classList.remove("hidden");
+    this.audio.pickup();
+  }
+
+  /** The Silvaris stall: a camp's Chest opens its barter table. No walking
+   *  Trader stands here — Fauna keeps the camps quiet — so the counter itself
+   *  is the shop, and it trades the second world's own goods. */
+  private openSilTrade(camp: { x: number; z: number }) {
+    this.tradeCamp = { x: camp.x, z: camp.z };
+    this.tradeOffers = SILVARIS_GOODS.map((o) => ({ want: [...o.want], give: [...o.give] }));
     this.ui = "trade";
     this.unlockPointer();
     this.renderTrade();
@@ -2936,7 +3405,10 @@ export class Game {
       // a snake can only reach you through open column between its head and your
       // feet: one lurking under the floor you stand on stays lurking
       const canReach = this.columnClear(m.x, m.z, m.y + 0.2, p.y + 1.4);
-      const aggroR = def.aggroR;
+      if (m.enraged) m.enraged = Math.max(0, m.enraged - dt);
+      // a retaliating species was neutral until struck: while payback burns it
+      // chases anyone who walks into its radius
+      const aggroR = Math.max(def.aggroR, (m.enraged ?? 0) > 0 ? def.retaliateR ?? 0 : 0);
       const fleeR = def.fleeR;
       if (aggroR > 0 && dist < aggroR && dist > 0.01 && canReach) {
         vx = (dx / dist) * def.speed; vz = (dz / dist) * def.speed;
@@ -3375,6 +3847,12 @@ export class Game {
       if (id === BENCH || id === BENCH_EXT) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("bench"); return; }
       if (id === ARMORY) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("armory"); return; }
       if (id === REFINERY) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("refinery"); return; }
+      // the Second Planet's four stations: one panel each, same shape as the Bench
+      if (id === ELECTRIC_BENCH) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("electric"); return; }
+      if (id === FOUNDRY) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("foundry"); return; }
+      if (id === ASSEMBLY_BENCH) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("assembly"); return; }
+      if (id === FUEL_WORKS) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("fuel"); return; }
+      if (id === INSCRIPTION) { this.openInscription(x, z); return; }
       if (id === CAMPFIRE) {
         this.openFire = this.atKey(at);
         this.fire = this.fireAtKey(this.openFire);
@@ -3645,9 +4123,11 @@ export class Game {
    *  rooms, campfire warmth — exactly the air the player would breathe there. */
   private cropAir(x: number, y: number, z: number): number {
     return this.survival.airTempAt(this.world, x, y, z, this.timeSec, {
-      biome: biomeAt(x, z, this.seed),
+      biome: this.planet === "silvaris" ? silBiomeAt(x, z, this.world.seed) : biomeAt(x, z, this.seed),
       sunElev: this.sunElev, sunDir: this.sunDir,
-      terrainH: (bx, bz) => heightAt(this.seed, bx, bz),
+      terrainH: this.planet === "silvaris"
+        ? (bx, bz) => silHeightAt(bx, bz, this.world.seed)
+        : (bx, bz) => heightAt(this.seed, bx, bz),
       stormShield: this.breakerCalmAt(x, y, z),
       warmth: this.fireWarmth(new THREE.Vector3(x + 0.5, y, z + 0.5)),
     });
@@ -4232,6 +4712,21 @@ export class Game {
         return true;
       }
       return false;
+    }
+    if (bid === ENGINECORE) {
+      // the Core takes untouched Rocket Fuel canisters into its empty ports;
+      // Super Rocket Fuel is inert machinery - an Inserter cannot touch it
+      const sh = this.claimShip(bx, y, bz);
+      if (!sh && !this.coreFuel.has(`${bx},${y},${bz}`))
+        this.coreFuel.set(`${bx},${y},${bz}`, [emptyPort(), emptyPort()]);
+      const ports = sh ? sh.fuel : this.coreFuel.get(`${bx},${y},${bz}`)!;
+      const empty = ports.findIndex((pt) => pt.k === 0);
+      if (empty < 0) return false; // both ports seated - the chest keeps the rest
+      const i = src.findIndex((s) => s.itemId === "rocket_fuel");
+      if (i < 0) return false; // only Rocket Fuel canisters; Super stays put, silently
+      src.splice(i, 1);
+      ports[empty] = { k: 1, c: SHIP.canisterCharges, l: false };
+      return true;
     }
     if (bid !== CHEST && bid !== CHEST_CONNECTOR && bid !== CHEST_INTERFACE) return false;
     if (!this.putInChest(bx, y, bz, src[0].itemId)) return false; // destination full: nothing moves
@@ -4867,6 +5362,78 @@ export class Game {
     this.audio.drink();
   }
 
+  // ---------- Inscriptions ----------
+  // The Dueliers carved their history into slabs that stand in the Settlement
+  // plazas. The page has no panel for them (and this slice edits no HTML), so
+  // the card is built here and rides the HUD: one slab reads at a time, and E,
+  // Escape or a click puts it away again.
+  private inscriptionEl: HTMLElement | null = null;
+  private inscriptionOff: (() => void) | null = null;
+
+  closeInscription() {
+    if (!this.inscriptionEl) return;
+    this.inscriptionEl.remove();
+    this.inscriptionEl = null;
+    if (this.inscriptionOff) { this.inscriptionOff(); this.inscriptionOff = null; }
+  }
+
+  /** Which words a slab carries is fixed by the Settlement it stands in: the
+   *  same stone always tells the same story, on any visit, in any run of the
+   *  same seed. Nothing about the reading is saved — it is lore, not a deed. */
+  private openInscription(x: number, z: number) {
+    if (this.inscriptionEl) { this.closeInscription(); return; }
+    const site = silSettleAt(x, z, this.world.seed);
+    const sx = site ? site.x : x, sz = site ? site.z : z;
+    const text = INSCRIPTION_TEXTS[Math.floor(hash2(sx, sz, this.world.seed + 733) * INSCRIPTION_TEXTS.length)];
+    const el = document.createElement("div");
+    el.style.cssText = "position:absolute;left:50%;top:16%;transform:translateX(-50%);" +
+      "max-width:min(560px,82vw);padding:16px 20px;background:rgba(10,12,16,0.93);" +
+      "border:1px solid #6b7a8f;border-radius:10px;color:#e8eef6;font-size:15px;" +
+      "line-height:1.55;box-shadow:0 6px 24px rgba(0,0,0,0.5);pointer-events:auto;cursor:pointer";
+    el.innerHTML =
+      `<div style="font-size:11px;letter-spacing:0.09em;text-transform:uppercase;color:#9fb2c8;margin-bottom:8px">Inscription — the Dueliers' stone</div>` +
+      text +
+      `<div style="margin-top:10px;font-size:12px;color:#8b9aad">E, Esc or click to put the stone away</div>`;
+    document.getElementById("hud")!.appendChild(el);
+    this.inscriptionEl = el;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.code === "KeyE" || ev.code === "Escape") { ev.stopPropagation(); ev.preventDefault(); this.closeInscription(); }
+    };
+    const onClick = () => this.closeInscription();
+    el.addEventListener("click", onClick);
+    window.addEventListener("keydown", onKey, true); // capture: the world must not also take the key
+    this.inscriptionOff = () => { window.removeEventListener("keydown", onKey, true); el.removeEventListener("click", onClick); };
+    hud.toast("Inscription — a settled people left their story in stone.");
+  }
+
+  // ---------- Docked ----------
+  // A grounded Ship standing on a DOCK_PAD — the arrival cross or a
+  // Settlement's plaza — is docked: once per run the HUD says so and the
+  // Chronicle learns it. A respawn anchor needs nothing extra here: the Save
+  // Beacon set in the hull is already tracked with the Ship (beaconMarks carry
+  // the ship id), so a hull on a pad is a save point either way.
+  docked = false;
+
+  private dockTick() {
+    if (this.docked) return;
+    for (const sh of this.ships.values()) {
+      if (!sh.grounded) continue;
+      const b = sh.worldAABB();
+      const cx = Math.floor((b.min[0] + b.max[0]) / 2), cz = Math.floor((b.min[2] + b.max[2]) / 2);
+      const y = Math.round(b.min[1]) - 1; // the ground the hull rests on
+      let pads = 0;
+      for (const [dx, dz] of [[0, 0], [2, 0], [-2, 0], [0, 2], [0, -2]] as const)
+        if (this.world.get(cx + dx, y, cz + dz) === DOCK_PAD) pads++;
+      if (pads >= 2) {
+        this.docked = true;
+        this.lesson("dock");
+        this.questBump("dock");
+        hud.toast("Docked — the Settlement's plaza holds the Ship.");
+        break;
+      }
+    }
+  }
+
   // The Sandstorm Breaker's calm: standing within its radius of any pylon zeroes
   // the body's storm terms and shows that pylon's faint red dome.
   private stormShieldTick() {
@@ -5007,7 +5574,9 @@ export class Game {
     for (let ix = b.min[0]; ix <= b.max[0]; ix++)
       for (let iy = b.min[1]; iy <= b.max[1]; iy++)
         for (let iz = b.min[2]; iz <= b.max[2]; iz++) {
-          if (sh.getCell(ix, iy, iz) || !sh.claimsLocal(ix, iy, iz)) continue;
+          // every claimed cell of the bbox — hull plate included — must clear
+          // terrain: a hull that sinks into the ground hits it, not passes through
+          if (!sh.claimsLocal(ix, iy, iz)) continue;
           const dx = ix + 0.5 - c[0], dy = iy + 0.5 - c[1], dz = iz + 0.5 - c[2];
           if (isSolid(this.terrainAt(
             Math.floor(px + cos * dx + sin * dz),
@@ -5054,7 +5623,7 @@ export class Game {
       ok: !F.errors.length && !!F.bbox,
     });
     let lit = 0, unlit = 0, cores = 0, yokes = 0, batt = 0, panel = 0, mass = 0;
-    const portFuel: number[] = [];
+    const portFuel: Port[] = [];
     const bb = F.bbox;
     if (bb) {
       for (let x = bb.min[0]; x <= bb.max[0]; x++)
@@ -5077,7 +5646,7 @@ export class Game {
     rows.push({ label: "Engine Core standing in the Frame", ok: cores >= 1 });
     rows.push({ label: "Flight Controls standing in the Frame", ok: yokes >= 1 });
     rows.push({ label: "Ship Grid: Panel + Battery wired to the Core", ok: batt >= 1 && panel >= 1 });
-    rows.push({ label: `Fuel loaded: ${portFuel.reduce((a, b2) => a + b2, 0).toFixed(0)} charges`, ok: portFuel.some((p) => p > 0) });
+    rows.push({ label: `Fuel loaded: ${rocketCharges(portFuel)} charges`, ok: portFuel.some((p) => p.k === 1 && p.c > 0) });
     rows.push({ label: `Mass ${mass} / lift ${lit * SHIP.liftCapacity}`, ok: mass > 0 && mass <= lit * SHIP.liftCapacity });
     rows.push({ label: "You are inside the Ship", ok: aboard });
     return { rows, mass, lift: lit * SHIP.liftCapacity, ready: rows.every((r) => r.ok) };
@@ -5087,6 +5656,7 @@ export class Game {
     this.flyPending = comp;
     this.ui = "flycheck";
     this.paintFlycheck();
+    this.paintLeaveBtn(false);
     this.unlockPointer();
   }
 
@@ -5144,6 +5714,7 @@ export class Game {
     this.pilotLand = false;
     this.closeFlycheck();
     document.getElementById("ui-flight")!.classList.add("hidden");
+    this.paintLeaveBtn(false);
     this.renderer.setFrameOutline(null);
     hud.toast("Hands off the yoke — the Ship holds while anyone is aboard.");
   }
@@ -5166,11 +5737,23 @@ export class Game {
     const lit = this.litThrusters(sh);
     document.getElementById("fl-mass")!.textContent = sh.mass().toFixed(0);
     document.getElementById("fl-lift")!.textContent = String(lit * SHIP.liftCapacity);
-    document.getElementById("fl-fuel")!.textContent = sh.fuel.map((p) => Math.round(p)).join(" / ") + " charges";
+    document.getElementById("fl-fuel")!.textContent =
+      rocketCharges(sh.fuel) + " charges" + (sh.fuel.some((pt) => pt.k === 2) ? " + Super" : "");
     document.getElementById("fl-alt")!.textContent = Math.round(sh.pos.y) + " m";
     const hd = ((sh.yaw * 180) / Math.PI) % 360;
     document.getElementById("fl-head")!.textContent = ((hd + 360) % 360).toFixed(0) + "°";
     document.getElementById("flight-mode")!.textContent = this.pilotLand ? "Setting down" : (Math.abs(sh.vel.y) > 0.01 || this.keys.has("KeyW") ? "Airborne" : "Holding");
+    this.paintLeaveBtn(true);
+  }
+
+  /** the Leave Planet button only exists while a Super-seated Ship is flown,
+   *  and only bites once every other row of the leap check reads good. */
+  private paintLeaveBtn(airborne: boolean) {
+    const btn = document.getElementById("flight-leave") as HTMLButtonElement | null;
+    if (!btn) return;
+    const superSeated = airborne && !!this.piloting?.fuel.some((pt) => pt.k === 2);
+    btn.classList.toggle("hidden", !superSeated);
+    btn.disabled = !superSeated || !this.leaveCheck(this.piloting).ok;
   }
 
   private wireFlightUI() {
@@ -5196,7 +5779,7 @@ export class Game {
           if (id === AIR) continue;
           captured.push([x, y, z, id, this.world.getRot(x, y, z)]);
         }
-    const sh = new Ship(this.shipSeq++);
+    const sh = new Ship(this.shipSeq++, this.world.worldH);
     for (const [x, y, z, id, rot] of captured) sh.setCell(x, y, z, id, rot);
     sh.pos = { x: (bb.min[0] + bb.max[0] + 1) / 2, y: (bb.min[1] + bb.max[1] + 1) / 2, z: (bb.min[2] + bb.max[2] + 1) / 2 };
     sh.grounded = false;
@@ -5207,7 +5790,7 @@ export class Game {
     const coreCell = captured.find((c) => c[3] === ENGINECORE);
     if (coreCell) {
       const pk = `${coreCell[0]},${coreCell[1]},${coreCell[2]}`;
-      sh.fuel = this.coreFuel.get(pk) ?? [0, 0];
+      sh.fuel = this.coreFuel.get(pk) ?? [emptyPort(), emptyPort()];
       this.coreFuel.delete(pk);
     }
     this.ships.set(sh.id, sh);
@@ -5300,8 +5883,172 @@ export class Game {
     this.saveNow(true);
   }
 
+  // ---------- Leave Planet ----------
+
+  /** what the leap demands, row by row: a seated Super canister, rocket
+   *  charges for the climb, four lit engines on a wired Grid — and you. */
+  private leaveCheck(sh: Ship | null) {
+    const rows: { label: string; ok: boolean }[] = [];
+    const lit = sh ? this.litThrusters(sh) : 0;
+    const charges = sh ? rocketCharges(sh.fuel) : 0;
+    const superSeated = !!sh && sh.fuel.some((pt) => pt.k === 2);
+    let batt = 0, panel = 0, mass = 0;
+    if (sh) {
+      for (const c of sh.cells.values()) {
+        if (c.id === BATTERY) batt++;
+        else if (c.id === POWER_PANEL) panel++;
+      }
+      mass = Math.round(sh.mass());
+    }
+    const lift = lit * SHIP.liftCapacity;
+    const aboard = !!sh && (this.piloting === sh || this.isAboard(sh));
+    rows.push({ label: "Super Rocket Fuel seated in a port", ok: superSeated });
+    rows.push({ label: `Rocket Fuel: ${charges} charges`, ok: charges > 0 });
+    rows.push({ label: `Engines: ${lit} lit`, ok: lit >= 4 });
+    rows.push({ label: "Ship Grid: Panel + Battery wired to the Core", ok: batt >= 1 && panel >= 1 });
+    rows.push({ label: `Mass ${mass} / lift ${lift}`, ok: mass > 0 && mass <= lift });
+    rows.push({ label: "You are aboard the Ship", ok: aboard });
+    return { ok: rows.every((r) => r.ok), charges, rows };
+  }
+
+  /** the Leave Planet panel opens from the flight panel — the Ship is flown,
+   *  so its checklist rows are live. */
+  private openLeave() {
+    const sh = this.piloting;
+    if (!sh || !this.leaveCheck(sh).ok) { this.audio.error(); return; }
+    this.leaveShip = sh;
+    this.ui = "leave";
+    this.unlockPointer();
+    this.paintLeave();
+    document.getElementById("ui-leave")!.classList.remove("hidden");
+  }
+
+  private paintLeave() {
+    const ck = this.leaveCheck(this.leaveShip);
+    const box = document.getElementById("leave-check")!;
+    box.innerHTML = "";
+    for (const r of ck.rows) {
+      const d = document.createElement("div");
+      d.className = "fl-check " + (r.ok ? "ok" : "no");
+      d.textContent = (r.ok ? "✓ " : "— ") + r.label;
+      box.appendChild(d);
+    }
+    const tail = document.createElement("div");
+    tail.className = "fl-check";
+    tail.textContent = "Everything left behind stays on this world.";
+    box.appendChild(tail);
+    (document.getElementById("btn-leave") as HTMLButtonElement).disabled = !ck.ok;
+  }
+
+  private confirmLeave() {
+    const sh = this.leaveShip;
+    if (!sh || !this.leaveCheck(sh).ok) { this.audio.error(); return; }
+    this.leaveShip = null;
+    this.closeUI();
+    this.departPlanet(sh);
+  }
+
+  /** the leap begins: the Super canister is spent in one pull and the climb
+   *  starts; the world trades places when the sky has gone dark. */
+  private departPlanet(sh: Ship) {
+    const idx = sh.fuel.findIndex((pt) => pt.k === 2);
+    if (idx < 0) return;
+    sh.fuel[idx] = emptyPort(); // the Super canister is consumed whole
+    this.piloting = null;
+    this.pilotLand = false;
+    document.getElementById("ui-flight")!.classList.add("hidden");
+    this.paintLeaveBtn(false);
+    this.leaving = { t: 0, sh };
+    this.audio.door(); // the catch
+    this.audio.warn(); // and the engines' rising howl
+    hud.toast("The Super Rocket Fuel catches. The world falls away below the hull.");
+  }
+
+  /** one frame of the climb: full throttle, a bucking chase camera, the sky
+   *  draining to the dark between worlds — then finishDeparture. */
+  private leaveFrame(dt: number) {
+    const L = this.leaving!;
+    const sh = L.sh;
+    L.t += dt;
+    sh.prevPos = { x: sh.pos.x, y: sh.pos.y, z: sh.pos.z };
+    sh.prevYaw = sh.yaw;
+    sh.spinTo = null;
+    if (Math.floor(L.t * 2) !== Math.floor((L.t - dt) * 2)) this.audio.thud(); // engine pulses through the deck
+    const climb = Math.min(1, L.t / 4.5);
+    sh.vel = { x: 0, y: 4 + 42 * climb, z: 0 };
+    sh.pos.y += sh.vel.y * dt;
+    this.updateShipGroup(sh);
+    if (this.isAboard(sh)) this.player.pos.y += sh.pos.y - sh.prevPos.y; // the crew rides bolted to the deck
+    const cam = this.renderer.camera;
+    cam.rotation.order = "YXZ";
+    cam.position.set(
+      sh.pos.x - Math.sin(sh.yaw) * 13 + (Math.random() - 0.5) * 0.3,
+      sh.pos.y + 5 + (Math.random() - 0.5) * 0.3,
+      sh.pos.z - Math.cos(sh.yaw) * 13 + (Math.random() - 0.5) * 0.3,
+    );
+    cam.lookAt(sh.pos.x, sh.pos.y + 1.5, sh.pos.z);
+    if (L.t >= 6) this.finishDeparture(sh);
+  }
+
+  /** Desertis closes its book; the Ship docks on Silvaris's arrival pad and
+   *  the crew steps out into a new sky. Only what was aboard crosses over. */
+  private finishDeparture(sh: Ship) {
+    this.leaving = null;
+    for (const m of this.mobs) this.renderer.removeSceneObject(m.vis.group);
+    this.mobs = [];
+    this.traderAt.clear();
+    this.planets[this.planet] = this.snapshotPlanet();
+    if (!this.planets.silvaris) this.planets.silvaris = emptyWorldRun(this.meta.seedStr);
+    this.planet = "silvaris";
+    this.restorePlanet("silvaris", this.planets.silvaris);
+    // restorePlanet swapped in the new planet's ships (none); re-seat this
+    // hull on the DOCK_PAD cross at the origin — bottom row on ARR_Y + 1,
+    // flat and lattice-aligned, exactly like a set-down anywhere else
+    sh.worldH = this.world.worldH;
+    sh.yaw = 0;
+    sh.spinTo = null;
+    const c = sh.centerLocal();
+    sh.pos = { x: c[0], y: ARR_Y + 1 + c[1], z: c[2] };
+    sh.vel = { x: 0, y: 0, z: 0 };
+    sh.prevPos = { ...sh.pos };
+    sh.prevYaw = 0;
+    sh.grounded = true;
+    this.ships.set(sh.id, sh);
+    this.buildShipGroup(sh);
+    // the grounded hull shadows the world's cells: put its Grid cells back
+    // under ship keys and light them like any docked Ship
+    this.rebuildPower();
+    this.markShipChunksDirty(sh);
+    this.renderer.ensureChunks(this.world, 0, 0);
+    // the crew wakes at the yoke: stand on the deck beside the Controls
+    let lk: [number, number, number] | null = null;
+    for (const k of sh.cells.keys())
+      if (sh.cells.get(k)!.id === FLIGHT_CONTROLS) { lk = k.split(",").map(Number) as [number, number, number]; break; }
+    if (lk) {
+      const [lx, ly, lz] = lk;
+      let sx = lx, sz = lz;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+        const stand = sh.getCell(lx + dx, ly, lz + dz);
+        const deck = sh.getCell(lx + dx, ly - 1, lz + dz);
+        if (stand) continue; // the yoke post or a wall stands there
+        if (!deck || deck.id === AIR) continue;
+        sx = lx + dx; sz = lz + dz; break;
+      }
+      const [wx, wy, wz] = sh.cellToWorld(sx, ly, sz);
+      this.player.pos.set(wx + 0.5, wy + 0.01, wz + 0.5);
+      this.player.vel.set(0, 0, 0);
+    }
+    this.questBump("leave");
+    this.questBump("arrive"); // the leap is over: "First Light" waits for open sky
+    this.lesson("arrive");
+    this.audio.win(); // the arrival chime — a new takeoff of a kind
+    hud.toast("Silvaris. The Ship is docked at the pad — everything you built is a world behind you now.");
+    this.saveNow(true);
+  }
+
   /** one frame of flight for every airborne Ship: crew input, fuel, velocity, soft landings. */
   private flightTick(dt: number) {
+    if (this.leaving) return; // the climb owns the Ship until the world swaps
     if (this.shipDirty.size) {
       for (const id of this.shipDirty) { const sh = this.ships.get(id); if (sh) this.buildShipGroup(sh); }
       this.shipDirty.clear();
@@ -5341,8 +6088,12 @@ export class Game {
         if (powered) {
           let need = lit * SHIP.burnPerThruster * dt;
           for (let p = 0; p < sh.fuel.length && need > 1e-9; p++) {
-            const burn = Math.min(sh.fuel[p], need);
-            sh.fuel[p] -= burn; need -= burn;
+            const pt = sh.fuel[p];
+            if (pt.k !== 1) continue; // the Super canister never burns — it waits for the leap
+            if (pt.c <= 0) { sh.fuel[p] = emptyPort(); continue; } // a spent canister leaves no ghost port
+            pt.l = true; // the first drink locks the canister to the Ship
+            const burn = Math.min(pt.c, need);
+            pt.c -= burn; need -= burn;
           }
           if (need > 1e-6) {
             powered = false;
@@ -5358,9 +6109,9 @@ export class Game {
       // unpowered (no lit Thruster, dry tanks), over-mass — or truly
       // uncrewed: nobody on board at all. A crew member standing inside the
       // hull (away from the yoke) keeps the Ship hovering where it is.
-      const canFly = crew && lit > 0 && (sh.fuel[0] + sh.fuel[1] > 0) && !over;
+      const canFly = crew && lit > 0 && rocketCharges(sh.fuel) > 0 && !over;
       const manned = this.isAboard(sh);
-      const willSink = !canFly && !(manned && lit > 0 && (sh.fuel[0] + sh.fuel[1] > 0) && !over);
+      const willSink = !canFly && !(manned && lit > 0 && rocketCharges(sh.fuel) > 0 && !over);
       let vx = 0, vy = willSink ? -SHIP.sinkSpeed * (over ? 3 : 1) : 0, vz = 0;
       if (powered) {
         // thrust pushes along the hull's forward (the facing captured at
@@ -5377,7 +6128,7 @@ export class Game {
         if (!dx && !dy && !dz) return true; // hovering: nothing to collide-check
         const old = { x: sh.pos.x, y: sh.pos.y, z: sh.pos.z };
         sh.pos.x += dx; sh.pos.y += dy; sh.pos.z += dz;
-        if (sh.pos.y > CH + 32 || this.shipHitsTerrain(sh)) { sh.pos = old; return false; }
+        if (sh.pos.y > sh.ceiling || this.shipHitsTerrain(sh)) { sh.pos = old; return false; }
         return true;
       };
       if (!tryMove(vx * dt, vy * dt, vz * dt)) {
@@ -5451,24 +6202,67 @@ export class Game {
     g.rotation.set(0, sh.yaw, 0);
   }
 
-  /** E at an Engine Core: Rocket Fuel Canisters pour into the two ports. */
-  private engineCoreAct(a: BlockAt) {
+  /** the live ports for a Core address: the Ship's tuple aboard, the parked
+   *  one on the ground (created empty on first touch). */
+  private corePorts(a: BlockAt): [Port, Port] | null {
     const sh = a.sh ?? this.claimShip(a.x, a.y, a.z);
-    const pk = this.atKey(a);
-    if (!sh && !this.coreFuel.has(pk)) this.coreFuel.set(pk, [0, 0]);
-    const ports = sh ? sh.fuel : this.coreFuel.get(pk)!;
-    const sel = this.inv.selectedSlot();
-    const free = ports.findIndex((p) => p < SHIP.canisterCharges - 1e-9);
-    if (sel?.itemId === "rocket_fuel" && free >= 0) {
-      ports[free] = SHIP.canisterCharges;
-      this.inv.removeItem("rocket_fuel", 1);
-      this.audio.place();
-      hud.toast(`Canister poured into port ${free + 1}. The Core will drink it in the air.`);
-      this.renderHeld();
-    } else {
-      hud.toast(`Engine Core ports: ${ports.map((p) => Math.round(p)).join(" / ")} of ${SHIP.canisterCharges}. Load Rocket Fuel Canisters.`);
-      this.audio.error();
+    if (sh) return sh.fuel;
+    return this.coreFuel.get(this.atKey(a)) ?? null;
+  }
+
+  /** E at an Engine Core: the port panel opens — two canisters, side by side. */
+  private engineCoreAct(a: BlockAt) {
+    if (!a.sh && !this.claimShip(a.x, a.y, a.z) && !this.coreFuel.has(this.atKey(a)))
+      this.coreFuel.set(this.atKey(a), [emptyPort(), emptyPort()]);
+    this.openCore = a;
+    this.ui = "core";
+    this.unlockPointer();
+    this.renderCore();
+    document.getElementById("ui-core")!.classList.remove("hidden");
+  }
+
+  private renderCore() {
+    const ports = this.openCore ? this.corePorts(this.openCore) : null;
+    for (let i = 0; i < SHIP.fuelPorts; i++) {
+      const el = document.getElementById("core-slot-" + i)!;
+      const pt = ports?.[i];
+      el.classList.toggle("loaded", !!pt?.k);
+      el.classList.toggle("super", pt?.k === 2);
+      (el.querySelector(".core-slot-art") as HTMLElement).style.backgroundImage =
+        pt?.k ? `url(${itemArtUrl(pt.k === 2 ? "super_fuel" : "rocket_fuel", 0)})` : "";
+      (el.querySelector(".core-slot-state") as HTMLElement).textContent =
+        !pt?.k ? "empty"
+          : pt.k === 2 ? "Super Rocket Fuel" + (pt.l ? " · sealed" : "")
+          : `Rocket Fuel — ${Math.max(0, Math.round(pt.c))} charges` + (pt.l ? " · locked" : "");
     }
+  }
+
+  /** click a port: load the canister in hand into an empty one, or take an
+   *  untouched one back out. A canister the engines have drunk from is the
+   *  Ship's forever. */
+  private coreSlotClick(i: number) {
+    const ports = this.openCore ? this.corePorts(this.openCore) : null;
+    if (!ports) { hud.toast("The Core is gone."); this.audio.error(); this.closeUI(); return; }
+    const pt = ports[i];
+    if (!pt || pt.k === 0) {
+      const sel = this.inv.selectedSlot();
+      const kind = sel?.itemId === "rocket_fuel" ? 1 : sel?.itemId === "super_fuel" ? 2 : 0;
+      if (!kind) { hud.toast("Hold a Rocket Fuel or Super Rocket Fuel canister to seat it in an empty port."); this.audio.error(); return; }
+      this.inv.removeItem(sel!.itemId, 1);
+      ports[i] = { k: kind as 1 | 2, c: kind === 1 ? SHIP.canisterCharges : 0, l: false };
+      this.audio.place();
+      hud.toast(kind === 1 ? `Rocket Fuel seated in port ${i + 1} — ${SHIP.canisterCharges} charges.` : "Super Rocket Fuel seated. It will never burn — it waits for the leap.");
+      this.renderHeld();
+    } else if (!pt.l) {
+      ports[i] = emptyPort();
+      this.giveOrDrop(pt.k === 2 ? "super_fuel" : "rocket_fuel", 1);
+      this.audio.place();
+      hud.toast("The untouched canister comes back out.");
+    } else {
+      this.audio.error();
+      hud.toast("The engines have drunk from this canister — it belongs to the Ship now.");
+    }
+    this.renderCore();
   }
 
 
@@ -5546,7 +6340,8 @@ export class Game {
     if (!this.piloting) document.getElementById("ui-flight")!.classList.add("hidden");
     this.chestInv = null; this.ifcMode = false; this.fire = null; this.openFire = null;
     this.pot = null; this.openPot = null; this.openGen = null; this.gridFocus = "inv";
-    for (const id of ["ui-inventory", "ui-craft", "ui-cache", "ui-trade"]) document.getElementById(id)!.classList.add("hidden");
+    this.openCore = null; this.leaveShip = null;
+    for (const id of ["ui-inventory", "ui-craft", "ui-cache", "ui-trade", "ui-core", "ui-leave"]) document.getElementById(id)!.classList.add("hidden");
     // closing any in-game menu also drops the pause menu, if one was open
     if (this.paused) {
       this.paused = false;
@@ -6530,12 +7325,9 @@ export class Game {
     }
   }
 
-  renderCraft(mode: "bench" | "armory" | "refinery") {
+  renderCraft(mode: StationMode) {
     document.getElementById("ui-craft")!.classList.remove("hidden");
-    document.getElementById("craft-title")!.textContent =
-      mode === "bench" ? "Crafting Bench"
-        : mode === "armory" ? "Armoury — gear that guards the body"
-        : "Refinery — oil and coal, cooked into flight";
+    document.getElementById("craft-title")!.textContent = STATION_TITLES[mode];
     const list = document.getElementById("craft-list")!;
     list.innerHTML = "";
     for (const r of RECIPES) {
@@ -6559,6 +7351,16 @@ export class Game {
         this.craftLesson(r.out);
         if (ITEMS[r.out]?.tool) this.questBump("tool");
         if (r.out === "rocket_fuel") { this.questBump("refine"); hud.toast("Rocket Fuel, canistered. The Engine Core drinks it in the air."); }
+        // the Second Planet's chain reads the station as much as the product
+        if (mode === "electric") this.questBump("electric");
+        if ((mode === "foundry" || mode === "assembly") && !this.revealed.has(`bench:${mode}`)) {
+          // "Alloys & Engines" wants both families, not two trips to one: the
+          // mark rides the planet record, so a reload cannot re-credit a family
+          this.revealed.add(`bench:${mode}`);
+          this.questBump("bench2");
+        }
+        if (r.out === "engine_core") this.questBump("core2");
+        if (r.out === "super_fuel") { this.questBump("superfuel"); this.lesson("superfuel"); }
         this.audio.place();
         this.renderCraft(mode);
       };

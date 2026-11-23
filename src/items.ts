@@ -11,6 +11,8 @@ import {
   ALAB_DOOR_UPPER, ALAB_GATE_OPEN,
   COOKPOT, WATER_CAGE, SUGARCANE_1, APPLE_SAPLING, APPLE_FRUIT, WATER_CAGE_FULL, SUGARCANE_2,
   FRAME_CORNER, FLIGHT_CONTROLS,
+  ELECTRIC_BENCH, ASSEMBLY_BENCH, FUEL_WORKS, FOUNDRY, INSCRIPTION, DOCK_PAD,
+  TITANIUM_ORE, GRAPHITE_ORE, TUNDROOT_1, TUNDROOT_2, EMBERBUSH_1, EMBERBUSH_2, EMBER_FRUIT,
 } from "./blocks";
 
 export interface ItemDef {
@@ -71,7 +73,7 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "canister_full", name: "Water Canister (full)", desc: "Drink to restore 25% Water. Refill at oases or the ship's water station.", w: 1, h: 2, mass: 1.0, color: "#3f8fe0" }),
   I({ id: "canister_empty", name: "Water Canister (empty)", desc: "Lighter until you find water.", w: 1, h: 1, mass: 0.3, color: "#7fa8cc" }),
   I({ id: "catalyst", name: "Catalyst", desc: "Rare alien chemistry. Found in Towns and the second wreck. Needed for Insulating Glass (M2 craft chain).", w: 1, h: 1, mass: 0.3, color: "#c07fe0" }),
-  I({ id: "engine_core", name: "Engine Core", desc: "Quest-exclusive: the heart of the flying Ship. Stand it up inside the Ship Frame and the engines have something to burn fuel in.", w: 1, h: 1, mass: 6.0, block: ENGINECORE, color: "#c468e8" }),
+  I({ id: "engine_core", name: "Engine Core", desc: "The heart of the flying Ship. Stand it up inside the Ship Frame and the engines have something to burn fuel in. Build one at an Assembly Bench, or take the wreck's.", w: 1, h: 1, mass: 6.0, block: ENGINECORE, color: "#c468e8" }),
   I({ id: "visor", name: "Surveyor's Visor", desc: "A Visor upgrade. Equipped in the Head slot, the HUD marks every Death Cache, Reward Cache and Chest through walls with a beam.", w: 1, h: 1, mass: 0.8, equip: "head", color: "#66e5f0" }),
   toolItem("pickaxe", 1, "wood", "#a8834f"), toolItem("pickaxe", 2, "stone", "#8d8680"), toolItem("pickaxe", 3, "metal", "#9aa0aa"),
   toolItem("shovel", 1, "wood", "#a8834f"), toolItem("shovel", 2, "stone", "#8d8680"), toolItem("shovel", 3, "metal", "#9aa0aa"),
@@ -187,6 +189,28 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "sack1", name: "Sack I", desc: "A 1×1 pocket holding up to 10 footprint-units of ONE item type. Loose items fall into an open Sack on their own; machines and Sort never look inside — stuff and empty it from the Open Sack panel.", w: 1, h: 1, mass: 0.3, sack: 10, color: "#a8834a" }),
   I({ id: "sack2", name: "Sack II", desc: "A stitched double layer: up to 20 footprint-units of ONE item type in a single 1×1 cell. Machines never read Sacks — they only ever write into them.", w: 1, h: 1, mass: 0.5, sack: 20, color: "#8f6a3a" }),
   I({ id: "sack3", name: "Sack III", desc: "Cobalt-rimmed canvas: up to 30 footprint-units of ONE item type. A Sack in a Sack never fits, at any tier.", w: 1, h: 1, mass: 0.8, sack: 30, color: "#6d4f2e" }),
+  // ---- Silvaris (Phase 2): the station chain and the second world's kit ----
+  I({ id: "electric_bench", name: "Electric Bench", desc: "The powered Crafting Bench: the whole Grid and machine chain — Poles, generators, Chests, Regulators, Breakers — is built here. Built at the Crafting Bench.", w: 1, h: 1, mass: 8.0, block: ELECTRIC_BENCH, color: "#5a707f" }),
+  I({ id: "assembly_bench", name: "Assembly Bench", desc: "Precision work above the Electric Bench: Engine Cores, Dock Pads and the Ship's hard parts come off this table.", w: 1, h: 1, mass: 8.0, block: ASSEMBLY_BENCH, color: "#6a7085" }),
+  I({ id: "fuel_works", name: "Fuel Works", desc: "Where Rocket Fuel meets graphite: press E and cook a canister with two Graphite Ore into a sealed canister of Super Rocket Fuel.", w: 1, h: 1, mass: 9.0, block: FUEL_WORKS, color: "#7a5a48" }),
+  I({ id: "foundry", name: "Foundry", desc: "Hot alloys: one Titanium Ore draws a Titanium Rod, and Metal Plating baked with Coal Ore rolls out Steel Plating.", w: 1, h: 1, mass: 9.0, block: FOUNDRY, color: "#8a6248" }),
+  I({ id: "super_fuel", name: "Super Rocket Fuel", desc: "A sealed blue canister: Rocket Fuel cooked with Graphite at a Fuel Works. It never burns in the engines — it is what Leave Planet consumes to carry the Ship to another world.", w: 1, h: 2, mass: 5.0, color: "#3f7fe8" }),
+  I({ id: "dock_pad", name: "Dock Pad", desc: "An inlaid deck tile of a Dock plaza. Ground the Ship's Frame on Pads and it is docked — the landing the Map remembers.", w: 1, h: 1, mass: 2.0, block: DOCK_PAD, color: "#9098a4" }),
+  I({ id: "inscription", name: "Inscription", desc: "A carved Dweller stele. Press E at one to read who they were and why they left. Break one out and stand it wherever you like.", w: 1, h: 1, mass: 4.0, block: INSCRIPTION, color: "#ccc5ae" }),
+  I({ id: "titanium_ore", name: "Titanium Ore", desc: "Light bright metal from the deep veins of Silvaris (Stone Pickaxe or better). Draw it into Rods at a Foundry.", w: 1, h: 1, mass: 2.0, block: TITANIUM_ORE, color: "#a9b0ba" }),
+  I({ id: "graphite_ore", name: "Graphite Ore", desc: "Soft black carbon from the mid veins. Cooked with Rocket Fuel at a Fuel Works, it makes the fuel that leaves worlds.", w: 1, h: 1, mass: 1.0, block: GRAPHITE_ORE, color: "#585a5e" }),
+  I({ id: "titaniumrod", name: "Titanium Rod", desc: "Drawn from Titanium Ore at a Foundry. The skeleton of Assembly Bench work.", w: 1, h: 1, mass: 1.4, color: "#b9c0ca" }),
+  I({ id: "steel_plating", name: "Steel Plating", desc: "Metal Plating baked with Coal at a Foundry — a tougher, duller plate. Dock Pads eat it by the pair.", w: 1, h: 1, mass: 2.0, color: "#9fb0c2" }),
+  // ---- Silvaris crops: seeds from settlement chests, grown on Farm Land ----
+  I({ id: "seed_tundroot", name: "Tundra Root Seed", desc: "Plant on Farm Land. Comfortable deep into the cold — the Silvaris staple.", w: 1, h: 1, mass: 0.1, block: TUNDROOT_1, color: "#c9b57a" }),
+  I({ id: "tundroot", name: "Tundra Root", desc: "Dug from a ripe Tundra Root. A cold-hardy tuber. Eat it: +8 Water, +15 Health.", w: 1, h: 1, mass: 0.6, eat: { water: 8, health: 15 }, color: "#b39a5e" }),
+  I({ id: "seed_emberbush", name: "Ember Bush Seed", desc: "Plant on Farm Land. Grows best at the heat edge — the Scorch Belt suits it.", w: 1, h: 1, mass: 0.1, block: EMBERBUSH_1, color: "#a85a3a" }),
+  I({ id: "ember_berry", name: "Ember Berry", desc: "Tart berry picked from a fruiting Ember Bush; the bush re-bears on its own. Eat it: +10 Water, +8 Health.", w: 1, h: 1, mass: 0.15, eat: { water: 10, health: 8 }, color: "#d94f28" }),
+  // ---- Silvaris fauna ----
+  I({ id: "frost_pelt", name: "Frost Pelt", desc: "Thick white fur off a Snow Stalker. Warm, and worth a real price at any Trader.", w: 1, h: 2, mass: 0.8, color: "#cddbe6" }),
+  I({ id: "tideback_hide", name: "Tideback Hide", desc: "The heavy wet hide off a Tideback. Thick as a door, and Traders know what it is worth.", w: 2, h: 2, mass: 2.5, color: "#6e8a72" }),
+  I({ id: "brushbuck_meat", name: "Brushbuck Meat (raw)", desc: "Raw meat off a Brushbuck. Cook it at a Campfire before eating.", w: 1, h: 1, mass: 1.2, color: "#a06552" }),
+  I({ id: "cooked_brushbuck_meat", name: "Cooked Brushbuck", desc: "Roasted plains meat. Eat it: +25 Health.", w: 1, h: 1, mass: 1.0, eat: { health: 25 }, color: "#b87c42" }),
 ];
 
 export const ITEMS: Record<string, ItemDef> = Object.fromEntries(ITEM_LIST.map((d) => [d.id, d]));
@@ -214,6 +238,12 @@ BLOCK_TO_ITEM[WATER_CAGE_FULL] = "water_cage";
 // Husks drop their broken frame — the item, not a placeable husk block
 BLOCK_TO_ITEM[REGULATOR_HUSK] = "regulator_broken";
 BLOCK_TO_ITEM[STORM_BREAKER_HUSK] = "storm_breaker_broken";
+// Silvaris crop fallbacks (explicit handlers give the real drops)
+BLOCK_TO_ITEM[TUNDROOT_1] = "seed_tundroot";
+BLOCK_TO_ITEM[TUNDROOT_2] = "tundroot";
+BLOCK_TO_ITEM[EMBERBUSH_1] = "seed_emberbush";
+BLOCK_TO_ITEM[EMBERBUSH_2] = "ember_berry";
+BLOCK_TO_ITEM[EMBER_FRUIT] = "ember_berry";
 
 // ---------------- Inventory Grid ----------------
 

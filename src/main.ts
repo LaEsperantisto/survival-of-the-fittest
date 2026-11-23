@@ -75,7 +75,9 @@ function startGame(meta: WorldMeta, run: RunSave | null) {
   game = new Game(meta, run, $("game-wrap"), settings, audio);
   (globalThis as Record<string, unknown>).game = game;
   game.start();
-  if (run === null) game.startTutorial(); // first visit: the desert teaches in-world
+  // first visit on Desertis: the desert teaches in-world. A Phase-2 run opens
+  // on Silvaris, where the tour's wreck, tank and hatch do not exist
+  if (run === null && game.planet === "desertis") game.startTutorial();
 }
 
 function toTitle() {

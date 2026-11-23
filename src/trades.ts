@@ -28,6 +28,21 @@ export const OFFER_POOL: Offer[] = [
   { want: [{ itemId: "alabaster", count: 4 }], give: [{ itemId: "glass", count: 2 }] },
 ];
 
+// The same barter rules on Silvaris: those camps swap for what that world
+// mines and hunts, with a trickle of Desertis goods carried across on the
+// Ship. Super Rocket Fuel is NEVER on any table — it stays craft-only.
+export const SILVARIS_GOODS: Offer[] = [
+  { want: [{ itemId: "metal", count: 6 }], give: [{ itemId: "titaniumrod", count: 1 }] },
+  { want: [{ itemId: "metal_plating", count: 3 }], give: [{ itemId: "titaniumrod", count: 1 }] },
+  { want: [{ itemId: "frost_pelt", count: 2 }], give: [{ itemId: "glass", count: 2 }] },
+  { want: [{ itemId: "frost_pelt", count: 1 }], give: [{ itemId: "elec_lamp", count: 1 }] },
+  { want: [{ itemId: "fennec_pelt", count: 3 }], give: [{ itemId: "glass", count: 2 }] },
+  { want: [{ itemId: "brushbuck_meat", count: 4 }], give: [{ itemId: "seed_tundroot", count: 2 }] },
+  { want: [{ itemId: "coal_ore", count: 6 }], give: [{ itemId: "graphite_ore", count: 2 }] },
+  { want: [{ itemId: "tideback_hide", count: 1 }], give: [{ itemId: "canister_full", count: 2 }] },
+  { want: [{ itemId: "ember_berry", count: 5 }], give: [{ itemId: "seed_emberbush", count: 1 }] },
+];
+
 /** The five offers on this camp's table for this in-game day. */
 export function offersFor(seed: number, campX: number, campZ: number, day: number): Offer[] {
   const picks: Offer[] = [];

@@ -4,7 +4,7 @@ export interface Recipe {
   out: string;
   count: number;
   needs: Record<string, number>;
-  station: "bench" | "armory" | "refinery" | null; // where it must be crafted; null = by hand
+  station: "bench" | "armory" | "refinery" | "electric" | "assembly" | "fuel" | "foundry" | null; // where it must be crafted; null = by hand
   returns?: Record<string, number>; // containers handed back after crafting (the oil bucket)
 }
 
@@ -44,17 +44,17 @@ export const RECIPES: Recipe[] = [
   { out: "frame_corner", count: 1, needs: { metal_plating: 2, copperrod: 1 }, station: "bench" },
   { out: "flight_controls", count: 1, needs: { metal_plating: 4, copperrod: 2, glass: 1 }, station: "bench" },
   { out: "thruster", count: 1, needs: { thruster_nozzle: 1, metal_plating: 4, cobaltrod: 1 }, station: "bench" },
-  // Grid power (ADR-0007): the whole chain is Bench kit; Copper Rods are the wires.
-  { out: "power_pole", count: 2, needs: { metal: 1, deadwood: 3 }, station: "bench" },
-  { out: "power_panel", count: 1, needs: { metal: 4, copperrod: 2, glass: 1 }, station: "bench" },
-  { out: "gen_wood", count: 1, needs: { metal: 4, copperrod: 2, rock: 3 }, station: "bench" },
-  { out: "wind_turbine", count: 1, needs: { metal: 3, copperrod: 2, wood_log: 4 }, station: "bench" },
-  { out: "solar_panel", count: 1, needs: { glass: 3, copperrod: 2, metal: 2 }, station: "bench" },
-  { out: "battery", count: 1, needs: { metal: 3, copperrod: 2, salt: 3 }, station: "bench" },
-  { out: "elec_lamp", count: 1, needs: { glass: 2, metal: 1, copperrod: 1 }, station: "bench" },
-  { out: "inserter", count: 1, needs: { metal: 4, copperrod: 2, glass: 2 }, station: "bench" },
-  { out: "planter", count: 1, needs: { wood_log: 4, metal: 2, glass: 1 }, station: "bench" },
-  { out: "harvester", count: 1, needs: { metal: 5, glass: 2 }, station: "bench" },
+  // Grid power (ADR-0007): the whole chain is Electric Bench kit (ADR-0013); Copper Rods are the wires.
+  { out: "power_pole", count: 2, needs: { metal: 1, deadwood: 3 }, station: "electric" },
+  { out: "power_panel", count: 1, needs: { metal: 4, copperrod: 2, glass: 1 }, station: "electric" },
+  { out: "gen_wood", count: 1, needs: { metal: 4, copperrod: 2, rock: 3 }, station: "electric" },
+  { out: "wind_turbine", count: 1, needs: { metal: 3, copperrod: 2, wood_log: 4 }, station: "electric" },
+  { out: "solar_panel", count: 1, needs: { glass: 3, copperrod: 2, metal: 2 }, station: "electric" },
+  { out: "battery", count: 1, needs: { metal: 3, copperrod: 2, salt: 3 }, station: "electric" },
+  { out: "elec_lamp", count: 1, needs: { glass: 2, metal: 1, copperrod: 1 }, station: "electric" },
+  { out: "inserter", count: 1, needs: { metal: 4, copperrod: 2, glass: 2 }, station: "electric" },
+  { out: "planter", count: 1, needs: { wood_log: 4, metal: 2, glass: 1 }, station: "electric" },
+  { out: "harvester", count: 1, needs: { metal: 5, glass: 2 }, station: "electric" },
   { out: "refinery", count: 1, needs: { metal_plating: 3, copperrod: 2, glass: 1 }, station: "bench" },
   { out: "rocket_fuel", count: 1, needs: { oil_bucket: 1, coal_ore: 1 }, station: "refinery", returns: { bucket: 1 } },
   { out: "sword", count: 1, needs: { metal: 2, deadwood: 1 }, station: "bench" },
@@ -64,17 +64,17 @@ export const RECIPES: Recipe[] = [
   { out: "beacon", count: 1, needs: { metal: 4, sandstone: 6, lamp: 1 }, station: "bench" },
   { out: "backpack1", count: 1, needs: { deadwood: 6, metal: 2 }, station: "armory" },
   { out: "insglass", count: 2, needs: { glass: 2, metal: 1 }, station: "bench" },
-  { out: "regulator", count: 1, needs: { metal: 4, glass: 1, salt: 2 }, station: "bench" },
+  { out: "regulator", count: 1, needs: { metal: 4, glass: 1, salt: 2 }, station: "electric" },
   // Husk repairs: the broken frame plus about half the build recipe.
-  { out: "regulator", count: 1, needs: { regulator_broken: 1, metal: 2, glass: 1, salt: 1 }, station: "bench" },
-  { out: "chest", count: 1, needs: { deadwood: 4 }, station: "bench" },
+  { out: "regulator", count: 1, needs: { regulator_broken: 1, metal: 2, glass: 1, salt: 1 }, station: "electric" },
+  { out: "chest", count: 1, needs: { deadwood: 4 }, station: "electric" },
   { out: "visor", count: 1, needs: { metal: 2, glass: 1, salt: 2 }, station: "armory" },
   { out: "reptile_armor", count: 1, needs: { snake_skin: 3 }, station: "armory" },
   // ---- farming & building ----
   // Farm Land is never crafted — a shovel opens a furrow in real soil, that's it
   { out: "deadwood", count: 2, needs: { wood_log: 1 }, station: null },
-  { out: "chest_connector", count: 1, needs: { deadwood: 1 }, station: null },
-  { out: "chest_interface", count: 1, needs: { metal: 2, glass: 1 }, station: "bench" },
+  { out: "chest_connector", count: 1, needs: { deadwood: 1 }, station: "electric" },
+  { out: "chest_interface", count: 1, needs: { metal: 2, glass: 1 }, station: "electric" },
   { out: "cooking_pot", count: 1, needs: { metal: 2, glass: 1 }, station: "bench" },
   { out: "water_cage", count: 1, needs: { metal: 2, glass: 1 }, station: "bench" },
   { out: "metal_plating", count: 1, needs: { metal: 1 }, station: null },
@@ -88,8 +88,8 @@ export const RECIPES: Recipe[] = [
   { out: "alab_gate", count: 1, needs: { alab_fence: 3 }, station: "bench" },
   { out: "alab_door", count: 1, needs: { alabaster: 6 }, station: "bench" },
   // Sandstorm Breaker: catalyst-free on purpose — storm-proofing must be expandable.
-  { out: "storm_breaker", count: 1, needs: { metal: 2, glass: 1 }, station: "bench" },
-  { out: "storm_breaker", count: 1, needs: { storm_breaker_broken: 1, metal: 1, glass: 1 }, station: "bench" },
+  { out: "storm_breaker", count: 1, needs: { metal: 2, glass: 1 }, station: "electric" },
+  { out: "storm_breaker", count: 1, needs: { storm_breaker_broken: 1, metal: 1, glass: 1 }, station: "electric" },
   { out: "bucket", count: 1, needs: { metal: 2 }, station: "bench" },
   { out: "bed", count: 1, needs: { deadwood: 3, snake_skin: 2 }, station: "bench" },
   // ---- the Map kit ----
@@ -99,6 +99,18 @@ export const RECIPES: Recipe[] = [
   { out: "sack1", count: 1, needs: { deadwood: 4 }, station: "bench" },
   { out: "sack2", count: 1, needs: { deadwood: 6, metal: 2 }, station: "bench" },
   { out: "sack3", count: 1, needs: { wood_log: 4, cobaltrod: 4 }, station: "bench" },
+  // ---- Silvaris (Phase 2, ADR-0013): each new station is built at the one before it ----
+  { out: "electric_bench", count: 1, needs: { metal_plating: 4, copperrod: 2, glass: 2 }, station: "bench" },
+  { out: "assembly_bench", count: 1, needs: { metal_plating: 6, titaniumrod: 2 }, station: "electric" },
+  { out: "foundry", count: 1, needs: { metal_plating: 6, copperrod: 2, coal_ore: 2 }, station: "electric" },
+  { out: "fuel_works", count: 1, needs: { metal_plating: 4, glass: 2, titaniumrod: 2 }, station: "assembly" },
+  // The Engine Core is kit now — the wreck's was only the first one.
+  { out: "engine_core", count: 1, needs: { metal_plating: 6, titaniumrod: 2, copperrod: 2, glass: 2 }, station: "assembly" },
+  { out: "dock_pad", count: 1, needs: { steel_plating: 2, metal_plating: 1 }, station: "assembly" },
+  { out: "titaniumrod", count: 1, needs: { titanium_ore: 1 }, station: "foundry" },
+  { out: "steel_plating", count: 1, needs: { metal_plating: 1, coal_ore: 1 }, station: "foundry" },
+  // Super Rocket Fuel: the canister burns into the product — nothing comes back.
+  { out: "super_fuel", count: 1, needs: { rocket_fuel: 1, graphite_ore: 2 }, station: "fuel" },
 ];
 
 /** Campfire smelting: consumes one fuel charge per item. */
@@ -110,6 +122,7 @@ export const SMELT: { in: string; out: string; n?: number }[] = [
   { in: "rock", out: "metal" }, // the landlubber's chain: one Rock bakes one Iron Rod
   { in: "rat_raw", out: "rat_cooked" },
   { in: "vulture_raw", out: "vulture_cooked" },
+  { in: "brushbuck_meat", out: "cooked_brushbuck_meat" },
   // Wheat bakes at the Cooking Pot, not the Campfire — the pot is the kitchen.
   // Ore yields double: the dig is the expensive part, not the fire.
   { in: "iron_ore", out: "metal", n: 2 },

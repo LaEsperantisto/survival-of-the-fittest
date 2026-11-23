@@ -10,7 +10,29 @@ export const HOT_LIMIT = 39.5, COLD_LIMIT = 31.5, WATER_LIMIT = 5;
 export const CAVE_AMBIENT = 22;              // Deep Air Temperature: near-constant mild (ADR-0004)
 
 const AMBIENT_MEAN = 27, AMBIENT_AMP = 25;     // 24-min desert day: ~2 °C night, ~52 °C peak
+// Silvaris: a mild world with a small diurnal swing; the danger is altitude,
+// not noon — Alpine Cold comes from the Lapse term, Scorch Belt heat from the
+// biome offset. CAVE_AMBIENT stays mild underground on both planets.
+const SIL_AMBIENT_MEAN = 13, SIL_AMBIENT_AMP = 7; // ~4 °C night, ~22 °C afternoon seaside
+const SIL_LAPSE = 0.16; // °C lost per cell of altitude above the seaside band
+const SIL_LAPSE_BASE = 46; // sea level (34) + 12; below it altitude is free
+const SIL_BIOME_T = [0, 1, 0, -4, -9, 17]; // by Silvaris biome id: shallows, plains, boreal, alpine, scorch
 export const REGULATOR_ROOM_MAX = 150;         // open cells (sealed) one Heat Regulator can hold at neutral
+
+/** Which storm regime blows: Desertis sand; Silvaris blizzard over the
+ *  peaks/forest, ash over the Scorch Belt. Game picks it per planet/biome —
+ *  the toast/lesson wording per kind is game-side too. */
+export type StormKind = "sand" | "blizzard" | "ash";
+
+// One knob set per kind. The ambEff amplification around 36.6 is shared and
+// cuts both ways — a blizzard amplifies cold exactly as sand amplifies heat —
+// and the wind-thirst on Water is identical for every kind. Only the scour
+// differs: blizzard scours like sand, ash bites softer on bare skin.
+const STORM_KNOBS: Record<StormKind, { scour: number; heatBias: number; scourCause: string }> = {
+  sand: { scour: 1.0, heatBias: 0, scourCause: "sand blast" },
+  blizzard: { scour: 1.0, heatBias: -6, scourCause: "blizzard scour" },
+  ash: { scour: 0.7, heatBias: 10, scourCause: "ash scour" },
+};
 
 /** Everything one cell's air depends on: who's asking never matters. */
 export interface AirOpts {
@@ -26,7 +48,8 @@ export class Survival {
   surgeCooldown = 0;           // sweat surge lockout seconds
   causeOfDeath: string | null = null;
   vision = 0; // 0 fine .. 1 worst (low-water visual)
-  storm = 0;   // Sandstorm intensity 0..1 — raw outdoors: amplified air, hard sweat, sand blast
+  storm = 0;   // Storm intensity 0..1 — raw outdoors: amplified air, hard sweat, scour
+  stormKind: StormKind = "sand"; // set from outside per planet/biome; "sand" keeps the old desert storm
   lastAmbient = 0; lastAmbientEff = 0; lastShelterR = 0; lastTarget = 36.6; lastOpenSky = false;
   lastRoom: { size: number; sealed: boolean; regulators: number } = { size: 0, sealed: false, regulators: 0 };
   regulatedAir = false; // standing in a sealed Space its Regulators hold at neutral
@@ -38,15 +61,22 @@ export class Survival {
 
   worldTimeToDayFrac(t: number) { return (t % DAY_SECONDS) / DAY_SECONDS; }
 
+  silvaris = false; // set from outside per planet: picks the Silvaris ambient model
+
   ambient(biome: number, frac: number, tSec: number): number {
     // desert diurnal curve: coldest at sunrise (frac .28), hottest early afternoon (frac .58);
     // it climbs through the morning and drifts down over the long night
     const d = (frac - 0.28 + 1) % 1;
-    let T = AMBIENT_MEAN - AMBIENT_AMP * (d <= 0.3
+    const curve = d <= 0.3
       ? Math.cos((d / 0.3) * Math.PI)
-      : Math.cos((1 + ((d - 0.3) / 0.7)) * Math.PI));
-    if (biome === 2) T -= 2;                 // salt flats reflect
-    if (biome === 3 || biome === 4) T += 3;  // rock retains heat
+      : Math.cos((1 + ((d - 0.3) / 0.7)) * Math.PI);
+    let T = this.silvaris
+      ? SIL_AMBIENT_MEAN - SIL_AMBIENT_AMP * curve + (SIL_BIOME_T[biome] ?? 0)
+      : AMBIENT_MEAN - AMBIENT_AMP * curve;
+    if (!this.silvaris) {
+      if (biome === 2) T -= 2;                 // salt flats reflect
+      if (biome === 3 || biome === 4) T += 3;  // rock retains heat
+    }
     // 10-s stepped weather fluctuation, deterministic timeline (±8°C)
     const w = noise1(Math.floor(tSec / 10) / 60, this.weatherSeed) * 2 - 1;
     return T + w * 8;
@@ -73,9 +103,11 @@ export class Survival {
     const amb = this.ambient(o.biome, frac, o.tSec);
     const deep = y <= o.terrainH(x, z) - 2;
     const amb0 = deep ? CAVE_AMBIENT : amb;
+    // Silvaris: the air thins with altitude — peaks are Alpine Cold country
+    const lapse = this.silvaris && !deep ? -SIL_LAPSE * Math.max(0, y - SIL_LAPSE_BASE) : 0;
     const { R, openSky } = world.skyResistance(x, y, z);
     let shelter = 1 - Math.exp(-R);        // 0 exposed .. ~0.997 sealed
-    let ambEff = amb0;
+    let ambEff = amb0 + lapse;
     // direct sun is a line to the sun, like the shader's shadow — shade from
     // rocks, trees and roofs falls where the line is broken, not just overhead
     if (!deep && o.sunElev > 0 && o.sunDir && world.sunVisible(x, y, z, o.sunDir.x, o.sunDir.y, o.sunDir.z))
@@ -84,14 +116,16 @@ export class Survival {
     const regulated = room.sealed && room.regulators * REGULATOR_ROOM_MAX >= room.size;
     if (room.sealed) {
       if (regulated) { ambEff = 36.6; shelter = 1; }
-      else { ambEff = amb0; if (!deep) shelter = 0; } // "walls don't insulate" is a Ship rule; underground, the rock itself shelters you
+      else { ambEff = amb0 + lapse; if (!deep) shelter = 0; } // "walls don't insulate" is a Ship rule; underground, the rock itself shelters you
     }
-    // Sandstorm: a slow regime that amplifies whatever the open air already
-    // is — a scorching noon becomes murderous, a freezing night bites harder.
+    // Storm (any kind): a slow regime that amplifies whatever the open air
+    // already is — a scorching noon becomes murderous, a freezing night bites
+    // harder. A blizzard leans the air cold, an ash storm leans it hot: both
+    // happen by the same amplification, plus the kind's own heat bias.
     // Walls, caves and sealed shade ride it out untouched.
     const storm = o.stormShield ? 0 : this.storm * (o.stormMul ?? 1);
     if (storm > 0.02 && !deep && shelter < 0.6)
-      ambEff = 36.6 + (ambEff - 36.6) * (1 + 0.35 * storm);
+      ambEff = 36.6 + (ambEff - 36.6) * (1 + 0.35 * storm) + STORM_KNOBS[this.stormKind].heatBias * storm;
     // a campfire at its back — but a room its Regulators hold at neutral
     // stays neutral: the fire never pushes regulated air off 37 °C
     if (o.warmth && !regulated) ambEff += o.warmth;
@@ -140,8 +174,9 @@ export class Survival {
     this.regulatedAir = here.regulated;
     if (opts.inWater) {
       // desert water is cold: it pulls hard against midday heat, and is a little
-      // kinder than freezing night air — the average of air and water temperature
-      const wt = THREE.MathUtils.clamp(here.amb, 12, 24) - 3;
+      // kinder than freezing night air — the average of air and water temperature.
+      // Silvaris sea tracks the air: swimming in a blizzard is hypothermia.
+      const wt = this.silvaris ? Math.max(2, here.amb - 2) : THREE.MathUtils.clamp(here.amb, 12, 24) - 3;
       ambEff = (ambEff + wt) / 2;
     }
     // body always regulates toward 36.6; exposure pulls it toward the effective air temp.
@@ -171,8 +206,12 @@ export class Survival {
     }
     if (this.water <= 0) this.hurt(0.3, "dehydration");
     else if (this.water < WATER_LIMIT) this.hurt((WATER_LIMIT - this.water) * 0.0375, "dehydration");
-    // full-strength storm on bare ground: endless scouring — a cut-short visit, not a killer
-    if (storm > 0.35 && here.openSky) this.hurt((storm - 0.35) * 0.55 * dt, "sand blast");
+    // full-strength storm on bare ground: endless scouring — a cut-short visit,
+    // not a killer; how hard it scours is the kind's knob, same cause wiring
+    if (storm > 0.35 && here.openSky) {
+      const knobs = STORM_KNOBS[this.stormKind];
+      this.hurt((storm - 0.35) * 0.55 * knobs.scour * dt, knobs.scourCause);
+    }
 
     // Regen: only when Water AND Heat are in their zones
     if (this.water > 25 && this.body >= SAFE_LO && this.body <= SAFE_HI && this.health > 0)

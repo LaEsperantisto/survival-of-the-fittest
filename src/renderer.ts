@@ -13,6 +13,9 @@ import {
   ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN, CHEST_INTERFACE,
   COOKPOT, WATER_CAGE, WATER_CAGE_FULL, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING, APPLE_FRUIT,
   OIL, OIL7, OIL6, OIL5, OIL4, OIL3, OIL2, OIL1, OIL_SANDS, FRAME_CORNER, FLIGHT_CONTROLS,
+  ELECTRIC_BENCH, ASSEMBLY_BENCH, FUEL_WORKS, FOUNDRY, INSCRIPTION, DOCK_PAD,
+  TITANIUM_ORE, GRAPHITE_ORE, SNOW, BASALT, TUNDROOT_1, TUNDROOT_2,
+  EMBERBUSH_1, EMBERBUSH_2, EMBER_FRUIT,
   isSolid, isWater, isOpaque, isOil, isFluid, fluidStrength,
 } from "./blocks";
 import { World, ckey } from "./world";
@@ -41,7 +44,8 @@ function faceVisibleAt(src: CellProvider, x: number, y: number, z: number, selfI
   const n = src.get(x, y, z);
   if (n === DOOR_CLOSED || n === DOOR_UPPER || n === DOOR_INNER || n === DOOR_INNER_UPPER) return true;
   if (n === BENCH || n === BENCH_EXT || n === CURVED_HULL || n === HULL_SLOPE ||
-    n === ALAB_PILLAR || n === ALAB_FENCE || n === ALAB_GATE || n === ALAB_GATE_OPEN) return true;
+    n === ALAB_PILLAR || n === ALAB_FENCE || n === ALAB_GATE || n === ALAB_GATE_OPEN ||
+    n === ELECTRIC_BENCH || n === ASSEMBLY_BENCH || n === FUEL_WORKS || n === FOUNDRY || n === INSCRIPTION) return true;
   if (isOpaque(n)) return false;
   if (n === selfId) return false; // hide interior faces between same transparent block
   return true;
@@ -243,6 +247,55 @@ const PILLAR_MODEL = always([
   ...slabFaces(0.12, 0.88, 0.12, 0.88, 1, 0.88),
 ]);
 
+// Silvaris station chain (ADR-0013): bolted appliances in the BENCH/REFINERY
+// lineage, one cell each, turned by the rotation nibble so their working face
+// points where the player placed them. The tiles carry the distinguishing
+// colors — blue volt sigil, amber gantry, blue retort flame, hot furnace mouth.
+const ELEC_BENCH_MODEL = always([
+  ...slabFaces(0, 0.74, 0, 1, 0.9, 1),                  // steel worktop, BENCH's slab
+  ...slabFaces(0.06, 0.16, 0.06, 0.94, 0.26, 0.94),     // apron shelf
+  ...slabFaces(0.04, 0, 0.04, 0.18, 0.74, 0.18),
+  ...slabFaces(0.82, 0, 0.04, 0.96, 0.74, 0.18),
+  ...slabFaces(0.04, 0, 0.82, 0.18, 0.74, 0.96),
+  ...slabFaces(0.82, 0, 0.82, 0.96, 0.74, 0.96),
+  ...slabFaces(0.3, 0.34, 0, 0.7, 0.7, 0.06),           // front control panel
+  ...slabFaces(0.78, 0.56, 0.1, 0.94, 0.74, 0.24),      // conduit riser to the Grid
+]);
+const ASSEMBLY_MODEL = always([
+  ...slabFaces(0, 0.7, 0, 1, 0.84, 1),                  // heavy worktop
+  ...slabFaces(0.06, 0.14, 0.06, 0.94, 0.22, 0.94),     // shelf
+  ...slabFaces(0.04, 0, 0.04, 0.18, 0.7, 0.18),
+  ...slabFaces(0.82, 0, 0.04, 0.96, 0.7, 0.18),
+  ...slabFaces(0.04, 0, 0.82, 0.18, 0.7, 0.96),
+  ...slabFaces(0.84, 0, 0.84, 0.96, 1, 0.96),           // gantry stanchion
+  ...slabFaces(0.18, 0.9, 0.84, 0.96, 1, 0.96),         // jib arm over the table
+  ...slabFaces(0.24, 0.76, 0.82, 0.42, 0.9, 0.94),      // hoist head
+]);
+const FUEL_MODEL = always([
+  ...slabFaces(0.08, 0, 0.08, 0.92, 0.14, 0.92),        // plinth
+  ...slabFaces(0.14, 0.14, 0.14, 0.86, 0.78, 0.86),     // body
+  ...slabFaces(0.38, 0.78, 0.38, 0.62, 0.98, 0.62),     // retort neck
+  ...slabFaces(0.68, 0.14, 0.24, 0.86, 0.9, 0.44),      // condenser column
+  ...slabFaces(0.2, 0.14, 0, 0.5, 0.44, 0.14),          // burner box out front
+]);
+const FOUNDRY_MODEL = always([
+  ...slabFaces(0.06, 0, 0.06, 0.94, 0.1, 0.94),         // hearth base
+  ...slabFaces(0.12, 0.1, 0.12, 0.88, 0.92, 0.88),      // furnace block
+  ...slabFaces(0.24, 0.12, 0, 0.76, 0.5, 0.14),         // mouth lintel, front
+  ...slabFaces(0.6, 0.92, 0.26, 0.8, 1, 0.46),          // chimney stack
+  ...slabFaces(0.1, 0.56, 0.1, 0.3, 0.76, 0.3),         // charge hopper
+]);
+// A carved Dweller stele: plinth, slim tall shaft, lintel cap.
+const INSCRIPTION_MODEL = always([
+  ...slabFaces(0.2, 0, 0.32, 0.8, 0.1, 0.68),           // plinth
+  ...slabFaces(0.3, 0.1, 0.4, 0.7, 1, 0.6),             // carved shaft
+  ...slabFaces(0.26, 1, 0.36, 0.74, 1.06, 0.64),        // lintel cap
+]);
+const STATION_MODELS: Record<number, ShapeFace[]> = {
+  [ELECTRIC_BENCH]: ELEC_BENCH_MODEL, [ASSEMBLY_BENCH]: ASSEMBLY_MODEL,
+  [FUEL_WORKS]: FUEL_MODEL, [FOUNDRY]: FOUNDRY_MODEL, [INSCRIPTION]: INSCRIPTION_MODEL,
+};
+
 // ---------------- procedural texture atlas ----------------
 // One 16x16 tile per face kind, drawn on a 256x256 canvas at load: a base tile
 // per block id (also sampled by the item icons) plus variant tiles for faces
@@ -265,7 +318,10 @@ export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, G
   ALAB_BRICK, ALAB_POLISHED, ALAB_CHISELLED, ALAB_PILLAR, ALAB_FENCE, ALAB_GATE, ALAB_GATE_OPEN,
   ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN, CHEST_INTERFACE,
   COOKPOT, WATER_CAGE, WATER_CAGE_FULL, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING, APPLE_FRUIT,
-  OIL, OIL7, OIL6, OIL5, OIL4, OIL3, OIL2, OIL1, OIL_SANDS, FRAME_CORNER, FLIGHT_CONTROLS];
+  OIL, OIL7, OIL6, OIL5, OIL4, OIL3, OIL2, OIL1, OIL_SANDS, FRAME_CORNER, FLIGHT_CONTROLS,
+  ELECTRIC_BENCH, ASSEMBLY_BENCH, FUEL_WORKS, FOUNDRY, INSCRIPTION, DOCK_PAD,
+  TITANIUM_ORE, GRAPHITE_ORE, SNOW, BASALT, TUNDROOT_1, TUNDROOT_2,
+  EMBERBUSH_1, EMBERBUSH_2, EMBER_FRUIT];
 
 // extra face tiles, appended after the base tiles; each recipe is shaded with
 // the named block's base colour
@@ -276,6 +332,7 @@ const VARIANTS: [string, number][] = [
   ["bench_top", BENCH], ["bench_ext_top", BENCH_EXT], ["campfire_top", CAMPFIRE],
   ["campfire_cold", CAMPFIRE], ["cookpot_cold", COOKPOT],
   ["cactus_top", CACTUS], ["oil_side", OIL],
+  ["dock_pad_top", DOCK_PAD],
 ];
 const VI: Record<string, number> = {};
 VARIANTS.forEach(([name], i) => (VI[name] = TILE_LIST.length + i));
@@ -1225,6 +1282,175 @@ export function getAtlasCanvas(): HTMLCanvasElement {
     for (let d = -1; d <= 1; d++) px(11, 12 + Math.abs(d), col(0.2, 1, 0.45, -0.25, -0.5));           // burner flame at the foot
     px(13, 6, col(-0.2)); px(13, 7, col(0.3, 1, 0.5, -0.3, -0.4));                                    // valve wheel
   });
+  // ---- Silvaris (Phase 2): station chain, stele, plaza pad, tundra ----
+  R(String(ELECTRIC_BENCH), () => {
+    fbmFill((x, y, nn) => nn * 0.04 - 0.12 + (y < 3 ? 0.02 : -0.03));                                 // steel bench, BENCH in the Refinery's plating
+    for (let x = 0; x < 16; x++) { px(x, 0, col(0.2)); px(x, 1, col(0.08)); px(x, 3, col(-0.26)); }    // worktop and its shadow seam
+    for (let y = 4; y < 16; y++) for (const lx of [1, 2, 13, 14]) px(lx, y, col(0.05));                // legs
+    for (let y = 5; y <= 12; y++) for (let x = 4; x <= 11; x++) px(x, y, col(-0.05));                  // inset panel face
+    for (const [bx, by] of [[9, 5], [10, 5], [8, 6], [9, 6], [7, 7], [8, 7], [6, 8], [7, 8], [7, 9], [8, 9], [6, 10], [7, 10], [5, 11], [6, 11]] as const)
+      px(bx, by, col(0.3, 1, -0.08, 0.08, 0.5));                                                      // volt sigil, lit blue
+    for (const [bx, by] of [[9, 4], [11, 5], [7, 6], [10, 6], [6, 7], [9, 8], [5, 9], [8, 10], [7, 11], [4, 12], [9, 11]] as const)
+      px(bx, by, col(0.12, 0.8, -0.05, 0.02, 0.3));                                                   // glow halo around the sigil
+    px(3, 4, col(0.3, 1, -0.35, 0.35, -0.1));                                                         // live-circuit lamp
+    crack(5, 0.04, 0.02); speckle(8, 0.06);
+  });
+  R(String(ASSEMBLY_BENCH), () => {
+    fbmFill((x, y, nn) => nn * 0.04 - 0.1 + (y < 3 ? 0.03 : -0.02));                                  // pale steel, the bench lineage
+    for (let x = 0; x < 16; x++) { px(x, 0, col(0.18)); px(x, 2, col(-0.24)); }                        // worktop over its seam
+    for (let y = 3; y < 16; y++) for (const lx of [1, 2, 13, 14]) px(lx, y, col(0.03));                // legs
+    for (const x of [12, 13]) for (let y = 3; y < 16; y++) px(x, y, col(x === 12 ? 0.14 : -0.06));     // gantry stanchion
+    for (let x = 3; x <= 13; x++) { px(x, 4, col(0.2)); px(x, 5, col(0.02)); }                         // jib arm across the top
+    px(6, 6, col(0.24)); px(6, 7, col(0.18));                                                         // hoist chain
+    for (const [cx, cy] of [[5, 8], [6, 8], [7, 8], [5, 9], [7, 9], [6, 10]] as const)
+      px(cx, cy, col(0.26, 1, 0.32, 0.12, -0.4));                                                     // amber claw over the table
+    for (let x = 4; x <= 8; x++) px(x, 1, col(-0.12));                                                // precision vice in the edge
+    px(9, 13, col(0.28, 1, -0.3, 0.32, 0.02));                                                        // status lamp
+    speckle(7, 0.05);
+  });
+  R(String(FUEL_WORKS), () => {
+    fbmFill((x, y, nn) => nn * 0.04 - 0.06);                                                          // plated steel, the Refinery's kin
+    for (let x = 1; x <= 14; x++) { px(x, 0, col(-0.18)); px(x, 15, col(-0.2)); }                      // rails
+    for (let y = 1; y <= 14; y++) { px(0, y, col(-0.14)); px(15, y, col(-0.14)); }                     // stiles
+    for (let y = 3; y <= 11; y++) for (let x = 4; x <= 10; x++) {                                     // round retort on the chest
+      const d = Math.abs(x - 7) + Math.abs(y - 7);
+      px(x, y, d > 4 ? col(-0.28, 1, -0.08, 0.02, 0.1) : d > 3 ? col(0.22, 1, -0.1, 0.08, 0.28) : col(-0.02, 1, -0.12, 0.0, 0.16));
+    }
+    px(7, 7, col(0.3, 1, -0.14, 0.1, 0.34)); px(6, 6, col(0.2, 1, -0.1, 0.06, 0.24));                  // fuel sloshing, cool blue
+    for (let y = 12; y <= 14; y++) for (let x = 7 - (y - 10); x <= 7 + (y - 10); x++)
+      px(x, y, y === 14 ? col(0.05, 1, -0.15, 0.1, 0.4) : col(0.2, 1, -0.2, 0.08, 0.55));             // burner flame licking up, blue
+    px(7, 11, col(0.3, 1, 0.05, 0.25, 0.35));                                                         // hot core
+    for (let y = 2; y <= 12; y++) { px(12, y, col(0.06)); px(13, y, col(-0.1)); }                      // condenser column
+    px(11, 2, col(0.1)); px(10, 1, col(0.1)); px(11, 1, col(0.1));                                    // vapor pipe to the column
+    px(2, 5, col(0.25, 1, -0.15, 0.05, 0.3)); px(2, 6, col(-0.1));                                    // fuel gauge
+    px(3, 9, col(-0.2)); px(3, 10, col(0.3, 1, 0.45, -0.25, -0.5));                                   // bleed valve
+  });
+  R(String(FOUNDRY), () => {
+    fbmFill((x, y, nn) => nn * 0.06 - 0.1 + (y % 5 === 4 ? -0.09 : 0));                                // refractory brick in courses
+    for (const y of [3, 8]) for (let x = 0; x < 16; x++) px(x, y, col(-0.2));                          // iron bands
+    for (let y = 9; y <= 13; y++) for (let x = 4; x <= 11; x++) {                                     // glowing furnace mouth
+      const d = Math.max(Math.abs(x - 7.5) * 1.05, Math.abs(y - 11) * 1.6);
+      if (d > 3.7) continue;
+      px(x, y, d > 2.9 ? col(-0.34) : col(0.26 + (3.7 - d) * 0.07, 1, 0.6, 0.2 - (3.7 - d) * 0.04, -0.55));
+    }
+    px(4, 8, col(0.12)); px(11, 8, col(0.12));                                                        // lintel over the mouth
+    for (let y = 1; y <= 4; y++) { px(11, y, col(-0.22)); px(12, y, col(0.08)); px(13, y, col(-0.22)); } // chimney stack
+    for (const [sx, sy] of [[7, 6], [8, 4], [6, 3], [9, 2]] as const) px(sx, sy, col(0.35, 1, 0.4, 0.12, -0.35)); // sparks off the stack
+    for (let i = 0; i < 6; i++) px(rng.int(1, 14), rng.int(1, 7), col(-0.05, 1, 0.18, 0.0, -0.1));     // slag spatter
+    speckle(9, 0.07);
+  });
+  R(String(INSCRIPTION), () => {
+    fbmFill((x, y, nn) => nn * 0.05 - 0.01 + (x < 2 || x > 13 ? -0.12 : 0));                           // dressed stone, shadowed edges
+    for (let x = 0; x < 16; x++) { px(x, 0, col(-0.2)); px(x, 1, col(0.12)); px(x, 14, col(-0.16)); px(x, 15, col(-0.24)); } // lintel cap and base
+    for (let y = 3; y <= 4; y++) for (let x = 3; x <= 12; x++) px(x, y, col(-0.1));                    // crown band
+    for (const [rx, ry, len, vert] of [[4, 6, 4, 1], [7, 6, 3, 1], [10, 6, 4, 1], [4, 11, 4, 0], [7, 11, 3, 0], [10, 11, 2, 0]] as const)
+      for (let i = 0; i < len; i++) {
+        const x = vert ? rx : rx + i, y = vert ? ry + i : ry;
+        px(x, y, col(-0.32)); px(x + 1, y + 1, col(0.16));                                            // carved stroke sunk, lower lip lit
+      }
+    crack(9, 0.04, 0.06); speckle(12, 0.05);                                                          // weathering
+  });
+  R(String(DOCK_PAD), () => {
+    fbmFill((x, y, nn) => nn * 0.03 + (y % 2 === 0 ? 0.012 : -0.012));                                 // brushed deck plate
+    for (let i = 0; i < 16; i++) { px(i, 0, col(-0.26)); px(i, 15, col(-0.26)); px(0, i, col(-0.2)); px(15, i, col(-0.2)); } // inlay rim
+    for (let x = 2; x <= 13; x++) { px(x, 2, col(0.12)); px(x, 13, col(-0.1)); }                        // bevels
+    for (const [rx, ry] of [[3, 3], [12, 3], [3, 12], [12, 12]] as const) px(rx, ry, col(0.26));       // corner rivets
+    for (let i = 0; i < 5; i++) px(rng.int(3, 12), rng.int(3, 12), col(-0.05));                         // boot scuffs
+  });
+  R("dock_pad_top", () => {
+    fbmFill((x, y, nn) => nn * 0.03 + (x % 2 === 0 ? 0.012 : -0.012));                                 // deck plate, brush the other way
+    for (let i = 0; i < 16; i++) { px(i, 0, col(-0.26)); px(i, 15, col(-0.26)); px(0, i, col(-0.2)); px(15, i, col(-0.2)); } // inlay rim
+    for (const [rx, ry] of [[2, 2], [13, 2], [2, 13], [13, 13]] as const) { px(rx, ry, col(0.26)); px(rx + (rx < 8 ? 1 : -1), ry, col(0.1)); } // rivets
+    for (const cy of [5, 9, 13]) for (let x = 3; x <= 12; x++) {                                       // hazard chevrons pointing -z
+      const y = cy - Math.round(Math.abs(x - 7.5) * 0.8);
+      if (y < 2 || y > 13) continue;
+      px(x, y, col(0.22, 1, 0.46, 0.3, -0.36)); px(x, y + 1, col(0.18, 1, 0.4, 0.26, -0.34));          // amber band
+    }
+    for (let x = 4; x <= 11; x++) px(x, 1, col(0.08));                                                // seam gleam
+  });
+  R(String(TITANIUM_ORE), () => {
+    fbmFill((x, y, n) => n * 0.1 - 0.02);                                                              // rock matrix, IRON_ORE's kin
+    crack(11, 0.06, -0.14); crack(7, 0.06, -0.18);
+    for (let i = 0; i < 5; i++) grain(rng.int(3, 12), rng.int(3, 12), rng.int(1, 2), 0.3, 0.32, 0.36); // pale mineral bands
+    for (let i = 0; i < 6; i++) px(rng.int(2, 13), rng.int(2, 13), col(0.32, 1, 0.2, 0.22, 0.28));     // bright silver flecks
+    speckle(10, 0.1);
+  });
+  R(String(GRAPHITE_ORE), () => {
+    fbmFill((x, y, n) => n * 0.09 - 0.05);                                                             // dark rock matrix
+    crack(9, 0.05, -0.16);
+    for (let i = 0; i < 4; i++) grain(rng.int(3, 12), rng.int(3, 12), 2, -0.24, -0.22, -0.12);         // lustrous black grains
+    for (let i = 0; i < 7; i++) {                                                                     // sheen along cleavage planes
+      const x0 = rng.int(2, 11), y0 = rng.int(2, 11);
+      for (let k = 0; k < 3; k++) px(x0 + k, y0 + k, col(0.28, 1, -0.02, 0.0, 0.04));
+    }
+    speckle(8, 0.06);
+  });
+  R(String(SNOW), () => {
+    fbmFill((x, y, n) => n * 0.03 + Math.sin((x + y) * 0.55 + n * 4) * 0.015);                          // wind ripple in a bright crust
+    for (let i = 0; i < 3; i++) crack(rng.int(6, 10), 0.02, -0.08);                                    // firn fissures
+    for (let i = 0; i < 14; i++) px(rng.int(0, 15), rng.int(0, 15), col(-0.14, 1, -0.06, -0.01, 0.06)); // blue shade pits
+    for (let i = 0; i < 8; i++) px(rng.int(0, 15), rng.int(0, 15), col(0.06, 1, 0.02, 0.02, 0.0));      // ice glints
+  });
+  R(String(BASALT), () => {
+    fbmFill((x, y, n) => {                                                                            // columnar jointing: vertical columns
+      const seam = x % 3 === 0 && ((x * 7 + y * 13) % 10) > 2;
+      return (seam ? -0.16 : (x % 3 === 1 ? 0.05 : -0.02)) + n * 0.05 + (y % 7 === 3 ? -0.07 : 0);
+    });
+    for (let i = 0; i < 2; i++) crack(rng.int(4, 8), 0.03, -0.12);                                     // fractures along column tops
+    for (let i = 0; i < 5; i++) px(rng.int(1, 14), rng.int(1, 14), col(0.14));                         // sparse phenocrysts
+    speckle(8, 0.05);
+  });
+  R(String(TUNDROOT_1), () => {
+    fill("rgba(0,0,0,0)");                                                                             // seedling stage, MELON_1's sprout
+    for (let y = 12; y <= 15; y++) { px(7, y, col(0.0)); px(8, y, col(0.06)); }                        // pale shoot
+    px(6, 11, col(0.22)); px(5, 10, col(0.16)); px(9, 11, col(0.18)); px(10, 10, col(0.14));           // two frost leaves
+    px(7, 10, col(0.1)); px(8, 10, col(0.12));
+    for (let i = 0; i < 3; i++) px(rng.int(5, 10), rng.int(14, 15), col(-0.05));                       // soil crumbs at the base
+  });
+  R(String(TUNDROOT_2), () => {
+    fbmFill((x, y, n) => n * 0.05 - 0.02);                                                             // full stand, MELON_2's crown
+    for (let y = 7; y <= 14; y++) for (let x = 2; x <= 13; x++) {                                     // swollen tuber root mound
+      const d = Math.hypot((x - 7.5) * 1.15, (y - 10.5) * 1.5);
+      if (d > 4.8) continue;
+      px(x, y, d > 4.2 ? col(-0.18) : x < 6 && y < 10 ? col(0.16) : y > 12 ? col(-0.06) : col(0.05));
+    }
+    px(7, 6, col(-0.1)); px(8, 6, col(-0.14));                                                        // stem scar
+    for (const [lx, ly] of [[3, 4], [5, 2], [7, 3], [9, 2], [11, 4], [6, 5], [10, 6], [13, 8], [2, 8]] as const) { // broad fan leaves
+      px(lx, ly, col(0.2)); px(lx + 1, ly + 1, col(0.12)); px(lx - 1, ly + 1, col(0.08));
+    }
+    speckle(6, 0.05);
+  });
+  R(String(EMBERBUSH_1), () => {
+    fill("rgba(0,0,0,0)");                                                                             // sparse shrub on clear ground
+    for (let y = 12; y <= 15; y++) px(8, y, col(-0.08));                                              // shoot stem
+    px(7, 11, col(0.12)); px(7, 12, col(0.02)); px(6, 10, col(0.16));                                 // left sprig
+    px(9, 11, col(0.08)); px(10, 10, col(0.14));                                                      // right sprig
+    px(8, 10, col(0.18));                                                                            // tip leaf
+    px(6, 13, col(-0.26)); px(10, 14, col(-0.22));                                                    // thorn flecks
+  });
+  R(String(EMBERBUSH_2), () => {
+    fbmFill((x, y, nn) => nn * 0.1);                                                                  // dense shrub mass, LEAVES' clumping
+    for (let i = 0; i < 22; i++) {                                                                    // rust-green leaf clumps
+      const x = rng.int(0, 14), y = rng.int(0, 14);
+      px(x, y, col(0.16, 1, 0.06, -0.02, -0.1)); px(x + 1, y, col(0.05));
+      px(x, y + 1, col(-0.08, 1, -0.04, 0.02, -0.06)); px(x + 1, y + 1, col(-0.2));
+    }
+    for (let i = 0; i < 10; i++) px(rng.int(1, 14), rng.int(1, 14), col(0.4, 1, 0.0, -0.02, -0.06));   // thorns catching light
+    for (let i = 0; i < 5; i++) px(rng.int(2, 13), rng.int(2, 13), col(-0.3));                         // shade deep inside
+  });
+  R(String(EMBER_FRUIT), () => {
+    fill("rgba(0,0,0,0)");                                                                             // berries float in the cell, APPLE_FRUIT's cluster
+    for (const [cx, cy, r] of [[6, 7, 2], [10, 9, 2], [7, 12, 2], [11, 4, 1]] as const)
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        const d = Math.hypot(dx, dy);
+        if (d > r + 0.3) continue;
+        px(cx + dx, cy + dy, d > r - 0.4 ? col(-0.16, 1, -0.12, -0.06, -0.04)
+          : dx + dy < -r * 0.3 ? col(0.26, 1, 0.24, -0.04, -0.02) : col(0.04, 1, 0.1, -0.06, -0.08));
+      }
+    px(6, 4, col(-0.26)); px(6, 5, col(-0.2));                                                        // stems to the node
+    px(10, 6, col(-0.24)); px(10, 7, col(-0.18));
+    px(7, 4, col(0.12)); px(8, 3, col(0.08));                                                         // leaf at the cluster
+  });
   R(String(WIND_TURBINE), () => {
     fbmFill((x, y, nn) => nn * 0.03 - 0.04);                                                            // pale sky plate
     for (let s = 0; s < 3; s++) {                                                                       // three white blades
@@ -1515,6 +1741,7 @@ setFaces(BENCH_EXT, VI.bench_ext_top, TILE[BENCH_EXT], TILE[BENCH_EXT]);
 setFaces(CAMPFIRE, VI.campfire_top, TILE[CAMPFIRE], TILE[CAMPFIRE]);
 setFaces(CACTUS, VI.cactus_top, TILE[CACTUS], TILE[CACTUS]);
 setFaces(CACTUS_FRUIT, VI.cactus_top, TILE[CACTUS], TILE[CACTUS_FRUIT]);
+setFaces(DOCK_PAD, VI.dock_pad_top, TILE[DOCK_PAD], TILE[DOCK_PAD]);
 for (const w of [WATER, WATER7, WATER6, WATER5, WATER4, WATER3, WATER2, WATER1])
   setFaces(w, TILE[w], TILE[w], VI.water_side);
 for (const w of [OIL, OIL7, OIL6, OIL5, OIL4, OIL3, OIL2, OIL1])
@@ -1595,6 +1822,11 @@ const _p3 = new THREE.Vector3();
 const _dayAmb = new THREE.Color(1.0, 0.97, 0.9);     // linear: bright warm-neutral noon
 const _nightAmb = new THREE.Color(0.2, 0.27, 0.45);  // linear: dim blue moonlight
 const _dustCol = new THREE.Color(0.72, 0.55, 0.35);  // a wall of airborne sand
+// Silvaris' sky: the desert's day curve pulled toward sea-cool — a paler blue
+// dome, a misty dawn, a whiter sun (see keyframe / setPlanetPalette)
+const _silSky = new THREE.Color(0x6f9fd0);
+const _silDawn = new THREE.Color(0x9ab7c6);
+const _silSun = new THREE.Color(0xfff0dc);
 
 // exactly one Renderer lives per game canvas; the free mesher entry below
 // borrows its materials so Ship meshes match terrain pixel for pixel
@@ -1982,6 +2214,7 @@ export class Renderer {
     else if (id === ALAB_FENCE) faces = FENCE_FULL;
     else if (id === ALAB_GATE) faces = GATE_MODEL;
     else if (id === ALAB_GATE_OPEN) faces = GATE_OPEN_MODEL;
+    else if (id in STATION_MODELS) faces = STATION_MODELS[id];
     else if (id >= WATER7 && id <= WATER1) faces = slabFaces(0, 0, 0, 1, (33 - id) / 8, 1);
     else faces = FACES.map((f, fi) => ({
       dir: f.dir, kind: (fi === 0 ? 0 : fi === 1 ? 1 : 2) as 0 | 1 | 2,
@@ -1990,7 +2223,7 @@ export class Renderer {
     }));
     // only the shape-bearing blocks turn with the rotation nibble
     if (rot && (DOOR_BLOCKS.has(id) || id === CURVED_HULL || id === HULL_SLOPE || id === BENCH || id === BENCH_EXT ||
-      id === ALAB_GATE || id === ALAB_GATE_OPEN))
+      id === ALAB_GATE || id === ALAB_GATE_OPEN || id in STATION_MODELS))
       faces = rotShapes(faces, rot);
     const P: number[] = [], C: number[] = [], U: number[] = [], I: number[] = [];
     for (const f of faces) {
@@ -2036,7 +2269,14 @@ export class Renderer {
     const night = new THREE.Color(0x0a1226), dawn = new THREE.Color(0xc96f3d), day = new THREE.Color(0xbfcfe0);
     const sky = night.clone().lerp(day, dayT);
     if (dawnT > 0) sky.lerp(dawn, dawnT * 0.7);
+    if (this.silvarisSky) {
+      // Silvaris (ADR-0011): the same day curve, cooled and pale — a wet world
+      // under a wet sky. The fog copies the sky, so the horizon goes with it.
+      sky.lerp(_silSky, 0.34);
+      if (dawnT > 0) sky.lerp(_silDawn, dawnT * 0.3);
+    }
     const sunColor = new THREE.Color(0xffd9a0).lerp(new THREE.Color(0xff7b3f), dawnT);
+    if (this.silvarisSky) sunColor.lerp(_silSun, 0.3);
     return { sky, sunColor, sunElev: elev, sunI: Math.max(0.06, elev * 1.15), dayT };
   }
 
@@ -2149,6 +2389,10 @@ export class Renderer {
   /** Sandstorm: fog, sky and light follow the Survival intensity (0..1);
    *  the grit cloud only rides when the player is under open sky. */
   setStorm(i: number, openSky: boolean): void { this.stormI = i; this.stormOpen = openSky; }
+  /** Which world the sky belongs to (ADR-0011): Desertis keeps the desert's
+   *  warm palette untouched; Silvaris cools the sky, the horizon and the sun. */
+  setPlanetPalette(planet: "desertis" | "silvaris"): void { this.silvarisSky = planet === "silvaris"; }
+  private silvarisSky = false;
   /** Inside a Base: the fog pulls close — the room reads as a room (0..1 crossfade). */
   setCozy(v: number): void { this.cozyI = v; }
   private stormDome: THREE.Mesh | null = null;
@@ -2436,6 +2680,12 @@ export class Renderer {
     }
     if (id === ALAB_GATE_OPEN) {
       this.emitShape(rotShapes(GATE_OPEN_MODEL, r), S.pos, S.col, S.idx, S.uvs, S.lite, id, src, x, y, z, wx, wz, faceLight);
+      return;
+    }
+    if (id in STATION_MODELS) {
+      // the station chain and the stele: one-cell appliances, turned by the
+      // rotation nibble so the working face points where the player placed them
+      this.emitShape(rotShapes(STATION_MODELS[id], r), S.pos, S.col, S.idx, S.uvs, S.lite, id, src, x, y, z, wx, wz, faceLight);
       return;
     }
     if ((id >= WATER7 && id <= WATER1) || (id >= OIL7 && id <= OIL1)) {

@@ -22,7 +22,12 @@ export const AIR = 0, SAND = 1, SANDSTONE = 2, ROCK = 3, GRAVEL = 4, DIRT = 5, S
   SUGARCANE_1 = 87, SUGARCANE_2 = 88, APPLE_SAPLING = 89, APPLE_FRUIT = 90,
   COAL_ORE = 91, REFINERY = 92,
   OIL = 93, OIL7 = 94, OIL6 = 95, OIL5 = 96, OIL4 = 97, OIL3 = 98, OIL2 = 99, OIL1 = 100,
-  OIL_SANDS = 101, FRAME_CORNER = 102, FLIGHT_CONTROLS = 103;
+  OIL_SANDS = 101, FRAME_CORNER = 102, FLIGHT_CONTROLS = 103,
+  // Silvaris (Phase 2), appended in id order — 65 stays the Rusted Machine gap.
+  ELECTRIC_BENCH = 104, ASSEMBLY_BENCH = 105, FUEL_WORKS = 106, FOUNDRY = 107,
+  INSCRIPTION = 108, DOCK_PAD = 109, TITANIUM_ORE = 110, GRAPHITE_ORE = 111,
+  SNOW = 112, BASALT = 113, TUNDROOT_1 = 114, TUNDROOT_2 = 115,
+  EMBERBUSH_1 = 116, EMBERBUSH_2 = 117, EMBER_FRUIT = 118;
 
 export type ToolType = "pickaxe" | "shovel" | "axe" | "disassembler";
 
@@ -79,7 +84,8 @@ for (const g of DOORS) { DOOR_GROUP.set(g.base, g); DOOR_GROUP.set(g.upper, g); 
 const NATURAL = new Set<number>([SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, GRASS, DEADWOOD,
   WOOD, LEAVES, SAPLING, APPLE_SAPLING, APPLE_FRUIT, CACTUS, CACTUS_FRUIT, MELON_1, MELON_2, WHEAT_1, WHEAT_2,
   SUGARCANE_1, SUGARCANE_2, FARMLAND,
-  IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, COAL_ORE]);
+  IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, COAL_ORE, TITANIUM_ORE, GRAPHITE_ORE, SNOW, BASALT,
+  TUNDROOT_1, TUNDROOT_2, EMBERBUSH_1, EMBERBUSH_2, EMBER_FRUIT]);
 const NO_ROT = new Set<number>([DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER,
   DOOR_INNER_OPEN, ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN, ALAB_GATE_OPEN,
   COOKPOT, WATER_CAGE, WATER_CAGE_FULL,
@@ -274,6 +280,33 @@ export const BLOCKS: BlockDef[] = [
   def({ id: FRAME_CORNER, name: "Ship Frame Corner", solid: true, opaque: true, transparent: false, emissive: false, R: 0.3, breakTime: 2, tool: "disassembler", minTier: 0, placeable: true, color: [0.60, 0.64, 0.72] }),
   // Flight Controls: the yoke. E opens the flight panel — takeoff refuses an invalid Frame.
   def({ id: FLIGHT_CONTROLS, name: "Flight Controls", solid: true, opaque: true, transparent: false, emissive: true, R: 0.4, breakTime: 2, tool: "disassembler", minTier: 0, placeable: true, color: [0.25, 0.50, 0.56] }),
+  // ---- Silvaris (Phase 2) ----
+  // The station chain (ADR-0013): each new station is built at the one before it.
+  // Bolted appliances like the Refinery — solid, slow, hand-mined, disassembler-free.
+  def({ id: ELECTRIC_BENCH, name: "Electric Bench", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.35, 0.44, 0.52] }),
+  def({ id: ASSEMBLY_BENCH, name: "Assembly Bench", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.42, 0.44, 0.52] }),
+  def({ id: FUEL_WORKS, name: "Fuel Works", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 2, tool: null, minTier: 0, placeable: true, color: [0.44, 0.38, 0.40] }),
+  def({ id: FOUNDRY, name: "Foundry", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 2, tool: null, minTier: 0, placeable: true, color: [0.52, 0.40, 0.32] }),
+  // Inscription: a carved Dweller stele in the settlements (reading is E in game.ts);
+  // it can come out and stand again wherever you like.
+  def({ id: INSCRIPTION, name: "Inscription", solid: true, opaque: true, transparent: false, emissive: false, R: 1.4, breakTime: 2.6, tool: "pickaxe", minTier: 0, placeable: true, color: [0.80, 0.78, 0.68] }),
+  // Dock Pad: the deck tile of a Dock plaza — grounded Frame on Pads means docked.
+  def({ id: DOCK_PAD, name: "Dock Pad", solid: true, opaque: true, transparent: false, emissive: false, R: 0.3, breakTime: 1, tool: null, minTier: 0, placeable: true, color: [0.54, 0.57, 0.63] }),
+  // Silvaris minerals: Titanium veins the deep band like Cobalt (but a Stone
+  // Pickaxe bites); Graphite runs mid, the Fuel Works' other half.
+  def({ id: TITANIUM_ORE, name: "Titanium Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.6, breakTime: 3.4, tool: "pickaxe", minTier: 2, placeable: false, color: [0.66, 0.68, 0.72] }),
+  def({ id: GRAPHITE_ORE, name: "Graphite Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 2.4, tool: "pickaxe", minTier: 1, placeable: false, color: [0.34, 0.34, 0.36] }),
+  // Snow caps the Alpine peaks; Basalt floors the Scorch Belt.
+  def({ id: SNOW, name: "Snow", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 0.4, tool: "shovel", minTier: 0, placeable: true, color: [0.92, 0.94, 0.97] }),
+  def({ id: BASALT, name: "Basalt", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 3.0, tool: "pickaxe", minTier: 1, placeable: true, color: [0.30, 0.28, 0.28] }),
+  // Silvaris crops (see survival.growCrops): Tundra Root tolerates the cold, the
+  // Ember Bush loves the scorch edge; both plant on Farm Land like Melon/Wheat.
+  // A grown bush tops itself with EMBER_FRUIT — pick the fruit, the bush stays.
+  def({ id: TUNDROOT_1, name: "Tundra Root Sprout", solid: false, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: true, color: [0.30, 0.50, 0.34] }),
+  def({ id: TUNDROOT_2, name: "Tundra Root", solid: false, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 0.3, tool: null, minTier: 0, placeable: false, color: [0.42, 0.52, 0.30] }),
+  def({ id: EMBERBUSH_1, name: "Ember Bush Shoot", solid: false, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: true, color: [0.32, 0.46, 0.30] }),
+  def({ id: EMBERBUSH_2, name: "Ember Bush", solid: false, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 0.3, tool: null, minTier: 0, placeable: false, color: [0.50, 0.42, 0.26] }),
+  def({ id: EMBER_FRUIT, name: "Ember Fruit", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: false, color: [0.85, 0.35, 0.20] }),
 ];
 
 /** Everything that lives on the Grid: the Engine Core plus Panel..Harvester (ADR-0007). */
@@ -286,7 +319,8 @@ export const POLE_LINK = 16, DEVICE_REACH = 10;
 /** Radius (blocks) of a Sandstorm Breaker's calm. */
 export const STORM_BREAKER_R = 8;
 
-export const CH = 96;           // world height (Y)
+export const CH = 160;          // chunk/light array height (Y) — see ADR-0011
+export const DESERTIS_H = 96;   // Desertis sky column / playable ceiling
 export const CS = 16;           // chunk side (X/Z)
 export const DAY_SECONDS = 24 * 60; // one in-game day = 24 real minutes
 

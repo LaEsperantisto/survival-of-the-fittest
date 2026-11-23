@@ -1,7 +1,7 @@
 // Persistence: world slots in localStorage, delta-chunk saves (see ADR-0002),
 // and JSON file export/import so a world can exceed the localStorage cap and
 // travel between devices.
-import type { ShipSnapshot } from "./ship";
+import type { Port, ShipSnapshot } from "./ship";
 
 export interface WorldMeta { id: string; name: string; seedStr: string; updated: number; mode?: "easy" | "hard" | "phase2"; }
 
@@ -61,8 +61,42 @@ export interface PotSave {
   jobs?: { out: string; cook: number }[]; // dishes mid-simmer, by their output item id
 }
 
+/** The two worlds a run can hold (ADR-0010). */
+export type Planet = "desertis" | "silvaris";
+
+/** Everything that belongs to one planet rather than to the run: chunk edits,
+ *  Grid state, stations, farms, Ships, Pins, explored map (ADR-0010). ADR-0011's
+ *  per-planet seed lives here; a record made from the run's own seed leaves it
+ *  implicit. */
+export interface WorldRun {
+  seedStr?: string;               // this planet's seed (defaults to the run's)
+  deltas: Record<string, number[]>;
+  rots?: Record<string, number>;
+  visited?: string[];
+  revealed?: string[];
+  pins?: { id: number; x: number; z: number; name: string }[];
+  chests?: RunSave["chests"];
+  campfires: RunSave["campfires"];
+  pots?: RunSave["pots"];
+  battery?: RunSave["battery"];
+  genFuel?: RunSave["genFuel"];
+  trippedPanels?: RunSave["trippedPanels"];
+  crops?: RunSave["crops"];
+  trees?: RunSave["trees"];
+  appleTrees?: RunSave["appleTrees"];
+  fruitRegrow?: RunSave["fruitRegrow"];
+  coreFuel?: RunSave["coreFuel"];
+  ships?: ShipSnapshot[];
+  beaconMarks: RunSave["beaconMarks"];
+  entities: RunSave["entities"];
+  pods?: RunSave["pods"];
+  caches: RunSave["caches"];
+  collected?: RunSave["collected"];
+  melonHint?: boolean;
+}
+
 export interface RunSave {
-  v: 1 | 2;
+  v: 1 | 2 | 3;
   seedStr: string;
   time: number;
   playSec: number;
@@ -73,14 +107,15 @@ export interface RunSave {
   inventory: { slots: { itemId: string; count?: number; x: number; y: number; rot?: boolean; blockRot?: number; charges?: number; stack?: { itemId: string; count: number } }[]; selected: number; w: number; h: number }; // count: legacy only - items never stack now
   equip?: { backpack?: string; head?: string; body?: string; regulator?: string; light?: string;
             charges?: { regulator?: number; light?: number } };
-  beaconMarks: { x: number; y: number; z: number; ck?: string }[]; // ck: ship-local key when the Beacon rides a Ship
-  collected: string[];
-  entities: { x: number; y: number; z: number; itemId: string; count?: number; charges?: number; age?: number; stack?: { itemId: string; count: number } }[];
+  // ---- v2-only planet-scoped fields: migrateRun wraps these into worlds.desertis
+  // (ADR-0010); a v3 save writes them into the active WorldRun instead ----
+  beaconMarks?: { x: number; y: number; z: number; ck?: string }[]; // ck: ship-local key when the Beacon rides a Ship
+  collected?: string[];
+  entities?: { x: number; y: number; z: number; itemId: string; count?: number; charges?: number; age?: number; stack?: { itemId: string; count: number } }[];
   pods?: { x: number; z: number; t: number; itemId: string; n: number; ringEid?: number; beamEid?: number }[];
-  won?: boolean;
-  caches: { x: number; y: number; z: number; kind?: "death" | "chest" | "reward"; items: { itemId: string; count: number; charges?: number; stack?: { itemId: string; count: number } }[] }[];
+  caches?: { x: number; y: number; z: number; kind?: "death" | "chest" | "reward"; items: { itemId: string; count: number; charges?: number; stack?: { itemId: string; count: number } }[] }[];
   chests?: { cells: string; slots: { itemId: string; count?: number; x: number; y: number; rot?: boolean; blockRot?: number; charges?: number; stack?: { itemId: string; count: number } }[] }[];
-  campfires: Record<string, number | FireSave>;
+  campfires?: Record<string, number | FireSave>;
   battery?: [string, number][];      // Battery cell -> stored Grid units
   genFuel?: [string, number][];      // Wood Generator cell -> burn seconds left
   trippedPanels?: string[];          // Power Panel cells latched off (ADR-0007)
@@ -89,20 +124,51 @@ export interface RunSave {
   appleTrees?: [string, number][]; // planted Apple Pip key -> growth seconds
   fruitRegrow?: [string, number][]; // picked bough leaf key -> seconds until re-ripe
   pots?: Record<string, PotSave>;   // Cooking Pot key -> state (fires ride campfires)
-  lastSleep?: number;         // timeSec of the last bed sleep
-  deltas: Record<string, number[]>;
+  deltas?: Record<string, number[]>;
   rots?: Record<string, number>; // cell "x,y,z" -> quarter-turn for player-placed blocks
-  // ---- v2: the Map kit and the lessons ----
-  worldMode?: "easy" | "hard" | "phase2"; // fixed at world creation (Phase 0/1/2 Start)
-  cheats?: { immortal?: boolean; keep?: boolean }; // cheat-menu toggles that persist with the world
   ships?: ShipSnapshot[];                 // airborne/grounded Ships (cells are ship-local)
-  coreFuel?: [string, number[]][];        // Engine Core before takeoff: world cell -> port charges
+  coreFuel?: [string, number[] | Port[]][]; // Engine Core before takeoff: world cell -> ports (legacy saves hold bare charge numbers)
   pins?: { id: number; x: number; z: number; name: string }[];   // Surveyor's Pins
   visited?: string[];                     // explored chunk keys "cx,cz"
   revealed?: string[];                    // landmark keys the Tracker/quests marked
   melonHint?: boolean;                  // one-time Melon Seed hint already shown
+  // ---- global run state (v2 and v3) ----
+  won?: boolean;
+  lastSleep?: number;         // timeSec of the last bed sleep
+  worldMode?: "easy" | "hard" | "phase2"; // fixed at world creation (Phase 0/1/2 Start)
+  cheats?: { immortal?: boolean; keep?: boolean }; // cheat-menu toggles that persist with the world
   chronicle?: string[];                   // lesson ids seen (chronicle.ts)
   codex?: string[];                       // item ids (and "b:<blockId>") first carried/crafted/mined
+  // ---- v3: one record per planet (ADR-0010) ----
+  planet?: Planet;                        // the world the player is standing on
+  worlds?: { desertis: WorldRun; silvaris?: WorldRun };
+}
+
+/** A planet record with nothing on it — a fresh world's starting state. */
+export function emptyWorldRun(seedStr?: string): WorldRun {
+  return { seedStr, deltas: {}, beaconMarks: [], entities: [], caches: [], campfires: {} };
+}
+
+const V2_PLANET_FIELDS = [
+  "deltas", "rots", "visited", "revealed", "pins", "chests", "campfires", "pots", "battery",
+  "genFuel", "trippedPanels", "crops", "trees", "appleTrees", "fruitRegrow", "coreFuel",
+  "ships", "beaconMarks", "entities", "pods", "caches", "collected", "melonHint",
+] as const;
+
+/** v1/v2 → v3: the planet-scoped fields become the Desertis record (ADR-0010).
+ *  Idempotent, so every reader can call it and then trust `worlds`. */
+export function migrateRun(run: RunSave): RunSave {
+  if (run.v === 3 && run.worlds?.desertis) return run;
+  const out: RunSave = { ...run, v: 3 };
+  const w: WorldRun = run.worlds?.desertis ?? emptyWorldRun(run.seedStr);
+  if (run.v < 3) for (const k of V2_PLANET_FIELDS) {
+    const v = run[k];
+    if (v !== undefined) (w as unknown as Record<string, unknown>)[k] = v;
+    delete out[k];
+  }
+  out.planet = run.planet ?? "desertis";
+  out.worlds = { ...(run.worlds ?? {}), desertis: w };
+  return out;
 }
 
 export function saveRun(meta: WorldMeta, run: RunSave): boolean {
@@ -118,7 +184,8 @@ export function saveRun(meta: WorldMeta, run: RunSave): boolean {
 export function loadRun(id: string): RunSave | null {
   try {
     const s = localStorage.getItem("sotf:w:" + id);
-    return s ? (JSON.parse(s) as RunSave) : null;
+    // readers always get a v3 shape: a stored v2 save arrives already migrated
+    return s ? migrateRun(JSON.parse(s) as RunSave) : null;
   } catch { return null; }
 }
 
@@ -133,8 +200,8 @@ export function exportRun(meta: WorldMeta, run: RunSave) {
 
 export async function importRun(file: File): Promise<WorldMeta> {
   const obj = JSON.parse(await file.text());
-  if (!obj || (obj.run?.v !== 1 && obj.run?.v !== 2)) throw new Error("Not a Survival of the Fittest world file.");
-  const meta = createWorld(obj.meta?.name ?? "imported", obj.run.seedStr);
-  saveRun(meta, obj.run);
+  if (!obj || ![1, 2, 3].includes(obj.run?.v)) throw new Error("Not a Survival of the Fittest world file.");
+  const meta = createWorld(obj.meta?.name ?? "imported", obj.run.seedStr, obj.run.worldMode);
+  saveRun(meta, migrateRun(obj.run));
   return meta;
 }

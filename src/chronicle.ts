@@ -96,9 +96,50 @@ export const LESSONS: Lesson[] = [
     hint: "reaps below, chest above",
     text: "A powered Harvester closes the farm loop: ripe crop directly beneath, Chest directly above — it reaps Melons (the vine keeps growing), cuts Wheat back to tilled Farmland (seeds returned), and picks Cactus fruit. Planter below, Farmland, crop, Harvester on top: a self-seeding column that pays in food.",
   },
+  {
+    id: "leave", title: "The Jump",
+    hint: "one-way until you mix the blue canister yourself",
+    text: "A canister of Super Rocket Fuel burned at the Yoke, and the planet fell away. This was never the wreck's trick — it is the dwellers' trick, and you just bought it. The Ship carries what is aboard and abandons everything on the ground. Desertis keeps its dunes and its dead; the way back waits until you mix that blue canister yourself.",
+  },
+  {
+    id: "arrive", title: "The Second Planet",
+    hint: "the Ship is home here; the sky is the door",
+    text: "You came down on Silvaris — the Ship's log has always carried the name: ocean, forest, cold stone, and a Scorch belt that breathes ash. Desertis is now a place you used to live. The Ship docks at the plaza here; nothing moves between worlds until you make Super Rocket Fuel with your own hands.",
+  },
+  {
+    id: "dock", title: "The Dock",
+    hint: "grounded on Dock Pads — parked home, a respawn point",
+    text: "A Ship grounded on a plaza's Dock Pads is docked: the beacons anchor here, and you wake beside it. The dwellers paved these pads before they raised a single wall. Landing was their first architecture; finish yours on top of it.",
+  },
+  {
+    id: "settle", title: "First Settlement",
+    hint: "alabaster houses, beds, chests — and an Inscription",
+    text: "Not shells this time. The dwellers built here to stay: alabaster walls, metal plating, beds made, chests stocked, a Dock plaza out front. The desert kept their junk; this world kept their homes. Read the stele in the plaza — they left words on purpose.",
+  },
+  {
+    id: "superfuel", title: "Fuel of the Gods",
+    hint: "the blue canister; only Leave Planet burns it",
+    text: "Rocket fuel and graphite, cooked at a Fuel Works into Super Rocket Fuel. It banks no charge and flies nothing by itself — it opens worlds, and it loads by hand alone. The dwellers made this, then chose not to come back. Whatever they found out there, no fuel ever came home looking for them.",
+  },
 ];
 
 export const LESSON_BY_ID = new Map(LESSONS.map((l) => [l.id, l]));
+
+/** Inscriptions: the carved steles the dwellers left in their Settlement
+ *  plazas, in their own voice. The game picks one per site by hash.
+ *  Canon they resolve: the dwellers built the Ship's parts on Desertis,
+ *  left under their own power before you, and never came back — and the
+ *  stones leave the Phase-3 question open: what worlds remain? */
+export const INSCRIPTION_TEXTS: string[] = [
+  "We built the frames and the burners on Desertis, and we flew them out to the sea-line and back. The wreck you fell in on was not the first, and you are not the first to dig yourself out of the desert. We went on. The sky kept its directions from us.",
+  "Desertis made us pay for everything and gave nothing back. We built the Engines there, filled them with its own oil, and left on our own account. Do not curse the desert for letting you go; it never held us either.",
+  "On the second world the rain does the digging for you. We came from the dunes and we still squint. When the snow storms rise, climb; when the Scorch breathes ash, answer with a Breaker and a wall. Shelter beats stubbornness on this planet too.",
+  "The Ship is not a boat and not a promise. It carries what you load and leaves what you leave, and the fuel for the long leg must be mixed in your own hands. We mixed ours.",
+  "We paved the plazas before we raised the houses, because a Ship you cannot land is only a bonfire waiting to happen. The pads you are standing on are the first words every Settlement says.",
+  "Count the wrecks. None of them are ours. The dwellers are not dead — that is what these stones are for. Wherever the next plaza is, we are reading your dirt off a newer stone.",
+  "The camps on this shore still trade desert weights and desert goods. We left them here on purpose, so the next ones down would learn to barter before they learned to fly.",
+  "Every world so far has been survivable, quiet and empty. We have crossed the maps the Ship could reach, and the maps stop. The question we leave to whoever reads this next, with fuel of their own making: what worlds remain?",
+];
 
 /** Clamp a loaded save's chronicle/codex id lists against what the game knows. */
 export function loadIdSet(ids: string[] | undefined, known: Set<string>): Set<string> {

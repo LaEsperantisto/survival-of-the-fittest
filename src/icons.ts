@@ -807,6 +807,177 @@ function drawArt(id: string, w: number, h: number, color: string, tier = ""): HT
       blit(g, 0, 0, BENCH);
       blit(g, 0, T, BENCH_EXT);
       return cv;
+    // ---- Silvaris (Phase 2) ----
+    case "electric_bench": { // BENCH's powered heir: steel worktop, readout drawer, live volt
+      rect(g, 1, 4, 14, 3, "#55606e"); rect(g, 1, 4, 14, 1, "#7d8896");      // worktop
+      rect(g, 1, 7, 2, 8, "#3f4a58"); rect(g, 12, 7, 2, 8, "#3f4a58");       // legs
+      rect(g, 3, 7, 8, 3, "#46505c"); rect(g, 4, 8, 3, 1, "#66e5f0");        // drawer + readout
+      rect(g, 11, 5, 3, 3, "#6a7680"); outline(g, 11, 5, 3, 3, "#2e353c");   // side module
+      poly(g, [[9, 1], [6, 8], [8, 8], [6, 13], [12, 5], [9, 5], [11, 1]], "#ffd76a"); // volt
+      poly(g, [[9, 1], [7, 6], [9, 6]], "#fff3c0");
+      return cv;
+    }
+    case "assembly_bench": { // precision table: gantry post and rail, live tool tip
+      rect(g, 1, 9, 14, 2, "#5a5f6e"); rect(g, 1, 9, 14, 1, "#82879a");      // worktop
+      rect(g, 2, 11, 2, 4, "#3f4450"); rect(g, 12, 11, 2, 4, "#3f4450");     // legs
+      rect(g, 12, 2, 2, 8, "#6a707e"); rect(g, 5, 2, 8, 2, "#6a707e");       // gantry post + rail
+      rect(g, 6, 4, 2, 3, "#8a92a2"); rect(g, 6, 7, 2, 2, "#66e5f0");        // head, live tip
+      rect(g, 3, 8, 4, 1, "#9aa0ae"); outline(g, 3, 8, 4, 1, "#3f4450");     // part under the head
+      return cv;
+    }
+    case "fuel_works": { // retort tank over a firebox: pipes in and out, blue flame
+      rect(g, 4, 2, 8, 7, "#5f5560"); outline(g, 4, 2, 8, 7, "#332c38");     // retort tank
+      rect(g, 5, 3, 6, 1, "#7d7280"); rect(g, 5, 4, 6, 2, "#3f7fe8");        // lit fuel sight
+      rect(g, 1, 3, 3, 2, "#8a98a8"); rect(g, 12, 5, 3, 2, "#8a98a8");       // in/out pipes
+      rect(g, 4, 10, 8, 5, "#46404a"); outline(g, 4, 10, 8, 5, "#2a2630");   // firebox
+      rect(g, 6, 11, 4, 3, "#2a5aa8"); rect(g, 7, 12, 2, 2, "#6fa8f0");      // blue flame
+      return cv;
+    }
+    case "foundry": { // brick furnace: stack, glowing mouth, pour lip
+      rect(g, 5, 1, 2, 3, "#4a382c");                                        // stack
+      rect(g, 2, 3, 12, 11, "#6a4f3c"); outline(g, 2, 3, 12, 11, "#3c2c20"); // brick body
+      rect(g, 2, 3, 12, 1, "#8a6a50");
+      line(g, 2, 6, 14, 6, "#4c382a", 1);                                    // brick course
+      rect(g, 4, 7, 8, 5, "#1e1410");                                        // mouth
+      rect(g, 5, 8, 6, 3, "#c8552b"); rect(g, 6, 9, 4, 1, "#ffcf5a");        // melt glow
+      return cv;
+    }
+    case "inscription": { // carved Dweller stele: rounded stone, glyph rows
+      poly(g, [[4, 15], [4, 5], [6, 2], [10, 2], [12, 5], [12, 15]], "#cfc8b2");
+      poly(g, [[6, 2], [10, 2], [11, 4], [5, 4]], "#e8e1cb");                // lit top
+      poly(g, [[4, 15], [12, 15], [12, 13], [4, 13]], "#a89f88");            // base band
+      g.fillStyle = "#6e6653";
+      g.fillRect(6, 6, 4, 1); g.fillRect(6, 8, 5, 1); g.fillRect(6, 10, 3, 1); g.fillRect(6, 12, 5, 1); // glyphs
+      g.fillStyle = "#f2ecda"; g.fillRect(6, 2, 2, 1);
+      return cv;
+    }
+    case "dock_pad": { // inlaid deck tile: steel plate, bright ring marker, corner rivets
+      rect(g, 1, 1, 14, 14, "#666d78"); outline(g, 1, 1, 14, 14, "#3f454e");
+      rect(g, 1, 1, 14, 1, "#8a909c");
+      rect(g, 4, 4, 8, 8, "#79808c"); outline(g, 4, 4, 8, 8, "#a8aeb8");     // inset panel
+      rect(g, 6, 6, 4, 4, "#59606c"); outline(g, 6, 6, 4, 4, "#c8ccd4");     // pad eye
+      g.fillStyle = "#3f454e";
+      g.fillRect(2, 2, 1, 1); g.fillRect(13, 2, 1, 1); g.fillRect(2, 13, 1, 1); g.fillRect(13, 13, 1, 1);
+      return cv;
+    }
+    case "titanium_ore":
+      boulder("#78808c", "#a2aab4", "#545a64");
+      specks("#b9c0ca", "#e2e8ee", [[5, 6], [9, 4], [10, 9], [6, 10]]);      // bright metal flecks
+      return cv;
+    case "graphite_ore":
+      boulder("#56524e", "#6e6a66", "#3e3b38");
+      specks("#26262a", "#6a6c74", [[5, 6], [9, 4], [10, 9], [6, 10]]);      // dark flakes, slate sheen
+      return cv;
+    case "titaniumrod":
+      rect(g, 6, 1, 3, 14, "#7c848e");
+      rect(g, 7, 2, 1, 12, "#d4dae2");
+      g.fillStyle = "#59616b";
+      for (const [rx, ry] of [[6, 3], [8, 7], [6, 11], [8, 13]] as const) g.fillRect(rx, ry, 1, 1);
+      rect(g, 5, 1, 5, 1, "#59616b"); rect(g, 5, 14, 5, 1, "#59616b");
+      return cv;
+    case "steel_plating": { // heavier plate: weld seams, corner bolts, dull sheen
+      rect(g, 1, 2, 14, 12, "#76808e"); outline(g, 1, 2, 14, 12, "#454c56");
+      rect(g, 1, 2, 14, 1, "#98a2b0"); rect(g, 2, 3, 4, 1, "#8a94a2");
+      line(g, 8, 3, 8, 13, "#454c56", 1); line(g, 2, 8, 14, 8, "#454c56", 1); // weld seams
+      g.fillStyle = "#3f4650";
+      g.fillRect(3, 4, 1, 1); g.fillRect(12, 4, 1, 1); g.fillRect(3, 11, 1, 1); g.fillRect(12, 11, 1, 1);
+      g.fillStyle = "#aeb8c6";
+      g.fillRect(2, 4, 1, 1); g.fillRect(11, 4, 1, 1); g.fillRect(2, 11, 1, 1); g.fillRect(11, 11, 1, 1);
+      return cv;
+    }
+    case "super_fuel": { // blue canister, cryo band, cold star — Rocket Fuel's elder sibling
+      const H = h * T;
+      rect(g, 6, 0, 4, 3, "#8a98a8");
+      rect(g, 7, 3, 2, 2, "#8a98a8");
+      rect(g, 4, 5, 8, H - 7, "#2a5aa8");
+      outline(g, 4, 5, 8, H - 7, "#cfe4ff");
+      rect(g, 4, 12, 8, 3, "#3f7fe8");           // hazard band
+      rect(g, 4, 15, 8, 1, "#1e3a66");
+      rect(g, 5, 18, 1, 10, "#6fa8f0");          // sheen
+      rect(g, 8, 21, 1, 5, "#8fd0ff"); rect(g, 6, 23, 5, 1, "#8fd0ff"); // cold star
+      g.fillStyle = "#cfeaff"; g.fillRect(6, 20, 1, 1); g.fillRect(10, 25, 1, 1); // sparkles
+      return cv;
+    }
+    case "tundroot": { // pale tuber with a leafy crown
+      g.fillStyle = "#b39a5e"; g.beginPath(); g.ellipse(8, 10.5, 5, 4.5, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#7d6a3c"; g.lineWidth = 1; g.beginPath(); g.ellipse(8, 10.5, 5, 4.5, 0, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = "#cdb47a"; g.fillRect(5, 8, 3, 1); g.fillRect(7, 11, 3, 1);   // eye dimples
+      g.fillStyle = "#9a8450"; g.fillRect(9, 8, 1, 1); g.fillRect(5, 12, 1, 1);
+      line(g, 8, 6, 8, 3, "#4a7a3c", 2);                                          // stalk
+      g.fillStyle = "#5f9a48"; g.fillRect(4, 2, 4, 2); g.fillRect(8, 1, 4, 2);    // leaves
+      return cv;
+    }
+    case "seed_tundroot":
+      g.fillStyle = "#c9b57a"; g.beginPath(); g.ellipse(8, 10, 3.6, 4.8, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#8f7d4c"; g.lineWidth = 1; g.beginPath(); g.ellipse(8, 10, 3.6, 4.8, 0, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = "#e6d5a2"; g.beginPath(); g.ellipse(7, 9, 1.6, 2.4, 0, 0, Math.PI * 2); g.fill();
+      rect(g, 7, 2, 2, 3, "#5a8a3a"); rect(g, 5, 1, 2, 2, "#7fae54"); rect(g, 9, 0, 2, 2, "#7fae54"); // sprout
+      return cv;
+    case "ember_berry": { // three scorch-red berries on a twig
+      line(g, 4, 4, 12, 3, "#6b5238", 1); rect(g, 7, 3, 2, 2, "#6b5238");   // twig and stub
+      g.fillStyle = "#c2451f";
+      g.beginPath(); g.arc(5.5, 9.5, 3.2, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(10.5, 9.5, 3.2, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(8, 12.5, 3, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#e87a4a";
+      g.beginPath(); g.arc(4.5, 8.5, 1.3, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(9.5, 8.5, 1.3, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#f8c79a"; g.fillRect(7, 11, 1, 1);
+      return cv;
+    }
+    case "seed_emberbush":
+      g.fillStyle = "#b86a48"; g.beginPath(); g.ellipse(8, 10, 3.4, 4.6, 0, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = "#7d4228"; g.lineWidth = 1; g.beginPath(); g.ellipse(8, 10, 3.4, 4.6, 0, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = "#e09a72"; g.beginPath(); g.ellipse(7, 9, 1.5, 2.3, 0, 0, Math.PI * 2); g.fill();
+      rect(g, 7, 2, 2, 3, "#7a4a2e"); rect(g, 5, 1, 2, 2, "#a86a3a"); rect(g, 9, 0, 2, 2, "#c8683a"); // red sprout
+      return cv;
+    case "frost_pelt": { // hung pelt: pale guard fur, ice-blue shade, plume tail
+      poly(g, [[6, 9], [3, 3], [8, 7]], "#cddbe6"); poly(g, [[6, 8], [4, 4], [7, 7]], "#8fa6b8");   // ears
+      poly(g, [[10, 9], [13, 3], [8, 7]], "#cddbe6"); poly(g, [[10, 8], [12, 4], [9, 7]], "#8fa6b8");
+      g.fillStyle = "#dfe9f0"; g.beginPath(); g.ellipse(8, 11.5, 4.6, 3.6, 0, 0, Math.PI * 2); g.fill();  // head
+      g.strokeStyle = "#8fa6b8"; g.lineWidth = 1; g.beginPath(); g.ellipse(8, 11.5, 4.6, 3.6, 0, 0, Math.PI * 2); g.stroke();
+      g.fillStyle = "#2e3a44"; g.fillRect(6, 11, 1, 1); g.fillRect(9, 11, 1, 1); // closed eyes
+      rect(g, 4, 14, 8, 12, "#c2d2de"); outline(g, 4, 14, 8, 12, "#8fa6b8");     // pelt body
+      rect(g, 5, 15, 6, 10, "#e2ecf2");                                          // pale belly side
+      g.fillStyle = "#9fb4c4";                                                   // ragged hide edge
+      for (let y = 16; y <= 24; y += 2) { g.fillRect(4, y, 1, 1); g.fillRect(11, y, 1, 1); }
+      rect(g, 6, 26, 4, 4, "#c2d2de"); rect(g, 6, 29, 4, 2, "#eef4f8");          // tail, white tip
+      outline(g, 6, 26, 4, 5, "#8fa6b8");
+      return cv;
+    }
+    case "tideback_hide": { // huge coastal hide stretched to dry: grey-green pelt, back ridge, corner pegs
+      rect(g, 4, 3, 24, 26, "#6e8a72"); outline(g, 4, 3, 24, 26, "#3c5042");
+      rect(g, 4, 3, 24, 6, "#7f9c82"); outline(g, 4, 3, 24, 6, "#3c5042");      // neck spread
+      g.strokeStyle = "#4a5f4e"; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(16, 9); g.lineTo(16, 28); g.stroke();             // back ridge
+      g.strokeStyle = "#5c7460"; g.lineWidth = 1;
+      for (let y = 12; y <= 26; y += 4) { g.beginPath(); g.moveTo(7, y); g.lineTo(13, y); g.stroke(); g.beginPath(); g.moveTo(19, y); g.lineTo(25, y); g.stroke(); }
+      g.fillStyle = "#8fa886"; g.fillRect(7, 5, 4, 2); g.fillRect(21, 5, 4, 2); // pale flanks
+      g.fillStyle = "#3c5042";                                                  // corner pegs
+      for (const [x, y] of [[2, 1], [27, 1], [2, 27], [27, 27]] as const) g.fillRect(x, y, 3, 3);
+      return cv;
+    }
+    case "brushbuck_meat": { // raw haunch on the bone
+      poly(g, [[3, 10], [4, 6], [9, 3], [13, 5], [14, 10], [11, 13], [5, 13]], "#a06552");
+      poly(g, [[4, 6], [9, 3], [13, 5], [10, 8], [5, 8]], "#c08372");           // lit top face
+      poly(g, [[5, 13], [11, 13], [9, 14], [5, 14]], "#6e3f33");                // shadow belly
+      rect(g, 13, 4, 3, 3, "#d8cbb0"); rect(g, 15, 3, 1, 1, "#d8cbb0"); rect(g, 15, 7, 1, 1, "#d8cbb0"); // bone end
+      g.fillStyle = "#c8705e";                                                  // marbling
+      g.fillRect(6, 7, 3, 1); g.fillRect(10, 6, 2, 1); g.fillRect(6, 10, 4, 1);
+      g.fillStyle = "#e8a08a"; g.fillRect(6, 7, 1, 1); g.fillRect(9, 10, 1, 1);
+      return cv;
+    }
+    case "cooked_brushbuck_meat": { // roasted haunch: browned crust, sear marks, steam
+      g.fillStyle = "#c8d2da"; g.fillRect(5, 2, 1, 2); g.fillRect(8, 1, 1, 2); g.fillRect(11, 2, 1, 2);
+      g.fillStyle = "#eef3f8"; g.fillRect(5, 1, 1, 1); g.fillRect(8, 0, 1, 1); g.fillRect(11, 1, 1, 1); // steam wisps
+      poly(g, [[3, 10], [4, 6], [9, 3], [13, 5], [14, 10], [11, 13], [5, 13]], "#9a6132");
+      poly(g, [[4, 6], [9, 3], [13, 5], [10, 8], [5, 8]], "#c08348");           // browned crust
+      poly(g, [[5, 13], [11, 13], [9, 14], [5, 14]], "#5c3a1c");                // char belly
+      line(g, 6, 6, 8, 12, "#4a2c14", 1); line(g, 9, 5, 11, 11, "#4a2c14", 1);  // sear marks
+      rect(g, 13, 4, 3, 3, "#e0d6bc");                                          // crisped bone
+      g.fillStyle = "#d8a05e"; g.fillRect(6, 5, 3, 1); g.fillRect(10, 6, 2, 1);
+      return cv;
+    }
   }
   return null;
 }

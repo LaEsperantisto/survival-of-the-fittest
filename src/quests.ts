@@ -3,11 +3,13 @@
 
 export interface QuestDef {
   id: string;
-  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "bread" | "dish" | "wreck" | "core" | "yoke" | "grid" | "factory" | "thruster" | "core_set" | "ship_grid" | "refine" | "liftoff";
+  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "bread" | "dish" | "wreck" | "core" | "yoke" | "grid" | "factory" | "thruster" | "core_set" | "ship_grid" | "refine" | "liftoff" | "leave" | "arrive" | "dock" | "settle" | "electric" | "bench2" | "core2" | "superfuel";
   title: string;
   desc: string;
   goal: number;
   reward?: { item: string; n: number };
+  /** Shown when this (final) quest completes and the chain ends. */
+  completionText?: string;
 }
 
 export const QUESTS: QuestDef[] = [
@@ -101,6 +103,40 @@ export const QUESTS: QuestDef[] = [
   {
     id: "liftoff", kind: "liftoff", title: "Lift-Off",
     desc: "Bank Rocket Fuel into the Engine Core's ports, stand at the Flight Controls and raise the Ship under its own power. Home now travels with you.", goal: 1,
+    reward: { item: "super_fuel", n: 1 },
+  },
+  {
+    id: "leave", kind: "leave", title: "Leave Planet",
+    desc: "Load a canister of Super Rocket Fuel into the Engine Core by hand, stand at the Yoke and burn it for the Second Planet. The Ship climbs with everything aboard; everything on the ground stays. The desert lends one canister — after that, this fuel comes from your own hands.", goal: 1,
+  },
+  {
+    id: "first_light", kind: "arrive", title: "First Light",
+    desc: "The jump is done and the wreck's promise is paid: you are on the Second Planet. Stand under its open sky.", goal: 1,
+  },
+  {
+    id: "the_dock", kind: "dock", title: "The Dock",
+    desc: "These Settlements paved their plazas with Dock Pads before they raised a single wall. Ground the Ship on the markers and it is docked — home, parked.", goal: 1,
+  },
+  {
+    id: "the_settlements", kind: "settle", title: "The Settlements",
+    desc: "The dwellers built here to stay: alabaster walls, metal plating, beds made, Chests stocked. Reach a Settlement and open a Chest — the shells out here are houses.", goal: 1,
+  },
+  {
+    id: "clean_currents", kind: "electric", title: "Clean Currents",
+    desc: "Wire an Electric Bench to the Grid and craft your first thing on it. This world's machines all start there.", goal: 1,
+  },
+  {
+    id: "alloys_engines", kind: "bench2", title: "Alloys & Engines",
+    desc: "Two benches, one chain: burn Titanium Ore into rods at a Foundry, and build at an Assembly Bench. Put both to work once.", goal: 2,
+  },
+  {
+    id: "heart_hire", kind: "core2", title: "Heart for Hire",
+    desc: "No more wrecks to strip: Engine Cores come off the Assembly Bench now. Craft one — a heart you can replace yourself.", goal: 1,
+  },
+  {
+    id: "fuel_gods", kind: "superfuel", title: "Fuel of the Gods",
+    desc: "Cook Rocket Fuel and Graphite Ore at a Fuel Works into Super Rocket Fuel. The canister that opens worlds now comes from your own hands.", goal: 1,
+    completionText: "Phase 2 done: the Ship, the Settlements, and fuel you make yourself. The stars are Phase 3's.",
   },
 ];
 
