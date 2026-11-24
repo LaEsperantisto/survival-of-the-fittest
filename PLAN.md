@@ -1,235 +1,248 @@
-# Feature Plan (2026-11-23) — Phase 2: Silvaris, the Second Planet
+# Feature Plan (2026-11-24) — Phase 2 Redesign: Two Disjoint Worlds, the Sentinel War
 
-Settled by the grilling session (2026-11-23, four rounds + close-out, decisions Q1–Q30,
-glossary rewritten, ADRs 0010–0013). Supersedes the completed Chest Interface plan
-(history in git). This file is the contract for every implementation slice: names,
-ids and signatures here are FIXED — do not rename.
+Settled by the grilling session (2026-11-24, seven rounds; glossary updated in place;
+ADRs 0014 disjoint-planets/Scrap-bridge, 0015 super-fuel death-gift). Supersedes the
+completed 2026-11-23 Silvaris plan (history in git — its blocks/items/foundation stay,
+this plan forks and extends them). This file is the contract for every implementation
+slice: names, ids and signatures here are FIXED — do not rename.
 
-## Canon (design decisions, verbatim outcomes)
+## Canon (settled decisions)
 
-- **Phase** = milestone AND world-creation start point. **Phase 0 (Hard)**: survival
-  only, wreck husks. **Phase 1 (Easy, recommended)**: fix the Ship on **Desertis**.
-  **Phase 2**: use the Ship for planetary travel on **Silvaris**. **Phase 3**
-  (not built): interplanetary travel. Old code modes kept: `"hard"` = Phase 0,
-  `"easy"` = Phase 1, `"phase2"` = **starts on Silvaris** with a fixed, docked Ship
-  (the old flight-capable-desert-wreck meaning is deleted).
-- **Desertis** (Desert Planet) / **Silvaris** (Second Planet). The Phase-1 finale
-  (new last quest, kind `leave`) ends Phase 1; the Phase-2 chain ends with the
-  player crafting **Super Rocket Fuel** themselves; it rests there until Phase 3.
-- **Super Rocket Fuel** (`super_fuel`): blue 1×2 canister. Inert for flight — it
-  NEVER supplies charges; consumed ONLY by **Leave Planet**. Phase 1: quest loot
-  only (Reward Cache on Lift-Off). Phase 2 finale: craftable at the Fuel Works.
-  Speed-grade bonus deferred (`SHIP.fuelGrade` stays unused).
-- **Engine Core panel**: E opens a panel with **two separated physical canister
-  slots** (drawn 2×1 each). A rocket canister in a slot banks 60 charges and burns;
-  it is consumed (slot empties) exactly when its charges run out. **First draw
-  locks the slot forever** — only untouched canisters can be removed; breaking a
-  Core spills untouched canisters (with their charges) and DESTROYS locked fuel.
-  Inserters load rocket canisters into empty ports only; Super loads by hand only.
-- **Leave Planet**: button in the Flight Controls panel, beside Lift-Off. Enabled
-  when: takeoff checklist holds, ≥1 port holds a Super canister, and ≥1 port still
-  has flight fuel (rocket charges > 0), and the player is at the Yoke. Press →
-  warning dialog ("…Consumed: 1 Super Rocket Fuel canister. Travels with you: the
-  Ship and everything aboard it, your inventory. Left behind: everything on the
-  ground. You will not return until you make Super Rocket Fuel yourself.") →
-  confirm burns exactly the Super canister → scripted **lift-off cinematic** →
-  arrive on Silvaris, Ship **docked on the Dock pad at the arrival site** near the
-  Silvaris origin (guaranteed advanced settlement, flattened like the crash
-  plateau; respawn fallback there = the Ship). One-shot: Desertis stays in the
-  save, dormant and intact, unreachable until Phase 3.
-- **Save**: ONE world slot, `RunSave v3` = global run + `worlds.desertis` +
-  optional `worlds.silvaris`, each a `WorldRun` record (ADR 0010). v2 → v3
-  migration wraps the planet-scoped v2 fields into `worlds.desertis`.
-- **Height**: `CH = 160` globally (array capacity; ADR 0011). Each planet gets a
-  `worldH` for playable sky/ceiling: Desertis 96 (flight ceiling `worldH + 32`),
-  Silvaris 160. Desert terrain unchanged (max ~75).
-- **Silvaris biomes**: Deep Ocean, Shallows, Temperate Plains, Boreal Forest,
-  Alpine Peaks, Scorch Belt. No desert. Sea level y = 56; peaks to ~150; ocean
-  floors ~20. Hazards: Alpine cold, **Blizzard** (amplifies cold, scours),
-  **Ashstorm** (amplifies heat, scours) over the Scorch Belt, lava-adjacent
-  scorch heat (no fire-propagation system). A Storm Breaker calms ANY storm.
-  Oceans run on the existing Water Source/Flow sim.
-- **Settlements**: advanced uninhabited structures (loot chests, beds, Alabaster-
-  family + Metal Plating builds), each with a **Dock** plaza of `DOCK_PAD` blocks.
-  Trader Camps exist on Silvaris too (same unattackable barter rules, new goods).
-  **Inscriptions**: readable lore blocks in settlements — resolve the Dwellers
-  (who they were / why they left) and open the Phase-3 question (what worlds remain).
-- **Stations (4 new)** + global recipe-home shift (ADR 0013):
-  **Electric Bench** (crafted at Crafting Bench): Power Panel, Power Pole, Battery,
-  Wood/Wind/Solar generators, Electric Lamp, Inserter, Planter, Harvester, Chest,
-  Chest Connector, Chest Interface, Heat Regulator, Storm Breaker.
-  **Assembly Bench** (crafted at Electric Bench): Engine Core (CRAFTABLE — the
-  "single quest-exclusive item" line dies), Dock Pad, and future ship parts.
-  **Fuel Works** (crafted at Assembly Bench): `rocket_fuel + graphite_ore →
-  super_fuel`. **Foundry** (crafted at Electric Bench): titanium_ore → titaniumrod,
-  metal_plating + coal_ore → steel_plating.
-  NOTHING Phase-1-critical moves off the Crafting Bench (Frame Corners, Flight
-  Controls, Thruster Nozzle, Refinery, Campfire, Cooking Pot, tools stay home).
-- **Fauna**: 3 new mobs, Silvaris only — **Snow Stalker** (Alpine predator),
-  **Tideback** (huge coastal grazer), **Brushbuck** (plains herd). Desert fauna
-  never spawns on Silvaris and vice versa.
-- **Crops**: 2 new, via settlement chests: **Tundra Root** (cold-tolerant tuber)
-  and **Ember Bush** (scorch-edge berry). Existing food chain keeps working.
-- **Quests**: ONE continuous Main Quest array; phase derived from index. Kill the
-  dead "wait for the rescue ship" HUD string and retire `won` for it.
-- Traders, pins, Map, Landmarks: per-planet records; Codex/Chronicle/quests/inventory global.
+- **Disjoint worlds** (ADR-0014): every raw material, ore, flora/fauna drop, tool, gear
+  item and Crafting Station is planet-native. No material item is obtainable from both
+  worlds. Both planets alone can raise the full chain: tools → food → power → Rocket
+  Fuel → ship hardware. Functional ship/fuel items (`rocket_fuel`, `super_fuel`,
+  `oil_bucket`, `canister_*`, `thruster`, `thruster_nozzle`, `engine_core`, `hull*`,
+  `frame_corner`, `flight_controls`, power-device ids) stay SHARED ids with per-planet
+  recipes at per-planet stations. Materials/tools/stations/gear fork.
+- **Silvaris ore swap** (reverses "every ore in Silvaris caves"): DELETE iron/copper/
+  cobalt/alabaster/coal bands from Silvaris worldgen. Silvaris cave ores:
+  TITANIUM_ORE (deep, keep band), GRAPHITE_ORE (mid, keep), **LEAD_ORE** (mid),
+  **SALTPETRE_ORE** (common upper-mid; Salt veins under Shallows stay), gravel (Deep
+  Ocean floor, exists). Desertis keeps its bands + gains **ANTHRACITE_ORE** in the
+  deepest cave layer.
+- **Tool ladders** (same 5 families, per-planet materials, same minTier gates):
+  Desertis unchanged (wood/stone/metal/alloy). Silvaris: **Basalt** (t1: basalt+sil
+  timber), **Bone** (t2: bone+sil timber), **Titanium** (t3), **Carbide** (t4:
+  titaniumrod+graphite). Disassembler: bone (t1) / carbide (t2). Bucket: bone_bucket
+  (silvaris). New families, Silvaris-only: **Skinning Knife** (basalt/bone/titanium
+  tiers) — required to skin Brushbuck/Snow Stalker pelts (hides yield 2× with knife;
+  without: 1 raw), **Harpoon** (bone/titanium/carbide) — required to harvest Tidebacks
+  (tideback_hide 3×) and opens Shallows hunting.
+- **Silvaris stations (twins)**: **Hearth** (campfire twin: smelt+cook+charcoal+flux),
+  **Workbench** (bench twin), **Tannery** (armoury twin), **Cauldron** (cooking-pot
+  twin), **Oil Works** (refinery twin: oil_bucket+charcoal → rocket_fuel),
+  **Wiring Bench** (electric twin: all power devices from lead/glass/saltpetre).
+  FOUNDRY, ASSEMBLY_BENCH, FUEL_WORKS stay (Silvaris-flavored) but their recipes
+  switch to Silvaris inputs only. Desertis gains **Fuel Still** (rocket_fuel +
+  anthracite_ore → super_fuel; built at the Crafting Bench).
+- **Recycler** (the glossary term, never implemented): RECYCLER (Desertis, bench) +
+  **SIL_RECYCLER** (Wiring Bench). Station UI: drop any crafted item → ~75 % of its
+  ingredients (≥1 each), existing rule. An item NOT of the current planet instead
+  yields **Scrap** (universal, `scrap`). Scrap spent by: Hover Sled + upgrades,
+  defense gear recipes, foreign-gear repair (`repair` action: 2 Scrap + 1 of that
+  planet's plating? NO — keep simple: right tool broken? skip repair; instead a few
+  cheap recipes: desert `chest` alt, one utility recipe each side).
+- **Carbon**: Silvaris charcoal (Hearth slow-burn of sil timber log; log→charcoal×1),
+  Rocket Fuel via Oil Works. Desertis coal chain unchanged. Super Fuel recipe
+  (`fuel_works` AND `fuel_still`) is **Catalog-locked until `sentinel_dead`** (ADR-0015):
+  hidden entries, unlock flag on the run save. Never loot, never traded (already true).
+- **Story spine (sabotage)**: founders automated Desertis; the **Sentinel** ("hold the
+  settlement") shot the colony ships down; survivors scattered as **Nomads** (rename
+  all Trader code/UI text: `Nomad`, `Nomad Camp`, Keeper). **Keepers**: one named Nomad
+  per Camp, unlocked by that Camp's deed-quest, telling one story chapter (text cards).
+  Phase 1 foreshadowing is EXPLICIT (crash-investigation beats; one desert Warden
+  recognizes the Ship and flees). Machine factions (Warden/Sentry/Breaker + Hauler)
+  run **Machine Camps** (hostile Landmarks, antenna block; destroy antenna → patrols
+  stop + one Reclaimer squad responds; never grow on a timer — expansion is scripted:
+  quest beats + entering flagged areas). **Relay Towers** rise next to player Grids
+  that reach wild country (scripted per tower, quest-driven); towers anchor patrols AND
+  enable one scripted **raid squad** per energize beat (machines eat exposed Grid
+  blocks, despawn at dawn; destroying the tower cancels its squads).
+- **Finale order (locked)**: last Keeper chapter names the Sentinel → Keeper shares
+  **Nav Core** recipe (titanium+graphite+lead+Scrap, Assembly twin) → player builds +
+  installs Nav Core (block on the Ship like Flight Controls) → expedition into the
+  authored **volcano core dungeon** (Scorch Belt) → **Sentinel boss** fight: waves of
+  Sentries/Breakers + environment levers (cut 3 power conduits, open 2 cooling
+  channels to flood steam, Shock Coils) strip its shield → kill (`sentinel_dead` flag,
+  Catalog teaches Super Fuel both planets) → refine own Super Fuel → **charted final
+  flight** (Nav Core + Super port + Lift-off at the ship's yoke) → cinematic charts the
+  system; Phase 2 complete.
+- **Hover Sled** (Silvaris only): place HOVER_SLED block (1×1) → E mounts: walk-speed
+  ×1.9, battery drains (sled holds a charge 0–100; dismount on/next to a DOCK_PAD
+  fed by Grid recharges 8/s). Upgrades bolted on (E-menu on the sled): **Cargo Sled**
+  (chest-adjacency 12-slot storage), **Blade** (riding shatters SNOW/LEAVES/GRASS and
+  Spike Barricades you touch), **Drill** (while riding, digging Caches/Machine-Camp
+  blocks is ×2.5 speed). Sled survives disassembly (Disassembler returns item).
+- **Defenses** (per-planet recipes): SPIKE_BARRICADE (passive; mobs/machines that
+  touch it take damage), ALARM_CHIME (wired; rings + HUD flash when a machine/hostile
+  enters 10 cells), GUN_TURRET (wired; internal magazine 30; hand-load with planet
+  Slugs (`slug` desert / `lead_slug` sil); targets machines + hostile fauna within
+  8 cells, hitscan ~1.2 s cadence; fauna-target toggle in its panel), SHOCK_COIL
+  (wired; 2 s pulse, 4 damage in radius 4, ×3 vs machines; Machine Heart in recipe).
+- **Craft depth** (both worlds): Desertis — cactus_leather (campfire: 2 cactus) →
+  Dune Wrap light heat gear; pear_cordial (Cooking Pot: 2 prickly_pear + sugar →
+  Hydration drink); adobe furniture (Table at bench); sugar cane finally has an origin
+  (Oasis pool banks grow SUGARCANE). Silvaris — **Frost Oats** crop (seed_oats from
+  settlement chests/barter; grows cold-tolerant) → oat_flour (Hearth) → oatbread +
+  porridge (Cauldron); tundroot → tundroot_flour (Hearth) → flatbread (Cauldron);
+  dishes: root_stew, ember_pie, smoked_brushbuck (Hearth cold-smoke); gear: hardhide
+  (Tannery: pelt+knife output) → Buckguard, Snowcloak (frost pelts, warmest),
+  Tideback Cuirass. Posts/Railings/Stained Glass both planets (shared blocks, forked
+  items, planet-tinted tiles).
+- **Visuals** (procedural pipeline already exists): repaint every tile recipe (all
+  naturals, ores, stations), per-planet tiles for lookalikes (GRASS/DIRT/ROCK/snow
+  look), custom geometry for cube-only offenders (chest lid, bed, campfire logs,
+  hearth logs, thruster nozzle, dock pad rim, turret, coil, chime, tower, antenna,
+  sled, posts/railing/table, crops as cross-silhouettes, all new stations), hand-drawn
+  icons for every new item, robot mob shapes from block palettes.
+- **Save**: clean break — bump run version to **v4**; v3 and older worlds are
+  rejected (fresh start). No migration.
 
-## Fixed ids (do not change)
-
-Block ids (append in id order — `BLOCKS` is indexed by id; 65 stays the Rusted
-Machine tombstone gap):
+## Fixed ids (append in id order; current max is 118 EMBER_FRUIT)
 
 ```
-104 ELECTRIC_BENCH   105 ASSEMBLY_BENCH   106 FUEL_WORKS    107 FOUNDRY
-108 INSCRIPTION      109 DOCK_PAD         110 TITANIUM_ORE  111 GRAPHITE_ORE
-112 SNOW             113 BASALT           114 TUNDROOT_1    115 TUNDROOT_2
-116 EMBERBUSH_1      117 EMBERBUSH_2      118 EMBER_FRUIT
+119 RECYCLER        120 SIL_RECYCLER     121 HEARTH          122 WORKBENCH
+123 TANNERY         124 CAULDRON         125 OIL_WORKS       126 WIRING_BENCH
+127 FUEL_STILL      128 ANTHRACITE_ORE   129 LEAD_ORE        130 SALTPETRE_ORE
+131 SIL_WOOD        132 SIL_LEAVES       133 SIL_SAPLING     134 OAT_1
+135 OAT_2           136 CAMP_ANTENNA     137 RELAY_TOWER     138 SPIKE_BARRICADE
+139 ALARM_CHIME     140 GUN_TURRET       141 SHOCK_COIL      142 NAV_CORE
+143 HOVER_SLED      144 WOOD_POST        145 WOOD_RAILING    146 STAINED_GLASS
+147 TABLE           148 SUGARCANE (crop block, also grows on Desertis oasis now)
 ```
 
-Item ids: `super_fuel`, `electric_bench`, `assembly_bench`, `fuel_works`,
-`foundry`, `dock_pad`, `titanium_ore` (raw), `titaniumrod`, `steel_plating`,
-`graphite_ore`, `tundroot`, `seed_tundroot`, `ember_berry`, `seed_emberbush`,
-`frost_pelt`, `tideback_hide`, `brushbuck_meat`, `cooked_brushbuck_meat`.
+Item ids (append): `recycler, sil_recycler, hearth, workbench, tannery, cauldron,
+oil_works, wiring_bench, fuel_still, scrap, machine_part, machine_heart, slug,
+lead_slug, nav_core, hover_sled, sled_cargo, sled_blade, sled_drill, charcoal,
+anthracite_ore, lead_ore, leadrod, lead_plating, saltpetre, flux, titan_plating,
+bone, basalt_pickaxe, basalt_shovel, basalt_axe, bone_pickaxe, bone_shovel,
+bone_axe, titanium_pickaxe, titanium_shovel, titanium_axe, carbide_pickaxe,
+carbide_shovel, carbide_axe, bone_disassembler, carbide_disassembler, bone_bucket,
+basalt_knife, bone_knife, titanium_knife, bone_harpoon, titanium_harpoon,
+carbide_harpoon, brushbuck_pelt, hardhide, buckguard, snowcloak, tideback_cuirass,
+dune_wrap, cactus_leather, pear_cordial, tundroot_flour, oat_flour, frost_oat,
+seed_oats, flatbread, oatbread, porridge, root_stew, ember_pie, smoked_brushbuck,
+sil_timber, wood_post, wood_railing, stained_glass, table`.
 
-Quest kinds appended: `leave` (Phase-1 finale), then Phase-2 chain kinds.
+Recipe homes (`crafting.ts` station union adds): `"recycler"` (no recipes — a
+deconstructor UI, not a recipe station). Station union stays:
+`null|bench|armory|refinery|electric|assembly|fuel|foundry|hearth|workbench|
+tannery|cauldron|oilworks|wiring|still`.
 
-Constants appended (Silvaris, one block in gen.ts): `SIL_SEA = 56`,
-`SIL_PEAK_MAX = 150`, `SIL_ORIGIN_PAD_Y = 60` (arrival plateau top; pad is flat
-32×32 of DOCK_PAD centred at origin ± a few cells, guaranteed settlement beside it).
+Quest kinds appended: `nomad` (talk to a Keeper — completes on chapter end),
+`camp` (destroy a Machine Camp antenna), `raid` (survive/destroy — auto by questPump
+events), `dungeon` (enter volcano core), `sentinel` (kill), `navcore` (craft Nav
+Core), `charted` (final flight — Phase 2 end), `sled` (craft the Hover Sled).
+
+Run save flags added: `sentinel_dead: boolean`, `unlocks: Record<string, true>`
+(Catalog recipe locks keyed by recipe id), `towersRisen: string[]` (keyed by world
+cell), `sledKey` not needed (sled is a block + per-block charge in world bag
+`sleds: Map<key,{charge:number, up:Record<string,true>}>`).
 
 ## Slice contracts
 
-### Slice F — foundation (save/world/planet switch)
-- `blocks.ts`: `export const CH = 160; export const DESERTIS_H = 96;`
-- `save.ts`: `export type Planet = "desertis" | "silvaris";`
-  `interface WorldRun { seedStr; deltas; rots?; visited?; revealed?; pins?;
-  chests?; campfires; pots?; battery?; genFuel?; trippedPanels?; crops?; trees?;
-  appleTrees?; fruitRegrow?; coreFuel?; ships?; beaconMarks; entities; pods?;
-  caches; }` — reuse the existing field types. `RunSave v: 1|2|3`; v3 fields:
-  `planet?: Planet` (default desertis), `worlds?: { desertis: WorldRun; silvaris?:
-  WorldRun }`. Top-level v2 fields stay for v2 loads; `migrateRun(run)` upgrades.
-  `WorldMeta.mode` keeps `"easy"|"hard"|"phase2"`; `planet` is runtime state in the run.
-- `world.ts`: `new World(seed, worldMode, planet)` — `genChunk(seed, structures,
-  cx, cz, worldMode, planet)`; `worldH` getter (96 desertis / 160 silvaris).
-- `game.ts`: `Game.planet`; active `WorldRun` bag swapped on planet switch: keep
-  the live fields (`this.chests`, `this.crops`, …) but re-assign them from
-  `planets: { desertis, silvaris? }` in `switchPlanet(to, shipLandPose)`.
-  `snapshot()` writes live fields into the active bag then serializes `worlds`;
-  `restore()` reads the bag for the active planet (v2 path via migrateRun).
-  Ships: per-planet `ships` lists; jump moves the ShipSnapshot + its `"s<id>"`-keyed
-  state (battery/genFuel/coreFuel/tripped entries ride inside the bag swap since
-  they live in the planet maps already).
-- `ship.ts`: `ceiling` → `this.worldH + 32` (pass worldH into Ship or read from
-  provider); flight ceiling check uses it.
-- `main.ts` + `index.html`: Phase 2 option text: "Phase 2 (Silvaris) — the Ship is
-  already fixed, docked on another world"; `phase2` creates a run with
-  `planet: "silvaris"` (Slice Q does the world content; F only pipes the flag).
-- Desertis `paintShip(phase2)` legacy paint for mode phase2 is DELETED.
+### Slice D0 — data (blocks.ts, items.ts, save.ts)
+New blocks per the table with defs in house style (stations solid ~2 breakTime,
+disassembler-removable minTier 1; LEAD_ORE minTier 1, SALTPETRE minTier 1,
+ANTHRACITE minTier 3; SIL_WOOD like WOOD, SIL_LEAVES like LEAVES; OAT_* like
+MELON_*; CAMP_ANTENNA/RELAY_TOWER solid machine-removable; SPIKE_BARRICADE solid
+1.5; turrets/coil/chime like machines; NAV_CORE like FLIGHT_CONTROLS; HOVER_SLED
+solid 2 placeable; WOOD_POST/RAILING thin? plain solid; TABLE 1×1). `save.ts`:
+version 4, reject <4 cleanly (fresh-start message), new fields above.
 
-### Slice D — data (blocks/items/crafting/icons)
-Blocks per the id table with sensible defs (stations like REFINERY: solid,
-breakTime ~1.5–2, placeable, disassembler-removable; SNOW soft/breakable, BASALT
-like ROCK; crops like MELON_*; INSCRIPTION solid 2×1? keep 1×1 solid). Items per
-id table (super_fuel: 1×2, mass 5, blue #3f7fe8; stations mass 8-ish, block refs).
-`crafting.ts`: station union += `"electric" | "assembly" | "fuel" | "foundry"`.
-MOVE (home-shift, ADR 0013): power_panel, power_pole, battery, gen_wood,
-wind_turbine, solar_panel, elec_lamp, inserter, planter, harvester, chest,
-chest_connector, chest_interface, regulator, storm_breaker → `station: "electric"`.
-ADD: electric_bench (bench: 4 metal_plating + 2 copperrod + 2 glass),
-assembly_bench (electric: 6 metal_plating + 2 titaniumrod),
-foundry (electric: 6 metal_plating + 2 steel? NO — foundry: 6 metal_plating +
-2 copperrod + 2 coal_ore), fuel_works (assembly: 4 metal_plating + 2 glass +
-2 titaniumrod), engine_core (assembly: 6 metal_plating + 2 titaniumrod +
-2 copperrod + 2 glass), titaniumrod (foundry: titanium_ore → titaniumrod),
-steel_plating (foundry: metal_plating + coal_ore), super_fuel (fuel:
-rocket_fuel + graphite_ore → super_fuel), dock_pad (assembly: 2 steel_plating +
-1 metal_plating), tundroot food + seeds (planting, not bench), recipes for
-cooked_brushbuck_meat (campfire). Seeds plant at FARMLAND like the others.
-icons.ts: draw icons for every new item in house style.
+### Slice D1 — crafting fork (crafting.ts, trades.ts)
+Every existing recipe gets a planet home list; the station a recipe is crafted at
+becomes planet-resolved: DESERT recipes keep current homes; SILVARIS twin recipes
+added at twin stations with Silvaris inputs. REMOVE desert materials from
+Silvaris homes: foundry/assembly/fuel_works inputs switch (engine_core silvaris:
+6 titan_plating + 2 titaniumrod + 2 leadrod + 2 glass; dock_pad: 2 titan_plating +
+1 lead_plating; assembly_bench itself moves to wiring; foundry: 6 stone + 4 leadrod
++ 2 charcoal at workbench). thruster/thruster_nozzle get a silvaris recipe
+(thruster_nozzle sil: 1 titaniumrod + 2 leadrod + 1 metal? no metal — titaniumrod +
+leadrod + stone). Campfire smelt list stays desert-only (rock→metal NEVER on
+Silvaris); HEARTH smelt: basalt→rock, lead_ore→leadrod×2, saltpetre_ore→saltpetre,
+farmland/sand→glass, sil_timber→charcoal, raw meats→cooked. Tools/gear/food per
+Canon. trades.ts: rename Trader→Nomad (code + strings); add Nomad sells of
+`seed_oats`; keeper quests separate.
 
-### Slice G — Silvaris generation (gen.ts)
-`genChunk(..., planet)` dispatches: desertis path untouched. Silvaris:
-biome weights on own fbm (Dunes-equivalent five+ocean centers): ocean/shallows
-below/around `SIL_SEA`, plains, boreal forest (WOOD+LEAVES trees, denser), alpine
-peaks (heightRaw up to 150, SNOW above y≈105, rock faces), scorch belt (BASALT,
-LAVA-safe: just heat-stained rock, NO lava fluid; keep it thermal scenery +
-Ashstorm biome flag). Ocean: WATER sources fill y ≤ 56 in ocean biome; Shallows
-~y 50–57. Cave band same model + new ores: TITANIUM_ORE (deep band like cobalt),
-GRAPHITE_ORE (mid band); keep iron/copper/coal/alabaster bands; NO cobalt? keep
-all ores. Structures for Silvaris (own lattice, denser than Towns): SETTLEMENT
-(one guaranteed at origin, `SIL_ORIGIN_PAD_Y` plateau + 32×32 DOCK_PAD plaza +
-advanced build + loot chests + beds + Inscription + Trade stall): lattice ~260.
-Trader Camps reuse camp model on Silvaris lattice. Inscriptions inside
-settlements. Chronicle/Landmark registry entries: Settlement, Dock.
-Spawn tables: Brushbuck (plains), Tideback (shallows/coast), Snow Stalker (peaks).
+### Slice G — worldgen (gen.ts, silvaris.ts)
+Ore bands per Canon (desert anthracite deepest; silvaris swap). Silvaris trees use
+SIL_WOOD/SIL_LEAVES/SIL_SAPLING + `sil_timber` drops. OAT wild stands near
+settlements. SUGARCANE origin: oasis pools gain SUGARCANE blocks (desert gen).
+Machine Camps: new lattice (sparser than settlements, ~520) — authored scrap shack
++ CAMP_ANTENNA + chest (machine loot: machine_part, metals, Logic→Machine Hearts
+rare). Volcano core: one authored structure in the Scorch Belt (fixed pick by seed
+hash): shaft down through 3 levels — Conduit Hall (3 power conduits = leadrod-lined
+walls that break), Cooling Gallery (2 channels sealed by stone; bucket/blast opens,
+WATER sources behind), Arena (21×21 basalt chamber, 2 shock-pylon anchors) — and its
+Landmark. Arrival-pad guaranteed settlement stays.
 
-### Slice E — Engine Core fuel model + Leave Planet (game.ts, ship.ts, index.html)
-Port state: `type Port = { k: 0 | 1 | 2; c: number; l: boolean }`
-(0 empty, 1 rocket, 2 super; k=2 never burns). `coreFuel: Map<key, [Port, Port]>`
-with legacy migration from `number[]`. `sh.fuel: [Port, Port]` + snapshot update.
-Burn in `flightTick`: drain k=1 ports only (first drain sets l=true; c≤0 →
-empty). `engineCoreAct` → new panel (`ui="core"`): two slot cells drawn 2×1;
-click a slot with rocket_fuel/super_fuel to load an EMPTY port; click a loaded
-port: unlocked → take back, locked → refusal toast. Inserters → `machinePush`
-into core: rocket only into empty ports. `flyCheckComp` fuel line counts k=1
-charges only. Break Core: untouched ports spill items (carry charges), locked
-ports destroyed + toast.
-Leave Planet: `ui-flight` button (disabled unless `leaveCheck()` ok: flyCheck +
-super in a port + rocket fuel > 0 + player aboard the grounded-or-airborne Ship).
-Press → confirm dialog → `departPlanet(sh)`: consume one k=2 port → cinematic
-(scripted climb ~6 s: engine audio, sky fade via fog/dark lerp, camera chase) →
-`switchPlanet("silvaris", arrival landing pose)` → land docked on the plaza
-(performLanding at pad pose) → questBump("leave") → Chronicle beat + Codex.
-Desertis stays in `worlds.desertis`.
+### Slice M — mobs (mobs.ts)
+Robot mob family (shared AI skeleton, non-eating, no knockback fear): WARDEN (slow
+scout, 20 hp, drops its planet's 2 metal + machine_part×1; Desertis relic: one
+patrolling the ruin cluster flees when the player is within 12 of the WRECK),
+SENTRY (60 hp shooter? melee w/ lunge — keep melee line soldier, drops metal+parts),
+BREAKER (220 hp armored heavy at camps; drops metal×4 + parts×2 + machine_heart 50 %),
+HAULER (non-hostile, walks camp↔camp, 40 hp, drops metal×3, parts×1; attacking it
+makes nearby machines hostile). Spawn: camps (Silvaris) + patrols + Warden desert
+count ~3. Pelt drops doubled when killed with knife/harpoon per Canon. Squad
+support: `spawnSquad(world, from, targetKey)` — 3 Sentries + 1 Breaker pathing to a
+Grid node, attacking grid blocks (new `attackBlock` mob state), despawn at dawn.
 
-### Slice Q — quests, phase starts, storms, inscriptions, docks
-`quests.ts`: append `{id:"leave", kind:"leave", title:"Leave Planet", ...}` AFTER
-liftoff; liftoff gets `reward: { item: "super_fuel", n: 1 }`. Then Phase-2 chain:
-"First Light" (arrive — kind leave? auto), "The Dock" (land the Ship on a Dock
-pad, kind `dock`), "The Settlements" (reach a Settlement, open a Chest, kind
-`settle`), "Clean Currents" (craft at an Electric Bench, kind `electric`),
-"Alloys & Engines" (craft at Foundry AND Assembly Bench, kind `bench2` goal 2),
-"Heart for Hire" (craft an Engine Core, kind `core2`), "Fuel of the Gods"
-(craft Super Rocket Fuel at the Fuel Works, kind `superfuel`) — chain ends;
-completion text: Phase 2 done, Phase 3 waits.
-Phase 2 Start (`mode phase2`): run planet=silvaris; pre-docked flight-capable
-Ship at the arrival plaza (lit thrusters, Core with 2 full rocket canisters,
-Yoke, Panel+Battery wired); quest i = first Phase-2 quest; chronicle pre-seeded.
-Storm system: generalize the Sandstorm state into `stormKind: "sand"|"blizzard"|
-"ash"` chosen by planet + biome (peaks/forest → blizzard, scorch → ash);
-blizzard amplifies COLD (mirrors sandstorm's heat amplification), scours and
-drains Water the same way; Storm Breaker calms any kind. HUD/toast wording per
-kind.
-Inscription: E → panel with the site's lore text (hash pick from ~8 texts).
-Dock: ship grounded whose Frame footprint sits on DOCK_PAD → `docked` flag
-(toast + Chronicle first time; respawn anchor alongside Ship beacons).
-Delete "wait for the rescue ship" HUD string; keep `won` for nothing else — remove
-its use, keep the save field harmless.
+### Slice S — systems (new files + game.ts hooks) — the big wave (one game.ts writer)
+- `recycler.ts` / game panel: drop-item grid UI, per-planet output rules, scrap.
+- `defense.ts`: turret/coil/chime/barricade ticks hooked into machine tick pass;
+  slug magazine on block state; targeting list (machines + hostile fauna); toggle.
+- `sled.ts`: mount/dismount, speed, charge, upgrades, pad recharge, blade/drill.
+- `crops.ts` or game: OAT growth handler + TUNDROOT/EMBERBUSH growth (fix the dead
+  seeds), Planter/Harvester accept oat/tundroot/ember.
+- `keeper.ts` or game: Keeper entities at camps (named, non-killable like Nomad),
+  E → chapter panel (text cards), trust = the camp's deed-quest done.
+- `endgame.ts` or game: `sentinel_dead` flag, Catalog lock UI (locked entries hidden;
+  unlock toast wave), volcano dungeon triggers (conduit cut / channel flood / coil
+  states feed `bossShield`), Sentinel boss entity (hp 900, `shielded: true` until
+  all 3 conduits cut; +50 % dmg per channel opened; Shock Coil pulse ×2 vs it),
+  death → unlock wave + Chronicle + questBump("sentinel").
+- Final flight: Nav Core block present aboard + Super port + flyCheck → new
+  "Charted Flight" button (only when `sentinel_dead` and quest `charted` active):
+  cinematic (reuse lift-off cinematic + star-chart overlay) → quest complete,
+  Phase-2-done Chronicle; world continues (Phase 3 later).
+- Quests (quests.ts rewrite of the Phase-2 chain, Phase-1 additions):
+  Phase-1 appended beats after existing: "Belly of the Wreck" (examine scar —
+  kind `craft`? use new `inspect` reuse: make it `reach` on wreck cell) +
+  "Scorched Bearing" (reach the gouge field) BEFORE `leave`; Warden-flee is a
+  scripted encounter beat (chronicle line). Phase-2 chain (replaces the old
+  post-arrival chain): arrival beats ("First Light" keep, "The Dock" keep,
+  "The Settlements" keep) → "Cold Tools" (craft a basalt tool) → "Nomad's Debt"
+  (talk to first Keeper; deed: kill 1 Warden nearby? deed = camp? first camp is
+  camp-1) → "Cut the Antenna" (kind `camp`, camp 1) → "Power the Silence"
+  (Wire: craft at Wiring Bench, kind `electric`) → "Alloys & Engines" (Foundry +
+  Assembly twin, kind `bench2`) → "The Long Thirst" (Oil Works rocket fuel) →
+  "Dust and Salt" (Keeper 2 chapter, kind `nomad`) → "Second Reclaimer" (kind
+  `camp` camp 2) → "The Scattered Story" (Keeper 3+4 chapters, kind `nomad`,
+  goal 2) → "A Chart Before the Dark" (kind `navcore`) → "Into the Scorch"
+  (kind `dungeon`) → "Kill the Sentinel" (kind `sentinel`) → "Fuel of the Gods"
+  (craft own Super Fuel, kind `superfuel`) → "Charted" (kind `charted`, end).
+  Hover Sled: side quest `sled` off the settlement (reward recipe).
 
-### Slice M — mobs (mobs.ts + spawn)
-Snow Stalker (fast alpine predator, Snake-model+; drops `frost_pelt`), Tideback
-(huge slow coastal grazer, Tortoise-model+; drops `tideback_hide`), Brushbuck
-(fleeing herd, Kangaroo-Rat-model+; drops `brushbuck_meat`, cook →
-`cooked_brushbuck_meat`). Spawn gated by planet + biome table from Slice G. No
-desert fauna on Silvaris; new fauna never on Desertis.
-
-### Slice R — renderer (renderer.ts)
-Art cases for all new ids: stations (distinct silhouettes, house voxel style),
-Inscription (carved stele), Dock Pad (inlaid marker pattern), Snow/Basalt, new
-ores, crops, EMBER_FRUIT. Ocean water already renders as WATER (fine). Silvaris
-sky/sun tint: slight hue shift (cooler, wetter) keyed by planet. Cinematic FX
-hook from Slice E (fog/dark lerp is enough).
+### Slice R — renderer/atlas/icons (renderer.ts, icons.ts)
+Full repaint of tile recipes + planet-keyed natural tiles + all custom geometry +
+new icons (per Canon). Robot bodies: 3-part box rigs from the existing mob draw
+path. Sentinel: 5-cell tall boss rig. Keep budget: atlas stays one 256 texture.
 
 ### Slice V — verify + ship
-`npx tsc --noEmit` clean. Browser: create each Phase start; Phase 2 Start lands
-on Silvaris; walk the plaza; mine new ores; craft at all 4 stations; Chest
-Interface now at Electric Bench; storms fire; Phase 1 path: cheat-load a full
-ship, load super fuel, Leave Planet warning, jump → Silvaris, docked, quest
-advances; old v2 world loads (migration). `npm run build`; commit+push BOTH repos
-(AGENTS.md).
+`npx tsc --noEmit` clean; dev-server walk: new Phase-2 start on Silvaris (basalt
+tool craft, hearth smelt, wiring bench chain, recycler scrap on a carried desert
+item, camp + antenna clear, sled, turrets vs squad, dungeon + boss kill unlocks
+super fuel, charted flight ends); Phase-1 path intact (foreshadow quests, anthracite
+visible only deep); v3 world rejected with fresh-start notice; `npm run build`;
+commit+push BOTH repos (AGENTS.md).
 
 ## Build order
 
-F (foundation) → D (data, parallel with F, disjoint files) → G, E (after F+D;
-G=gen.ts, E=game.ts disjoint) → Q, M, R (after G/E; Q=game.ts/quests/survival,
-M=mobs.ts, R=renderer.ts) → V (me). One game.ts writer per wave.
+D0 → D1 (me). Then PARALLEL, disjoint files: G-agent (gen.ts, silvaris.ts),
+M-agent (mobs.ts), R-agent (renderer.ts, icons.ts). Then me only: S (game.ts +
+new modules + quests.ts), then R-fixes if ids drift. V at the end.
+Never two writers in one file; agents report id drift instead of editing shared
+files.

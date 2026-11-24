@@ -331,8 +331,33 @@ Exists as Source blocks (Oasis pools, Water Station tanks). A Source feeds Flow 
 _Avoid_: liquid sim, flood sim
 
 **Salvage Tools**:
-Typed: Shovel (sand, dirt), Pickaxe (rock), Axe (chops Dead Wood faster than hands, which still work), Bucket (moves Water), Disassembler (buildings). Each family has its own tier ladder; ladder length varies per family (Wood/Stone/Metal is the baseline, more or fewer tiers per family are allowed).
+Typed: Shovel (sand, dirt), Pickaxe (rock), Axe (chops Dead Wood faster than hands, which still work), Bucket (moves Water), Disassembler (buildings). Each family has its own tier ladder; ladder length varies per family (Wood/Stone/Metal is the baseline, more or fewer tiers per family are allowed). Ladders are planet-native: Desertis climbs Wood→Stone→Metal→Alloy, Silvaris climbs Basalt→Bone→Titanium→Carbide.
 _Avoid_: universal tool
+
+**Skinning Knife**:
+A Silvaris tool family (Basalt/Bone/Titanium tiers). Skinning a Brushbuck or Snow Stalker pelt yields twice the hides; a knifeless skinning yields one bare pelt. Higher tiers skin faster.
+
+**Harpoon**:
+A Silvaris tool family (Bone/Titanium/Carbide tiers). The only way down a Tideback: harvests three Tideback Hides and opens Shallows hunting.
+
+**Hearth**:
+Silvaris' answer to the Campfire: open flame on a stone ring — smelts its own planet's ores, cooks, slow-burns Timber into Charcoal and fires Flux. Rock yields no metal here: the desert's landlubber chain does not cross worlds.
+
+**Workbench**:
+Silvaris' bench twin: four Silvertimber and it stands — Silvaris tools, posts, railings, tables and the stations below it.
+_Avoid_: crafting bench (that's Desertis')
+
+**Tannery**:
+Silvaris' armoury twin: hides into hardhide, gear that guards the body from cold and tooth.
+
+**Cauldron**:
+Silvaris' cooking pot twin: the dishes of roots, berries and oats.
+
+**Oil Works**:
+Silvaris' refinery twin: Silvaris Oil in a Bucket + Charcoal into Rocket Fuel.
+
+**Wiring Bench**:
+Silvaris' Electric Bench twin: the whole power family — panels, poles, batteries, generators — built on Lead, Glass and Saltpetre.
 
 **Disassemble**:
 Removing a player-placed block with the Disassembler returns the item itself — placed blocks are just items stood up.
@@ -414,11 +439,11 @@ A visible seam of a Mineral embedded in cave stone. Mining a vein yields its Raw
 _Avoid_: deposit (ambiguous with Cache)
 
 **Iron Ore**:
-The densest source of Iron; smelts at a Campfire into Iron Rod where surface Rock yields only one.
+The densest source of Iron; smelts at a Campfire into Iron Rod where surface Rock yields only one. Desertis only.
 _Avoid_: iron (bare)
 
 **Copper Ore**:
-A reddish Mineral. Smelts into Copper Rod — never a tool by itself, always a component of higher things.
+A reddish Mineral. Smelts into Copper Rod — never a tool by itself, always a component of higher things. Desertis only.
 _Avoid_: bronze
 
 **Alabaster**:
@@ -456,14 +481,20 @@ Free-standing stone scenery: arches, leaning slabs, tall monoliths, and rubble c
 _Avoid_: boulder (the lone L-shaped lump it replaces)
 
 **Cobalt Ore**:
-A deep bluish Mineral, found only near the bottom of the underground — the material the Ship's repair hangs on.
+A deep bluish Mineral of Desertis, found only near the bottom of the underground — the material the Ship's repair hangs on. Silvaris has none.
 _Avoid_: cobalt (bare)
 
 **Titanium Ore**:
-A light silvery Mineral of Silvaris' deep caves — the bones of its advanced machines, smelted at a Foundry into Titanium Rod.
+A light silvery Mineral of Silvaris' deep caves — the bones of its advanced machines, smelted at a Foundry into Titanium Rod. Desertis has none.
 
 **Graphite Ore**:
-A soft black Mineral of Silvaris' middle caves — the catalyst a Fuel Works needs to raise Rocket Fuel into Super Rocket Fuel.
+A soft black Mineral of Silvaris' middle caves — the catalyst a Fuel Works needs to raise Rocket Fuel into Super Rocket Fuel. Desertis has none.
+
+**Lead Ore**:
+A dull heavy Mineral of Silvaris' middle caves — smelts at the Hearth into Lead Rod: the soft metal behind its wires, Slugs and plating.
+
+**Saltpetre**:
+A crystalline Mineral common in Silvaris' upper caves — the battery salt of the Wiring Bench and the compound behind Flux. Desertis sees salt only as Salt Flats.
 
 **Broken Thruster**:
 One of the wreck's four dead wingtip engines. A Disassembler takes it off its pylon — it comes down as an item and can be stood back up anywhere. Its only interaction while dead is a Thruster Nozzle (E); a lit Thruster keeps burning when broken and re-placed.
