@@ -1,0 +1,9 @@
+# Planets are disjoint worlds — Scrap is the only bridge
+
+Desertis and Silvaris were two palettes over one global recipe table: every station and most materials existed everywhere, and Silvaris caves even carried every Desertis ore (ADR-0013's global Electric Bench made one ladder serve both). Decided: the two planets become **completely separate worlds in resources and crafting** — every raw material, every flora/fauna drop, every tool, gear item and Crafting Station has a planet-native twin; no item is obtainable from both planets' worlds, and each planet's station ladder stands on its own materials end-to-end. Both planets can still produce the full survival-to-launch chain alone: tools, food, power, Rocket Fuel, Super Rocket Fuel, and ship hardware.
+
+The one deliberate exception: the **Recycler** (on both planets) grinds any *off-planet* crafted item into **Scrap**, a single cross-planet material accepted by a handful of recipes on each world — so cargo carried across is never dead weight.
+
+Rejected: shared output metals (both planets smelting "Metal" from different ores — cheap code, but the item table then means nothing planet-wise); strict dead-weight cargo (punishing, and strands the player's own prior progress). This reverses the previous session's "every ore generates in Silvaris caves" — Desertis ores leave Silvaris; Titanium and Graphite stay Silvaris-only. Saves break cleanly on this change: no migration of renamed item tables (save version bump).
+
+Consequences the design must honour: a silvaris-only tier-1 tool must be craftable from arrival materials (Basalt underlays every column); food chains fork (Silvaris needs its own bread-and-dish ladder); the Engine Core stays titanium-gated (Silvaris); Desertis gains its own Super-Fuel path (Anthracite) so Phase 3 can launch from either world.

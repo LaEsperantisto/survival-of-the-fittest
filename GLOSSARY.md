@@ -339,18 +339,47 @@ Removing a player-placed block with the Disassembler returns the item itself —
 _Avoid_: unbuild, demolish
 
 **Recycler**:
-A station that breaks down crafted items (tools, gear — not placed blocks) into ~75% of their ingredients, always at least one unit of each.
+A station that breaks down crafted items (tools, gear — not placed blocks) into ~75% of their ingredients, always at least one unit of each. Each planet keeps its own Recycler, built from that planet's materials. An item that is not of that planet cannot yield that planet's ingredients — it comes out whole as Scrap instead.
 _Avoid_: scrap bin
 
-**Trader**:
-A desert merchant who keeps a stall at a Trader Camp. A Trader paces a small beat around the stall — never far from it, and it turns to face whoever is bartering — but it does not fight and cannot be killed. Barter is the only exchange, and there is no coin anywhere in the desert. Silvaris keeps the same kind of camp — an outpost stall with the advanced goods the settlements don't hold.
-_Avoid_: NPC (generic), merchant, vendor, wanderer (the abandoned Town-based idea)
+**Scrap**:
+The only material that belongs to no planet: a crumpled mixed residue that a Recycler grinds any off-planet crafted item into. A few recipes on each planet accept it, so cargo brought across worlds always still means something. Nothing else is shared between the planets' crafting.
+_Avoid_: junk, scrap metal
 
-**Trader Camp**:
-A homestead on the trade roads — a windmill tower, a waystation hut, or a farmstead with a water trough — each kept by a single Trader and their stall.
+**Nomad**:
+A wandering survivor who keeps a stall at a Nomad Camp — descended from the founders who scattered. A Nomad paces a small beat around the stall — never far from it, and it turns to face whoever is bartering — but it does not fight and cannot be killed. Barter is the only exchange, and there is no coin anywhere. Beyond trade, each Camp keeps a **Keeper**: a named Nomad whose trust is earned, and whose stories carry the world's true history. Silvaris keeps the same kind of camp — an outpost stall with the advanced goods the settlements don't hold.
+_Avoid_: Trader (retired name), NPC (generic), merchant, vendor, wanderer (the abandoned Town-based idea)
+
+**Nomad Camp**:
+A homestead on the trade roads — a windmill tower, a waystation hut, or a farmstead with a water trough — each kept by a single Nomad and their stall, and home to a Keeper once trust is earned.
 
 **Trade Table**:
-A Trader's offers: five straight goods-for-goods swaps per Camp, fixed for that Camp for the whole in-game day and reshuffled at every dawn.
+A Nomad's offers: five straight goods-for-goods swaps per Camp, fixed for that Camp for the whole in-game day and reshuffled at every dawn.
+
+**Sentinel**:
+The central automation the founders left on Desertis — still obeying an old "hold the settlement" directive, and the thing that shot the colony ships down. The head of the machine factions that now spread across Silvaris. The Phase-2 finale kills it in the Scorch Belt volcano core.
+_Avoid_: AI (generic), boss (as a name)
+
+**Machine Faction**:
+The Sentinel's scattered crews — Wardens (scout-relics, the only machines left on Desertis), Sentries (line soldiers), Breakers (armored heavies at the camps) and non-combat Haulers trudging between camps. Built from the metal of the planet they stand on, and they drop it.
+_Avoid_: robot horde, enemies
+
+**Machine Camp**:
+A hostile Landmark: a scrap-forged camp with an antenna that coordinates its patrols. Destroying the antenna stops the patrols — and calls down a Reclaimer squad; the machines answer provocation, they never grow from mere waiting. Expansion is scripted: story beats and entering certain places make more camps, never a timer.
+
+**Relay Tower**:
+A machine structure raised in wild country near a player Grid that has reached too far — it anchors hostile patrols in its radius, and the machines inside it treat exposed player Grid hardware as a target. Destroying the Tower ends the threat.
+_Avoid_: turret (that's the player's)
+
+**Machine Part**:
+The generic innards every robot yields — alien to both planets' native chains, so it rides the Scrap economy: recyclable into Scrap, eaten raw by the vehicle line.
+
+**Machine Heart**:
+The command sliver carried only by elite machines (Breakers, arena guardians) — the raw intelligence behind late-game gear and the arena gadgets.
+_Avoid_: Sentinel Core (misleading)
+
+**Keeper**:
+The named Nomad at each Camp whose trust is earned by deeds — usually smashing the Machine Camp that threatens them — and whose story chapter carries one fragment of the world's true history.
 
 **Sandstorm**:
 A passing state of the open desert: wind-borne sand that amplifies whatever the Air Temperature already is, drinks the player's Water faster, and scours bare skin. Walls, shade and Caves ride it out; only the open air changes.
@@ -450,7 +479,7 @@ The replacement part that wakes a Broken Thruster: crafted from what the deep ca
 Piloted takeoff at the Yoke: the Ship rises under its own power and completes the Phase-1 flight quest. Home now travels with the Ship — it may fly and land anywhere on its planet. Not the game's ending: that role belongs to **Leave Planet**.
 
 **Super Rocket Fuel**:
-a sealed blue canister — the key between worlds. In the Ship it never burns for flight: it sits inert in an Engine Core slot until **Leave Planet** consumes it. Phase 1 hands out exactly one as a quest reward; the Phase-2 finale is making it yourself at a Fuel Works. Until then, the planet you left stays unreachable.
+a sealed blue canister — the key between worlds. In the Ship it never burns for flight: it sits inert in an Engine Core slot until **Leave Planet** consumes it. Phase 1 hands out exactly one as a quest reward. No recipe for it exists in the Catalog until the Sentinel dies — its dying broadcast is what teaches the fuel works, on both planets (Silvaris' Fuel Works, Desertis' Fuel Still — ADR-0015). Until then, the planet you left stays unreachable.
 _Avoid_: blue fuel, warp fuel
 
 **Leave Planet**:
@@ -509,7 +538,7 @@ a Sealed Space that holds at least one anchor — a Campfire, a Bed, a Storm Bre
 _Avoid_: home, shelter (as a mechanic), camp
 
 **Phase**:
-a stage of the game and one of the beginnings a world is made with, chosen at world creation and fixed for the run. **Phase 0 (Hard)**: the wreck is dead — only Husks of a Regulator and Storm Breaker; the stage is pure survival. **Phase 1 (Easy, recommended)**: a living Heat Regulator and Storm Breaker; the stage is fixing the Ship on Desertis. **Phase 2**: the world begins on Silvaris with the Ship already fixed and docked at a Settlement; the stage is using the Ship across one planet. **Phase 3** (unbuilt): interplanetary travel. Reaching a stage means finishing the previous one's Main Quest chain: Lift-off and Leave Planet close Phase 1, crafting your own Super Rocket Fuel closes Phase 2. Phase 0 and 1 are stripped of Bench and bunk; nothing else changes between Phases.
+a stage of the game and one of the beginnings a world is made with, chosen at world creation and fixed for the run. **Phase 0 (Hard)**: the wreck is dead — only Husks of a Regulator and Storm Breaker; the stage is pure survival. **Phase 1 (Easy, recommended)**: a living Heat Regulator and Storm Breaker; the stage is fixing the Ship on Desertis. **Phase 2**: the world begins on Silvaris with the Ship already fixed and docked at a Settlement; the stage is using the Ship across one planet. **Phase 3** (unbuilt): interplanetary travel. Reaching a stage means finishing the previous one's Main Quest chain: Lift-off and Leave Planet close Phase 1; killing the Sentinel, refining your first own Super Rocket Fuel and making the charted final flight close Phase 2. Phase 0 and 1 are stripped of Bench and bunk; nothing else changes between Phases.
 _Avoid_: easy/hard mode (nothing else changes), P1/P2/P3 milestones (retired)
 
 **Husk**:
@@ -522,7 +551,32 @@ the advanced workbench of the Grid: every power and machine part — Panel, Pole
 the station of Ship-shape: assembles whole Engine Cores, Thruster Nozzles and Dock Pads from ingots, rods and glass.
 
 **Fuel Works**:
-the fuel plant: presses Rocket Fuel into **Super Rocket Fuel** — a sealed Rocket Fuel Canister and Graphite Ore, nothing else. The forge of the Phase-2 finale.
+the Silvaris fuel plant: presses Rocket Fuel into **Super Rocket Fuel** — a sealed Rocket Fuel Canister and Graphite Ore, nothing else. Its recipe is the Sentinel's death-gift (ADR-0015). Desertis' twin is the **Fuel Still**.
+
+**Fuel Still**:
+the Desertis fuel plant: Anthracite instead of Graphite; it only learns its recipe after the Sentinel dies. Built to give Desertis its own launch path for Phase 3.
+
+**Anthracite**:
+a hard black mineral of Desertis' deepest caves — the desert's carbon for Super Rocket Fuel.
+
+**Charcoal**:
+Desertis coal's Silvaris twin: native timber slow-burned at the Campfire twin — the carbon that raises Rocket Fuel with Silvaris oil.
+
+**Flux**:
+a Silvaris campfire compound of Lead and Saltpetre — the Body Regulator's answer to Desertis' Catalyst.
+
+**Nav Core**:
+the Ship's charting brain, craftable from the Keepers' final chapter onward — Titanium, Graphite, Lead and Scrap. Installed before the finale is fought: the player prepares for a killing they already know they must do. With it aboard, the charted final flight ends Phase 2.
+
+**Hover Sled**:
+the Silvaris vehicle: a built item you set down and board — battery-driven, recharged on a powered pad, and grown by bolted-on upgrades (Cargo Sled, Blade, Drill). The branch the main quest never walks. The block-built machine vehicle is Phase 3 territory.
+
+**Slug**:
+fired ammunition cast from that planet's own metal — the Gun Turret's appetite.
+
+**Defenses**:
+the player's engineered line, each with a per-planet recipe: **Spike Barricade** (passive wall that hurts climbers), **Alarm Chime** (wire-tapped radius sensor — the raid early-warning), **Gun Turret** (powered, eats Slugs, targets machines and hostile fauna, fauna-targeting toggleable), **Shock Coil** (powered ammo-free pulse, extra cruel to metal).
+_Avoid_: traps (they are engineered, not dug)
 
 **Foundry**:
 the smelting floor beyond the Campfire: refines raw Ore into Metal Plating, melts Titanium Ore into Titanium Rod, and hardens Metal Plating and Coal into Steel Plating.
@@ -561,7 +615,7 @@ the panel the Surveyor's Visor draws while worn — local terrain, known Landmar
 _Avoid_: minimap, radar
 
 **Landmark**:
-a named feature the Map knows: Towns, Oases, Trader Camps, Cave Mouths, wrecks, buried canister sites — and on Silvaris, Settlements, their Docks and Trader Camps. A Landmark becomes known by reaching it, by the Tracker, or (canisters) by digging one up; known ones mark themselves on the Map. Every planet's Map knows only its own.
+a named feature the Map knows: Towns, Oases, Nomad Camps, Cave Mouths, wrecks, buried canister sites — and on Silvaris, Settlements, their Docks and Nomad Camps. A Landmark becomes known by reaching it, by the Tracker, or (canisters) by digging one up; known ones mark themselves on the Map. Every planet's Map knows only its own.
 
 **Pin**:
 a player-marked point planted by a craftable Surveyor's Pin, freely named. A Pin named "Base" is a marked point the Visor beams.
