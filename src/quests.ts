@@ -3,7 +3,7 @@
 
 export interface QuestDef {
   id: string;
-  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "bread" | "dish" | "wreck" | "core" | "yoke" | "grid" | "factory" | "thruster" | "core_set" | "ship_grid" | "refine" | "liftoff" | "leave" | "arrive" | "dock" | "settle" | "electric" | "bench2" | "core2" | "superfuel";
+  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "bread" | "dish" | "wreck" | "core" | "yoke" | "grid" | "factory" | "thruster" | "core_set" | "ship_grid" | "refine" | "liftoff" | "leave" | "arrive" | "dock" | "settle" | "electric" | "foundry_set" | "core2" | "superfuel";
   title: string;
   desc: string;
   goal: number;
@@ -126,8 +126,8 @@ export const QUESTS: QuestDef[] = [
     desc: "Wire an Electric Bench to the Grid and craft your first thing on it. This world's machines all start there.", goal: 1,
   },
   {
-    id: "alloys_engines", kind: "bench2", title: "Alloys & Engines",
-    desc: "Two benches, one chain: burn Titanium Ore into rods at a Foundry, and build at an Assembly Bench. Put both to work once.", goal: 2,
+    id: "alloys_engines", kind: "foundry_set", title: "Alloys & Engines",
+    desc: "The alloy chain starts in your own yard: stand a Foundry on the ground and fire it up. From here, ore feeds you — no more wreck.", goal: 1,
   },
   {
     id: "heart_hire", kind: "core2", title: "Heart for Hire",

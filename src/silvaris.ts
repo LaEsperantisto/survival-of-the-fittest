@@ -14,6 +14,7 @@ import {
   TITANIUM_ORE, GRAPHITE_ORE, TUNDROOT_1, TUNDROOT_2, EMBERBUSH_1, EMBERBUSH_2,
   INSCRIPTION, DOCK_PAD, METAL_PLATING, GLASS, DOOR_CLOSED, DOOR_UPPER,
   BED, BED_EXT, CHEST, LAMP, IRON_ORE, COPPER_ORE, COAL_ORE, CAMPFIRE,
+  COBALT_ORE, ALABASTER, OIL, OIL_SANDS,
   CS, CH,
 } from "./blocks";
 import { fbm2, ridge2, value2, hash2, Rng } from "./noise";
@@ -170,11 +171,18 @@ function caveAt(x: number, y: number, z: number, seed: number, h?: number): bool
  *  desert oasis (sand rim, solid bowl under); salt only veins the Shallows,
  *  where the desert uses SALT. */
 function surfaceBlock(x: number, z: number, y: number, h: number, bi: number, seed: number): number {
-  if (bi === SB_ALPINE)
+  if (bi === SB_ALPINE) {
+    if (y === h) { // ore outcrops weather out of the high rock, in plain sight
+      const r = hash2(x, z, seed + 261);
+      if (r < 0.05) return IRON_ORE;
+      if (r < 0.08) return COAL_ORE;
+    }
     return y >= h - 1 && h - 1 >= 115 ? SNOW : ROCK; // snow cap above ~115
+  }
   if (bi === SB_SCORCH) {
     // graphite veins near the surface of the volcanic highlands
     if (y >= h - 7 && y <= h - 2 && noise3(x / 7, y / 7, z / 7, seed + 641) > 0.84) return GRAPHITE_ORE;
+    if (y === h && hash2(x, z, seed + 263) < 0.04) return COAL_ORE; // coal seams crop out
     return y >= h - 4 ? BASALT : ROCK;
   }
   if (bi === SB_DEEP)
@@ -190,11 +198,13 @@ function surfaceBlock(x: number, z: number, y: number, h: number, bi: number, se
 }
 
 /* ── Settlements ─────────────────────────────────────────────────────────────
- * One advanced site per lattice cell (~every 15 chunks): a compact plating
- * building (Metal Plating walls, Glass windows, a proper Door), beds, a
- * Inscription by the entrance, loot Chests, and an adjoining 15x15 exposed
- * DOCK_PAD plaza. The whole site levels its ground like a camp: within
- * Chebyshev 24 of the centre the ground sits at the site's base level. */
+ * Scarce advanced sites (one per lattice cell, ~every 15 chunks), and the
+ * lattice is thin: fewer than half of its cells hold a site. Three kinds,
+ * picked per site by hash — a full Station, a small Outpost, and a bare
+ * Waystation — but every one of them owns a 15x15 exposed DOCK_PAD plaza, an
+ * Inscription and at least one loot Chest. The whole site levels its ground
+ * like a camp: within Chebyshev 24 of the centre the ground sits at the
+ * site's base level. */
 
 export interface SilSite { x: number; z: number; y: number; } // centre + ground level
 export interface SilDock { x: number; z: number; y: number; size: number; } // plaza centre
@@ -203,7 +213,7 @@ export interface SilTrader { x: number; z: number; y: number; }
 const settleAtSeed = (tx: number, tz: number, seed: number): boolean => {
   if (tx === 0 && tz === 0) return true; // the guaranteed home settlement
   if (Math.abs(tx) <= 1 && Math.abs(tz) <= 1) return false; // keep the arrival zone clear
-  return hash2(tx, tz, seed + 501) < 0.8;
+  return hash2(tx, tz, seed + 501) < 0.45; // scarce: the sites are long walks apart
 };
 
 const settleCenter = (tx: number, tz: number, seed: number): { x: number; z: number } => {
@@ -251,6 +261,14 @@ export function dockInfoAt(x: number, z: number, seed: number): SilDock | null {
 
 
 
+/** Which kind of site a centre is: Station (full house), Outpost (a small
+ *  hut), Waystation (an open shelter). Pure, so the Map and the gen agree. */
+export type SilSettleKind = "station" | "outpost" | "waystation";
+export const settleKind = (x: number, z: number, seed: number): SilSettleKind => {
+  const r = hash2(x, z, seed + 511);
+  return r < 0.5 ? "station" : r < 0.85 ? "outpost" : "waystation";
+};
+
 function paintSettlement(set: (x: number, y: number, z: number, id: number) => void, c: { x: number; z: number }, seed: number) {
   const f = settleBase(c.x, c.z, seed);
   // the plaza first: solid to f, DOCK_PAD top, sky clear — exposed, no roof
@@ -259,29 +277,61 @@ function paintSettlement(set: (x: number, y: number, z: number, id: number) => v
     set(x, f, z, DOCK_PAD);
     for (let y = f + 1; y <= f + 10; y++) set(x, y, z, AIR);
   }
-  // the building: plating shell, floor at f, interior air f+1..f+3, roof f+4 —
-  // a 9x7 footprint directly south of the plaza, sharing its north edge
-  const x0 = c.x - 4, x1 = c.x + 4, z0 = c.z - 14, z1 = c.z - 8;
-  for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++)
-    for (let y = f; y <= f + 4; y++) {
-      const edge = x === x0 || x === x1 || z === z0 || z === z1;
-      set(x, y, z, (y === f || y === f + 4 || (edge && y <= f + 3)) ? METAL_PLATING : AIR);
-    }
-  // windows on the plaza side and the north face
-  set(c.x - 1, f + 2, z1, GLASS); set(c.x + 1, f + 2, z1, GLASS);
-  set(c.x - 1, f + 2, z0, GLASS); set(c.x + 1, f + 2, z0, GLASS);
-  // door onto the plaza (south wall centre), plus a side gap like the camps
-  set(c.x, f + 1, z1, DOOR_CLOSED); set(c.x, f + 2, z1, DOOR_UPPER);
-  // inside: beds, the Inscription stele by the door, lamps
-  const bz = c.z - 12;
-  set(c.x - 3, f + 1, bz, BED); set(c.x - 3, f + 1, bz + 1, BED_EXT);
-  set(c.x + 1, f + 1, bz, BED); set(c.x + 1, f + 1, bz + 1, BED_EXT);
-  set(c.x + 2, f + 1, z1 - 1, INSCRIPTION); // readable lore, right by the entrance
-  set(x0 + 1, f + 3, z0 + 1, LAMP);
-  set(x1 - 1, f + 3, z1 - 1, LAMP);
-  // two loot Chests — game.ts rolls them with getSilvarisLoot on first open
-  set(c.x - 1, f + 1, z0 + 1, CHEST);
-  set(c.x + 3, f + 1, z0 + 2, CHEST);
+  const kind = settleKind(c.x, c.z, seed);
+  if (kind === "station") {
+    // the full house: plating shell, floor at f, interior air f+1..f+3, roof
+    // f+4 — a 9x7 footprint directly south of the plaza, sharing its north edge
+    const x0 = c.x - 4, x1 = c.x + 4, z0 = c.z - 14, z1 = c.z - 8;
+    for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++)
+      for (let y = f; y <= f + 4; y++) {
+        const edge = x === x0 || x === x1 || z === z0 || z === z1;
+        set(x, y, z, (y === f || y === f + 4 || (edge && y <= f + 3)) ? METAL_PLATING : AIR);
+      }
+    // windows on the plaza side and the north face
+    set(c.x - 1, f + 2, z1, GLASS); set(c.x + 1, f + 2, z1, GLASS);
+    set(c.x - 1, f + 2, z0, GLASS); set(c.x + 1, f + 2, z0, GLASS);
+    // door onto the plaza (south wall centre), plus a side gap like the camps
+    set(c.x, f + 1, z1, DOOR_CLOSED); set(c.x, f + 2, z1, DOOR_UPPER);
+    // inside: beds, the Inscription stele by the door, lamps
+    const bz = c.z - 12;
+    set(c.x - 3, f + 1, bz, BED); set(c.x - 3, f + 1, bz + 1, BED_EXT);
+    set(c.x + 1, f + 1, bz, BED); set(c.x + 1, f + 1, bz + 1, BED_EXT);
+    set(c.x + 2, f + 1, z1 - 1, INSCRIPTION); // readable lore, right by the entrance
+    set(x0 + 1, f + 3, z0 + 1, LAMP);
+    set(x1 - 1, f + 3, z1 - 1, LAMP);
+    // two loot Chests — game.ts rolls them with getSilvarisLoot on first open
+    set(c.x - 1, f + 1, z0 + 1, CHEST);
+    set(c.x + 3, f + 1, z0 + 2, CHEST);
+    return;
+  }
+  if (kind === "outpost") {
+    // a single-family hut: 5x5 plating, one bed, one Chest, door on the plaza
+    const x0 = c.x - 2, x1 = c.x + 2, z0 = c.z - 12, z1 = c.z - 8;
+    for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++)
+      for (let y = f; y <= f + 4; y++) {
+        const edge = x === x0 || x === x1 || z === z0 || z === z1;
+        set(x, y, z, (y === f || y === f + 4 || (edge && y <= f + 3)) ? METAL_PLATING : AIR);
+      }
+    set(c.x - 1, f + 2, z1, GLASS); set(c.x + 1, f + 2, z0, GLASS);
+    set(c.x, f + 1, z1, DOOR_CLOSED); set(c.x, f + 2, z1, DOOR_UPPER);
+    set(c.x - 1, f + 1, z0 + 1, BED); set(c.x - 1, f + 1, z0 + 2, BED_EXT);
+    set(c.x + 1, f + 1, z1 - 1, INSCRIPTION);
+    set(c.x, f + 3, (z0 + z1) >> 1, LAMP);
+    set(c.x + 1, f + 1, z0 + 1, CHEST);
+    return;
+  }
+  // waystation: no walls — a plating lean-to on posts, a fire, a Chest and a
+  // stele open to the sky. The dwellers mark the road, they don't live on it.
+  for (let x = c.x - 3; x <= c.x - 1; x++) for (let z = c.z - 10; z <= c.z - 8; z++) {
+    set(x, f, z, METAL_PLATING);
+    set(x, f + 4, z, METAL_PLATING);
+  }
+  for (const [px, pz] of [[-3, -10], [-1, -10], [-3, -8], [-1, -8]] as const)
+    for (let y = f + 1; y <= f + 3; y++) set(c.x + px, y, c.z + pz, METAL_PLATING);
+  set(c.x - 2, f + 3, c.z - 9, LAMP);
+  set(c.x - 2, f + 1, c.z - 8, CHEST);
+  set(c.x - 1, f + 1, c.z - 9, INSCRIPTION); // stele under the lean-to, facing the plaza
+  set(c.x + 1, f + 1, c.z - 9, CAMPFIRE);    // a fire the road keeps burning
 }
 
 /* ── Trader camps ────────────────────────────────────────────────────────────
@@ -354,6 +404,92 @@ function paintTrader(set: (x: number, y: number, z: number, id: number) => void,
   set(c.x - 5, f + 1, c.z - 1, CHEST); // the camp's own stores
 }
 
+/* ── Oil seeps ───────────────────────────────────────────────────────────────
+ * The desert's black liquid, on its own lattice (coprime with both the
+ * settlement and the Trader lattices, and with its own salts): a bowl of Oil
+ * Source sunk into Oil-Sands stain, with a couple of scoopable pans off the
+ * rim — the desert's seep paint, same flow-safety rules (a Source stands on
+ * a stained floor, ringed by ground that never dips below the oil line).
+ * Only ever dry lowland: never the sea, never the peaks, never arrival
+ * country, never beside a site. The Refinery out here feeds on what this
+ * world sweats. */
+
+export const SIL_SEEP_L = 220;
+const SIL_SEEP_J = 50;
+const SIL_SEEP_R = 7; // biggest pool radius the paint can draw
+
+export interface SilSeep { x: number; z: number; r: number; } // centre + pool radius
+
+const silSeepOf = (ix: number, iz: number, seed: number): SilSeep | null => {
+  if (hash2(ix, iz, seed + 701) >= 0.7) return null;
+  const jx = (hash2(ix, iz, seed + 703) - 0.5) * 2 * SIL_SEEP_J;
+  const jz = (hash2(ix, iz, seed + 705) - 0.5) * 2 * SIL_SEEP_J;
+  const x = Math.round(ix * SIL_SEEP_L + jx), z = Math.round(iz * SIL_SEEP_L + jz);
+  if (x * x + z * z < 90 * 90) return null; // arrival country stays clean
+  if (Math.round(heightAt(x, z, seed)) <= SIL_SEA + 2) return null; // dry ground only
+  const bi = biomeAt(x, z, seed);
+  if (bi === SB_ALPINE || bi === SB_DEEP || bi === SB_SHALLOWS) return null; // lowland tar
+  const hb = Math.round(heightAt(x, z, seed));
+  for (let dx = -SIL_SEEP_R - 4; dx <= SIL_SEEP_R + 4; dx += 4)
+    for (let dz = -SIL_SEEP_R - 4; dz <= SIL_SEEP_R + 4; dz += 4)
+      if (Math.abs(Math.round(heightAt(x + dx, z + dz, seed)) - hb) > 2) return null; // the bowl needs flat ground
+  if (settleSiteAt(x, z, seed) !== null || settleNear(x, z, SIL_SEEP_R + 5, seed)) return null;
+  const t0 = Math.floor((x - 40) / TRADER_L), t1 = Math.floor((x + 40) / TRADER_L);
+  const s0 = Math.floor((z - 40) / TRADER_L), s1 = Math.floor((z + 40) / TRADER_L);
+  for (let tx = t0; tx <= t1; tx++) for (let tz = s0; tz <= s1; tz++) {
+    if (!traderAtSeed(tx, tz, seed)) continue;
+    const c = traderCenter(tx, tz, seed);
+    if (Math.hypot(c.x - x, c.z - z) < 40) return null; // no tar under a camp
+  }
+  return { x, z, r: 3.5 + hash2(ix, iz, seed + 707) * (SIL_SEEP_R - 3.5) };
+};
+
+/** Sink one Oil pan into the stained crust: a Source on oil sand with level
+ *  ground all around, so the flow sim never carries the tar away. */
+function silOilPan(set: (x: number, y: number, z: number, id: number) => void, seed: number, x: number, z: number): boolean {
+  const h = Math.round(heightAt(x, z, seed));
+  for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const)
+    if (Math.round(heightAt(x + ox, z + oz, seed)) < h) return false;
+  set(x, h, z, OIL);
+  set(x, h - 1, z, OIL_SANDS);
+  return true;
+}
+
+function paintSilSeep(set: (x: number, y: number, z: number, id: number) => void, s: SilSeep, seed: number) {
+  const hb = Math.round(heightAt(s.x, s.z, seed));
+  for (let dx = -s.r - 4; dx <= s.r + 4; dx++) {
+    for (let dz = -s.r - 4; dz <= s.r + 4; dz++) {
+      const x = s.x + dx, z = s.z + dz;
+      const d = Math.sqrt(dx * dx + dz * dz);
+      const h = Math.round(heightAt(x, z, seed));
+      if (d <= s.r) {
+        const dep = Math.max(1, Math.round(2.7 - 1.7 * (d / s.r))); // bowl: 3 .. 1
+        for (let y = h; y > hb - dep; y--) set(x, y, z, AIR);
+        set(x, hb - dep, z, OIL_SANDS);
+        for (let y = hb - dep + 1; y <= hb; y++) set(x, y, z, OIL);
+        // nothing grows in the tar: the terrain pass may have rooted a
+        // tundroot, a bush or a trunk here before the pool was cut
+        for (let y = hb + 1; y <= hb + 8; y++) set(x, y, z, AIR);
+      } else if (d <= s.r + 1) {
+        for (let y = h; y < hb + 1; y++) set(x, y, z, OIL_SANDS); // stained rim
+      } else if (d <= s.r + 4) {
+        set(x, h, z, OIL_SANDS); // the stain fades out over the crust
+      }
+    }
+  }
+  // one or two pans just off the rim, so a scavenger can scoop the seep dry
+  // without wading the pool
+  for (let i = 0; i < 2; i++) {
+    if (hash2(s.x, s.z, seed + 711 + i) > 0.55) continue;
+    const a0 = hash2(s.z - i, s.x + i, seed + 713 + i) * Math.PI * 2;
+    const r0 = s.r + 2 + hash2(s.x + i, s.z - i, seed + 715 + i);
+    for (let t = 0; t < 3; t++) {
+      const a = a0 + t * 2.1, rr = r0 + t;
+      if (silOilPan(set, seed, s.x + Math.round(Math.cos(a) * rr), s.z + Math.round(Math.sin(a) * rr))) break;
+    }
+  }
+}
+
 /* ── Loot tables ─────────────────────────────────────────────────────────────
  * The spec game.ts rolls when a Silvaris Chest is first opened, exactly how
  * the desert's townLoot works — pass a seeded rng (e.g. an Rng salted from
@@ -373,6 +509,14 @@ export function getSilvarisLoot(rng: () => number): SilLoot[] {
     { item: "seed_emberbush", n: 4 },
     { item: "canister_empty", n: 2 },
   ];
+  // the dwellers trade in ore and rods: every store carries a little of the
+  // metals this world sits on, so a Chest is a scarce but real second vein
+  if (rng() < 0.55) out.push({ item: "iron_ore", n: 3 + (rng() * 3 | 0) });
+  if (rng() < 0.5) out.push({ item: "alabaster", n: 3 + (rng() * 4 | 0) });
+  if (rng() < 0.45) out.push({ item: "coal_ore", n: 2 + (rng() * 3 | 0) });
+  if (rng() < 0.4) out.push({ item: "copper_ore", n: 2 + (rng() * 2 | 0) });
+  if (rng() < 0.3) out.push({ item: "cobalt_ore", n: 1 + (rng() * 2 | 0) });
+  if (rng() < 0.3) out.push({ item: "titanium_ore", n: 2 + (rng() * 2 | 0) });
   if (rng() < 0.6) out.push({ item: "insglass", n: 2 });
   if (rng() < 0.5) out.push({ item: "bed", n: 1 });
   if (rng() < 0.4) out.push({ item: "metal", n: 2 + (rng() * 3 | 0) });
@@ -467,19 +611,23 @@ export function genSilvarisChunk(args: SilvarisChunkArgs): void {
         if (base !== ROCK && base !== BASALT) continue;
         if (!(caveC(wx + 1, y, wz) || caveC(wx - 1, y, wz) || caveC(wx, y + 1, wz) ||
               caveC(wx, y - 1, wz) || caveC(wx, y, wz + 1) || caveC(wx, y, wz - 1))) continue;
-        // wall crust: the desert's ore bands, raised ~8 for Silvaris ground,
-        // TITANIUM in the deep band (where the desert runs COBALT) and
+        // wall crust: the desert's ore bands, raised ~8 for Silvaris ground —
+        // every Desertis ore is here, plus TITANIUM in the deep band and
         // GRAPHITE in the mid band; SALT veins only under the Shallows
         if (bi === SB_ALPINE && y >= 92 && hash2(wx, wz + y, seed + 611) < 0.2) {
           safeSet(wx, y, wz, SNOW); // ice caves high in the peaks
         } else if (y <= 22 && hash2(wx * 5 + y, wz * 7 - y, seed + 333) < 0.4 &&
                    noise3(wx / 5 + 40, y / 5, wz / 5, seed + 431) > 0.886) {
           safeSet(wx, y, wz, TITANIUM_ORE);
+        } else if (y <= 23 && hash2(wx * 5 + y, wz * 7 - y, seed + 433) < 0.4 &&
+                   noise3(wx / 5 + 90, y / 5, wz / 5, seed + 437) > 0.886) {
+          safeSet(wx, y, wz, COBALT_ORE); // deep stone, Metal pick or better
         } else if (bi === SB_SHALLOWS && noise3(wx / 5 + 200, y / 5, wz / 5, seed + 451) > 0.85) {
           safeSet(wx, y, wz, SALT);
         } else if (y >= 20 && noise3(wx / 5, y / 5, wz / 5, seed + 413) > 0.864) safeSet(wx, y, wz, IRON_ORE);
         else if (y >= 20 && noise3(wx / 5, y / 5 + 60, wz / 5, seed + 417) > 0.878) safeSet(wx, y, wz, COPPER_ORE);
         else if (y >= 12 && noise3(wx / 5 + 120, y / 5 + 30, wz / 5, seed + 429) > 0.842) safeSet(wx, y, wz, COAL_ORE);
+        else if (y >= 16 && y <= 32 && noise3(wx / 5 + 40, y / 5, wz / 5, seed + 425) > 0.883) safeSet(wx, y, wz, ALABASTER);
         else if (y >= 26 && y <= 46 && noise3(wx / 5, y / 5, wz / 5 + 70, seed + 421) > 0.883) safeSet(wx, y, wz, GRAPHITE_ORE);
       }
 
@@ -521,6 +669,16 @@ export function genSilvarisChunk(args: SilvarisChunkArgs): void {
     safeSet(x, ARR_Y, z, cross ? DOCK_PAD : GRASS);
     for (let y = 0; y < ARR_Y; y++) safeSet(x, y, z, y >= ARR_Y - 3 ? DIRT : BASALT);
     for (let y = ARR_Y + 1; y < CH; y++) safeSet(x, y, z, AIR);
+  }
+
+  // Oil seeps on their own lattice, painted before the structures claim
+  // ground (they keep clear of sites anyway, but a site outranks tar)
+  const sm = SIL_SEEP_R + 5;
+  const qx0 = Math.floor((cx * CS - sm) / SIL_SEEP_L), qx1 = Math.floor((cx * CS + CS - 1 + sm) / SIL_SEEP_L);
+  const qz0 = Math.floor((cz * CS - sm) / SIL_SEEP_L), qz1 = Math.floor((cz * CS + CS - 1 + sm) / SIL_SEEP_L);
+  for (let ix = qx0; ix <= qx1; ix++) for (let iz = qz0; iz <= qz1; iz++) {
+    const s = silSeepOf(ix, iz, seed);
+    if (s) paintSilSeep(safeSet, s, seed);
   }
 
   // Settlements on their lattice: jitter ±60, site reach 24, so the scan

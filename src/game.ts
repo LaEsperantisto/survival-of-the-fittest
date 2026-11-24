@@ -3739,6 +3739,10 @@ export class Game {
       if (comp) { this.questBump("core_set"); hud.toast("The Engine Core stands inside the Frame. The Ship's grid — and its fuel — start here."); }
       else hud.toast("The Engine Core works inside the Ship Frame — set it up within the Corners.");
     }
+    if (def.block === FOUNDRY) {
+      this.questBump("foundry_set");
+      hud.toast("The Foundry stands on its own legs. Coal in, rods out — the ore of this world feeds you now.");
+    }
     // a LAMP only lights once the power tick finds a live Panel beside it
     if (def.block === THRUSTER_LIT) { const [lx2, ly2, lz2] = origin(ox, oy, oz); this.renderer.addPointLight(lx2, ly2, lz2, "fire"); } // a carried engine keeps burning
     if (def.block === STORM_BREAKER) this.breakers.add(key);
@@ -7359,12 +7363,6 @@ export class Game {
         if (r.out === "rocket_fuel") { this.questBump("refine"); hud.toast("Rocket Fuel, canistered. The Engine Core drinks it in the air."); }
         // the Second Planet's chain reads the station as much as the product
         if (mode === "electric") this.questBump("electric");
-        if ((mode === "foundry" || mode === "assembly") && !this.revealed.has(`bench:${mode}`)) {
-          // "Alloys & Engines" wants both families, not two trips to one: the
-          // mark rides the planet record, so a reload cannot re-credit a family
-          this.revealed.add(`bench:${mode}`);
-          this.questBump("bench2");
-        }
         if (r.out === "engine_core") this.questBump("core2");
         if (r.out === "super_fuel") { this.questBump("superfuel"); this.lesson("superfuel"); }
         this.audio.place();
