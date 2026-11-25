@@ -37,7 +37,10 @@ export const AIR = 0, SAND = 1, SANDSTONE = 2, ROCK = 3, GRAVEL = 4, DIRT = 5, S
   CAMP_ANTENNA = 136, RELAY_TOWER = 137,
   SPIKE_BARRICADE = 138, ALARM_CHIME = 139, GUN_TURRET = 140, SHOCK_COIL = 141,
   NAV_CORE = 142, HOVER_SLED = 143, WOOD_POST = 144, WOOD_RAILING = 145,
-  STAINED_GLASS = 146, TABLE = 147;
+  STAINED_GLASS = 146, TABLE = 147,
+  // The Sentinel's three power conduits: lead-lined throats in the Conduit Hall
+  // walls. Worldgen only — cut all three and the Arena shield dies.
+  POWER_CONDUIT = 148;
 
 export type ToolType = "pickaxe" | "shovel" | "axe" | "disassembler";
 
@@ -363,7 +366,9 @@ export const BLOCKS: BlockDef[] = [
   def({ id: WOOD_POST, name: "Timber Post", solid: true, opaque: false, transparent: false, emissive: false, R: 0.4, breakTime: 1.0, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.5, 0.4, 0.28] }),
   def({ id: WOOD_RAILING, name: "Timber Railing", solid: true, opaque: false, transparent: false, emissive: false, R: 0, breakTime: 1.0, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.52, 0.42, 0.3] }),
   def({ id: TABLE, name: "Table", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 1.2, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.55, 0.42, 0.28] }),
-  def({ id: STAINED_GLASS, name: "Stained Glass", solid: true, opaque: false, transparent: true, emissive: false, R: 0.15, breakTime: 0.4, tool: null, minTier: 0, placeable: true, color: [0.5, 0.35, 0.45] }),
+  def({ id: STAINED_GLASS, name: "Stained Glass", solid: true, opaque: false, transparent: true, emissive: false, R: 0.15, breakTime: 0.4, tool: null, minTier: 0, placeable: false, color: [0.5, 0.35, 0.45] }),
+  // The Sentinel's conduits: an emissive lead-lined pipe set into the Hall walls.
+  def({ id: POWER_CONDUIT, name: "Power Conduit", solid: true, opaque: true, transparent: false, emissive: true, R: 0.35, breakTime: 3, tool: "pickaxe", minTier: 1, placeable: false, color: [0.55, 0.58, 0.66] }),
 ];
 
 /** Everything that lives on the Grid: the Engine Core plus Panel..Harvester (ADR-0007),

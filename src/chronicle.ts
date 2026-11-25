@@ -17,6 +17,16 @@ export const LESSONS: Lesson[] = [
     text: "Open water on the horizon: an Oasis. Refill your canisters here — the water never runs dry, the walk to it is the price. Oases never run out across the world; they are just far apart.",
   },
   {
+    id: "belly", title: "Belly of the Wreck",
+    hint: "the drive was cut out, not broken",
+    text: "Stand in the wreck's hull and look up: the drive mounts were not sheared by the landing — they were cut. Clean edges, one heart taken out whole. The Second Wreck carries the same cut. Whatever put these ships in the ground went through them first, and took something.",
+  },
+  {
+    id: "bearing", title: "The Gouge Field",
+    hint: "the wreck was dragged here — something hauled it",
+    text: "The trench runs out of the dunes in one straight bearing and ends at the Second Wreck. A keel, dragged for a kilometer, plowed the sand to glass. Wrecks do not walk. Something hauled this one out of its impact, laid it down, and cut its heart on the spot.",
+  },
+  {
     id: "town", title: "First Town",
     hint: "Chests in the shells hold loot",
     text: "The desert was lived in before you. Towns are adobe shells with Chests — the first chest of a cluster holds the loot. Take what you need; the dwellers are not coming back.",
@@ -117,9 +127,24 @@ export const LESSONS: Lesson[] = [
     text: "Not shells this time. The dwellers built here to stay: alabaster walls, metal plating, beds made, chests stocked, a Dock plaza out front. The desert kept their junk; this world kept their homes. Read the stele in the plaza — they left words on purpose.",
   },
   {
+    id: "scorch", title: "The Volcano's Throat",
+    hint: "the shaft down; something keeps the floor below",
+    text: "The hottest ground on Silvaris is a door: one cone in the Scorch Belt with an open throat, and no lava behind it. Someone cut a road down — halls, wells, stairs stepped one rise at a time — and left something walking at the bottom. The chapters spoke of a thing that dragged wrecks across the sky. It is still down there, and it is still awake.",
+  },
+  {
+    id: "sentinel", title: "The Sentinel Falls",
+    hint: "its recipe is yours — cook it at a Fuel Works",
+    text: "The thing that dragged the wrecks is scrap now. Its recipe rides out of the wreck of it: the dwellers wrote it into its core, betting whoever killed it deserved the inheritance — Rocket Fuel and graphite, cooked at a Fuel Works into Super Rocket Fuel. The dwellers could not kill it. You did. The fuel of the gods is yours to make.",
+  },
+  {
     id: "superfuel", title: "Fuel of the Gods",
     hint: "the blue canister; only Leave Planet burns it",
     text: "Rocket fuel and graphite, cooked at a Fuel Works into Super Rocket Fuel. It banks no charge and flies nothing by itself — it opens worlds, and it loads by hand alone. The dwellers made this, then chose not to come back. Whatever they found out there, no fuel ever came home looking for them.",
+  },
+  {
+    id: "charted", title: "Charted",
+    hint: "the course is drawn; the far mark is unwritten",
+    text: "The Nav Core kept its secret the way charts do. The dwellers' route reads Desertis — Silvaris — and one more mark, unnamed, with fuel arithmetic beside it that only closes at a scale this world has not reached yet. The Sentinel is dead, the Fuel Works hums, and the blue canister comes from your own hands now. Phase 2 ends the way the dwellers' log ends: mid-sentence, aimed at a dark they could reach and did not return from.",
   },
 ];
 

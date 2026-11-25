@@ -147,9 +147,8 @@ export interface RunSave {
   cheats?: { immortal?: boolean; keep?: boolean }; // cheat-menu toggles that persist with the world
   chronicle?: string[];                   // lesson ids seen (chronicle.ts)
   codex?: string[];                       // item ids (and "b:<blockId>") first carried/crafted/mined
-  dominion?: { silentCamps?: string[]; raidedRelays?: string[]; campTrust?: string[]; campTrade?: Record<string, number>; chaptersRead?: string[] }; // cut Camp antennas (tx,tz) / Relays that already raided (tx|tz|day) / trusted Keeper camps ("d:tx,tz"/"s:tx,tz") / trades per camp / chapters already heard
+  dominion?: { silentCamps?: string[]; raidedRelays?: string[]; campTrust?: string[]; campTrade?: Record<string, number>; chaptersRead?: string[]; unlocks?: Record<string, true> }; // cut Camp antennas (tx,tz) / Relays that already raided (tx|tz|day) / trusted Keeper camps ("d:tx,tz"/"s:tx,tz") / trades per camp / chapters already heard / locked recipes the world has revealed
   // ---- v4: Phase 2 run state (clean break: v3 worlds' block ids no longer exist) ----
-  unlocks?: string[];                     // recipe unlock flags ("still", "nav" - Chronicle-gated)
   sentinel?: boolean;                     // the Sentinel has fallen
   wrath?: number;                         // machine provocation level: squads escalate with it
   // ---- v3: one record per planet (ADR-0010) ----

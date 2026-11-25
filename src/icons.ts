@@ -978,6 +978,232 @@ function drawArt(id: string, w: number, h: number, color: string, tier = ""): HT
       g.fillStyle = "#d8a05e"; g.fillRect(6, 5, 3, 1); g.fillRect(10, 6, 2, 1);
       return cv;
     }
+
+    // ---- Phase 2: materials, harvests, gear ----
+    case "scrap": {                                                            // grind of jagged shards
+      poly(g, [[2, 6], [6, 3], [8, 7], [5, 10]], "#9aa0a8");
+      poly(g, [[7, 9], [12, 5], [14, 9], [10, 13]], "#7d838c");
+      poly(g, [[3, 11], [7, 12], [6, 15], [2, 14]], "#6a7078");
+      line(g, 6, 3, 8, 7, "#c6ccd4", 1); line(g, 12, 5, 14, 9, "#aab0b8", 1);
+      return cv;
+    }
+    case "machine_part": {                                                     // torn chassis plate with a stub strut
+      poly(g, [[3, 4], [12, 3], [13, 9], [9, 9], [9, 13], [4, 12]], "#6f7684");
+      poly(g, [[3, 4], [12, 3], [12, 5], [5, 6]], "#8b93a2");
+      rect(g, 10, 9, 4, 2, "#4a505c");
+      g.fillStyle = "#c86a3a"; g.fillRect(11, 4, 2, 2);                         // rust burn
+      g.fillStyle = "#5f9fd0"; g.fillRect(5, 8, 2, 1);                          // dead circuit trace
+      return cv;
+    }
+    case "machine_heart": {                                                    // caged light, palms wide
+      poly(g, [[8, 4], [24, 4], [28, 16], [24, 28], [8, 28], [4, 16]], "#565d6a");
+      poly(g, [[8, 4], [24, 4], [26, 12], [6, 12]], "#767e8c");                 // lit cage top
+      for (let i = 0; i < 5; i++) line(g, 8 + i * 4, 6, 6 + i * 4, 26, "#3c424c", 2); // cage bars
+      g.fillStyle = "#8fd0e8"; g.fillRect(12, 12, 8, 8);
+      g.fillStyle = "#c8f0fa"; g.fillRect(14, 14, 4, 4);                        // core glow
+      g.fillStyle = "#e8f8ff"; g.fillRect(15, 13, 1, 1); g.fillRect(13, 15, 1, 1);
+      poly(g, [[8, 4], [24, 4], [24, 6], [8, 6]], "#a9b2c0");
+      g.fillStyle = "#3c424c"; g.fillRect(10, 28, 4, 3); g.fillRect(18, 28, 4, 3); // mounting feet
+      return cv;
+    }
+    case "slug": case "lead_slug": {                                           // cast bullet, nose up
+      const dull = id === "slug" ? "#a8aeb8" : "#848a96";
+      poly(g, [[6, 2], [10, 2], [11, 5], [11, 12], [5, 12], [5, 5]], dull);
+      poly(g, [[6, 2], [10, 2], [10, 4], [6, 4]], "#d0d6de");                   // nose glint
+      rect(g, 5, 10, 6, 2, "#5c616c");                                          // can band
+      g.fillStyle = "#eef2f6"; g.fillRect(7, 3, 1, 3);
+      return cv;
+    }
+    case "charcoal": {                                                         // cinder lump, cracked black
+      poly(g, [[3, 9], [5, 4], [10, 3], [13, 7], [12, 12], [6, 13]], "#2c2a28");
+      poly(g, [[5, 4], [10, 3], [11, 6], [6, 7]], "#4a4642");                   // struck face
+      line(g, 6, 6, 10, 11, "#151412", 1); line(g, 9, 4, 7, 12, "#151412", 1);  // fracture grain
+      g.fillStyle = "#6e6862"; g.fillRect(8, 5, 1, 1); g.fillRect(5, 10, 1, 1);  // silvery cleavage
+      return cv;
+    }
+    case "leadrod": {                                                            // dull grey rod, copperrod's kin
+      line(g, 4, 12, 12, 4, "#9aa0ac", 3);
+      line(g, 4, 12, 12, 4, "#c4cad4", 1);
+      line(g, 5, 13, 13, 5, "#5f646e", 1);
+      g.fillStyle = "#5f646e"; g.fillRect(3, 12, 2, 2); g.fillRect(12, 3, 2, 2);
+      return cv;
+    }
+    case "saltpetre": {                                                        // pale crystal cluster
+      poly(g, [[5, 13], [6, 6], [8, 5], [9, 13]], "#d8d4c2");
+      poly(g, [[9, 13], [10, 7], [12, 6], [13, 13]], "#c2bca8");
+      poly(g, [[7, 8], [8, 2], [10, 4], [9, 9]], "#ece8da");
+      g.fillStyle = "#ffffff"; g.fillRect(8, 3, 1, 2); g.fillRect(6, 7, 1, 1);
+      return cv;
+    }
+    case "flux": {                                                               // fired glassy slab, green-grey
+      poly(g, [[3, 10], [6, 5], [12, 4], [13, 9], [8, 13]], "#b9c4a8");
+      poly(g, [[6, 5], [12, 4], [12, 6], [7, 8]], "#d4dec4");
+      line(g, 5, 8, 11, 11, "#7e8a70", 1);
+      g.fillStyle = "#eef2e4"; g.fillRect(9, 5, 2, 1);
+      return cv;
+    }
+    case "titan_plating": {                                                    // bright rolled sheet
+      poly(g, [[2, 4], [14, 3], [14, 11], [2, 12]], "#aeb6c2");
+      poly(g, [[2, 4], [14, 3], [14, 5], [2, 6]], "#ccd4de");
+      poly(g, [[12, 4], [14, 3], [15, 6], [13, 7]], "#8a929e");                 // curled corner
+      line(g, 2, 9, 14, 8, "#7e8690", 1);
+      g.fillStyle = "#e8eef4"; g.fillRect(4, 4, 3, 1); g.fillRect(9, 4, 2, 1);
+      return cv;
+    }
+    case "basalt_knife": case "bone_knife": case "titanium_knife": case "carbide_knife": { // skinner blade in its tier material
+      poly(g, [[4, 13], [3, 9], [7, 3], [9, 3], [8, 9], [7, 13]], color);
+      poly(g, [[4, 13], [3, 9], [7, 3], [8, 4], [5, 9], [6, 13]], "#f2f4f0");   // honed edge
+      rect(g, 7, 12, 3, 4, "#5c4630"); outline(g, 7, 12, 3, 4, "#2e2418");      // leather grip
+      g.fillStyle = "#8a6f4d"; g.fillRect(7, 13, 3, 1); g.fillRect(7, 15, 3, 1);
+      return cv;
+    }
+    case "bone_harpoon": case "titanium_harpoon": case "carbide_harpoon": {     // long shaft, barbed head
+      rect(g, 8, 12, 2, 19, "#6b5238");                                         // shaft
+      g.fillStyle = "#4a3a28"; g.fillRect(8, 14, 2, 1); g.fillRect(8, 24, 2, 1);
+      poly(g, [[9, 1], [12, 8], [10, 12], [6, 12], [4, 8]], color);             // head
+      poly(g, [[4, 8], [6, 12], [3, 11], [2, 8]], "#c4cad2");                   // barb
+      poly(g, [[6, 12], [10, 12], [9, 15], [7, 15]], "#c4cad2");                // socket
+      g.fillStyle = "#eef2f6"; g.fillRect(8, 3, 1, 4);                          // edge glint
+      return cv;
+    }
+    case "frost_oat": {                                                          // three grain stalks
+      for (const bx of [4, 8, 12]) {
+        line(g, bx, 14, bx - 1, 5, "#b8b078", 1);
+        for (let y = 3; y <= 8; y += 2) { g.fillStyle = "#d8cf9a"; g.fillRect(bx - 2, y, 2, 2); g.fillRect(bx, y + 1, 2, 2); }
+      }
+      g.fillStyle = "#8a8458"; g.fillRect(3, 14, 11, 1);
+      return cv;
+    }
+    case "oat_flour": {                                                          // pouch of pale flour
+      poly(g, [[4, 14], [4, 8], [7, 6], [11, 6], [14, 8], [14, 14]], "#c8bfa0");
+      poly(g, [[6, 6], [7, 3], [11, 3], [12, 6]], "#a89f80");                   // gathered neck
+      g.fillStyle = "#ece4c8"; g.fillRect(6, 8, 6, 4);                          // dusting
+      g.fillStyle = "#f6f0dc"; g.fillRect(7, 9, 2, 2);
+      return cv;
+    }
+    case "seed_silvertimber": {                                                  // silver seed with wings
+      poly(g, [[8, 14], [6, 8], [8, 5], [10, 8]], "#b8b8c0");
+      poly(g, [[8, 5], [5, 2], [7, 6]], "#d8dae2"); poly(g, [[8, 5], [11, 2], [9, 6]], "#d8dae2");
+      g.fillStyle = "#f0f2f6"; g.fillRect(7, 7, 1, 3);
+      return cv;
+    }
+    case "tideback_meat": {                                                    // wide grey-green flank steak
+      poly(g, [[2, 10], [3, 5], [10, 3], [29, 4], [30, 10], [22, 13], [5, 13]], "#7c8a70");
+      poly(g, [[3, 5], [10, 3], [29, 4], [28, 7], [6, 8]], "#98a68c");          // lit top
+      for (let x = 6; x <= 26; x += 4) line(g, x, 5, x - 2, 12, "#5c6a54", 1);  // muscle grain
+      g.fillStyle = "#c2cbb4"; g.fillRect(12, 6, 4, 1); g.fillRect(20, 5, 3, 1); // silver skin
+      return cv;
+    }
+    case "smoked_tideback": {                                                  // dark smoked slab over a rack
+      for (let x = 4; x <= 28; x += 3) g.fillStyle = "#c8d2da", g.fillRect(x, 1, 1, 2); // smoke wisps
+      poly(g, [[2, 10], [3, 5], [10, 3], [29, 4], [30, 10], [22, 13], [5, 13]], "#5c4a38");
+      poly(g, [[3, 5], [10, 3], [29, 4], [28, 7], [6, 8]], "#7e6248");          // crust
+      for (let x = 8; x <= 26; x += 6) line(g, x, 5, x - 2, 12, "#332418", 1);
+      g.fillStyle = "#d8c8a8"; g.fillRect(28, 3, 2, 2);                         // rack peg
+      return cv;
+    }
+    case "oatbread": {                                                           // scored golden loaf
+      poly(g, [[3, 11], [4, 5], [10, 3], [22, 3], [28, 5], [29, 11], [24, 13], [7, 13]], "#c2a878");
+      poly(g, [[4, 5], [10, 3], [22, 3], [28, 5], [24, 6], [8, 6]], "#dcc294"); // crust crown
+      for (const sx of [10, 15, 20] as const) line(g, sx, 4, sx - 3, 8, "#8a7048", 1);                // scores
+      g.fillStyle = "#f0dcae"; g.fillRect(11, 5, 3, 1); g.fillRect(17, 5, 3, 1);
+      poly(g, [[7, 13], [24, 13], [22, 14], [9, 14]], "#7c6240");               // sole shadow
+      return cv;
+    }
+    case "ember_pie": {                                                        // crimped crust, hot filling
+      poly(g, [[2, 11], [4, 5], [28, 5], [30, 11], [26, 13], [5, 13]], "#d8b078");
+      poly(g, [[6, 6], [26, 6], [24, 9], [8, 9]], "#b04828");                   // filling window
+      g.fillStyle = "#e87a3a"; g.fillRect(10, 7, 4, 2); g.fillRect(18, 7, 5, 2); // ember glow
+      g.fillStyle = "#f0c890"; for (let x = 3; x <= 28; x += 4) g.fillRect(x, 4, 2, 2); // crimp nubs
+      for (const [sx] of [[12], [17], [22]] as const) line(g, sx, 5, sx - 1, 9, "#d8b078", 1); // vents
+      return cv;
+    }
+    case "oat_porridge": {                                                     // canister pot, oatmeal swell
+      rect(g, 5, 6, 6, 24, "#7e7668"); outline(g, 5, 6, 6, 24, "#4a4438");
+      rect(g, 6, 7, 4, 9, "#d8cfa4");                                           // porridge fill
+      g.fillStyle = "#efe8c4"; g.fillRect(6, 7, 4, 2);                          // steam-lit top
+      for (let y = 2; y <= 4; y++) g.fillStyle = "#c8d2da", g.fillRect(6 + (y % 2) * 2, y, 1, 2); // steam
+      rect(g, 4, 5, 8, 2, "#9a927e");                                           // rim
+      g.fillStyle = "#5a5244"; g.fillRect(6, 17, 4, 1);                         // spoon slot line
+      return cv;
+    }
+    case "smoked_brushbuck": {                                                   // hung jerky strip
+      g.fillStyle = "#3f3222"; g.fillRect(7, 1, 2, 2);                          // hook
+      poly(g, [[6, 3], [10, 3], [11, 8], [9, 14], [6, 14], [5, 8]], "#7e5232");
+      poly(g, [[6, 3], [10, 3], [10, 5], [6, 5]], "#a06a44");                   // lit shoulder
+      line(g, 7, 6, 8, 13, "#553620", 1);                                       // grain split
+      g.fillStyle = "#c8946a"; g.fillRect(7, 7, 1, 3);
+      return cv;
+    }
+    case "brushbuck_pelt": {                                                   // hung hide, four legs splayed
+      poly(g, [[8, 2], [11, 2], [13, 12], [15, 26], [12, 30], [7, 30], [4, 26], [6, 12]], "#a8845e");
+      poly(g, [[8, 2], [11, 2], [12, 8], [7, 8]], "#c4a276");                   // head end lit
+      poly(g, [[4, 14], [2, 18], [5, 17]], "#8c6c48"); poly(g, [[15, 14], [17, 18], [14, 17]], "#8c6c48"); // leg flaps
+      poly(g, [[7, 30], [12, 30], [11, 31], [8, 31]], "#6e5236");               // tail
+      g.fillStyle = "#d8c4a0"; g.fillRect(8, 10, 4, 3);                         // scraped pale patch
+      return cv;
+    }
+    case "hardhide": {                                                           // stiff folded pelt
+      poly(g, [[2, 11], [5, 4], [13, 5], [14, 12], [9, 14]], "#8c6f52");
+      poly(g, [[5, 4], [13, 5], [12, 7], [6, 7]], "#a8885e");                   // top fold lit
+      line(g, 4, 9, 12, 10, "#5c4630", 1);                                      // crease
+      g.fillStyle = "#c0a884"; g.fillRect(7, 5, 3, 1); g.fillStyle = "#3f3222"; g.fillRect(2, 11, 2, 1);
+      return cv;
+    }
+    case "buckguard": {                                                        // hardhide work harness
+      rect(g, 8, 6, 16, 20, "#8c6f52"); outline(g, 8, 6, 16, 20, "#5c4630");
+      rect(g, 3, 8, 6, 8, "#a8885e"); rect(g, 23, 8, 6, 8, "#a8885e");          // shoulder wings
+      for (const [px, py] of [[10, 9], [20, 9], [10, 22], [20, 22], [15, 15]] as const) g.fillStyle = "#6e5236", g.fillRect(px, py, 2, 2); // rivet studs
+      rect(g, 12, 4, 8, 3, "#6e5236");                                          // neck strap
+      for (let y = 11; y <= 20; y += 3) line(g, 9, y, 23, y, "#6e5236", 1);     // stitched panels
+      g.fillStyle = "#c4a276"; g.fillRect(10, 12, 4, 2);                        // worn shine
+      return cv;
+    }
+    case "snowcloak": {                                                        // pelt cloak, white fringe
+      poly(g, [[6, 4], [26, 4], [28, 24], [24, 28], [8, 28], [4, 24]], "#9aa2ac");
+      poly(g, [[6, 4], [26, 4], [26, 8], [6, 8]], "#c2c8d0");                   // shoulder fur lit
+      for (let x = 5; x <= 26; x += 3) { g.fillStyle = "#7e8690"; g.fillRect(x, 10 + (x % 2), 1, 4); } // pelt seams
+      for (let x = 6; x <= 26; x += 2) g.fillStyle = "#eef2f6", g.fillRect(x, 26, 1, 4);              // frost fringe
+      g.fillStyle = "#e8eef4"; g.fillRect(8, 5, 6, 2); g.fillRect(18, 6, 5, 1); // snow caps on the shoulders
+      rect(g, 13, 2, 6, 3, "#6e7680");                                          // clasp yoke
+      return cv;
+    }
+    case "pear_cordial": {                                                     // sealed bottle, pale pear wine
+      rect(g, 6, 1, 4, 3, "#8a6f4d"); outline(g, 6, 1, 4, 3, "#5c4630");        // waxed cork
+      rect(g, 7, 4, 2, 4, "#b8c8c0");                                           // neck glass
+      poly(g, [[5, 8], [11, 8], [13, 14], [13, 27], [3, 27], [3, 14]], "#c2d4b8");
+      poly(g, [[4, 14], [12, 14], [12, 25], [4, 25]], "#a8c494");               // cordial level
+      g.fillStyle = "#e8f0dc"; g.fillRect(5, 10, 2, 10);                        // glass highlight
+      poly(g, [[10, 2], [13, 4], [10, 6]], "#a8c494");                          // pear stamp on the wax
+      return cv;
+    }
+    case "cargo_sled": {                                                       // 3x3 sled-chest on hover pads
+      rect(g, 4, 8, 24, 14, "#6e6656"); outline(g, 4, 8, 24, 14, "#3f3a2e");
+      for (let x = 6; x <= 26; x += 5) g.fillStyle = "#8a8270", g.fillRect(x, 9, 3, 2); // crate ribs
+      rect(g, 12, 12, 8, 6, "#4a4438"); outline(g, 12, 12, 8, 6, "#2e2a20");    // feed hatch
+      g.fillStyle = "#c8b878"; g.fillRect(14, 14, 4, 2);                        // latched handle
+      for (const cx of [7, 16, 25]) {                                          // three hover rings
+        g.strokeStyle = "#66c8e0"; g.lineWidth = 1;
+        g.beginPath(); g.ellipse(cx, 25, 4, 2, 0, 0, Math.PI * 2); g.stroke();
+        g.fillStyle = "#9ae0f0"; g.fillRect(cx - 1, 24, 2, 2);
+      }
+      return cv;
+    }
+    case "sled_blade": {                                                         // long plow blade on a mount
+      poly(g, [[2, 8], [26, 4], [30, 8], [26, 12], [4, 12]], "#8a929c");
+      poly(g, [[2, 8], [26, 4], [26, 6], [4, 9]], "#b8c0ca");                   // edge bevel
+      rect(g, 10, 10, 10, 4, "#5c5648"); outline(g, 10, 10, 10, 4, "#332f26");  // yoke mount
+      g.fillStyle = "#c8d0d8"; g.fillRect(6, 6, 4, 1); g.fillRect(18, 5, 3, 1); // snow-sheen
+      return cv;
+    }
+    case "sled_drill": {                                                         // auger head in a gimbal
+      for (let y = 4; y <= 13; y++) { g.fillStyle = y % 3 ? "#c0a86a" : "#9a8a5a"; g.fillRect(14 + Math.round(Math.sin(y * 0.9) * 4), y, 3, 1); } // flight spiral
+      poly(g, [[14, 3], [20, 3], [19, 2], [15, 2]], "#d8c890");                 // crown
+      rect(g, 4, 2, 8, 5, "#5c616c"); outline(g, 4, 2, 8, 5, "#3a3e46");        // gearbox
+      rect(g, 2, 7, 24, 4, "#4a505c");                                          // gimbal bar
+      g.fillStyle = "#8fd0e8"; g.fillRect(6, 3, 3, 1);                          // drive glow
+      return cv;
+    }
   }
   return null;
 }

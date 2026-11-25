@@ -16,6 +16,7 @@ import {
   INSCRIPTION, DOCK_PAD, METAL_PLATING, GLASS, DOOR_CLOSED, DOOR_UPPER,
   BED, BED_EXT, CHEST, LAMP, CAMPFIRE,
   ALABASTER, OIL, OIL_SANDS, LEAD_ORE, SALTPETRE_ORE, CAMP_ANTENNA,
+  POWER_CONDUIT, POWER_POLE, SHOCK_COIL,
   CS, CH,
 } from "./blocks";
 import { fbm2, ridge2, value2, hash2, Rng } from "./noise";
@@ -553,6 +554,150 @@ export const relayNodeAt = (tx: number, tz: number, seed: number): { x: number; 
     ? (() => { const c = relayCenter(tx, tz, seed); return { x: c.x, z: c.z, y: Math.max(Math.round(heightAt(c.x, c.z, seed)), SIL_SEA + 1) }; })()
     : null;
 
+/* ── The Volcano ────────────────────────────────────────────────────────────
+ * One Volcano per world: the Scorch Belt's hot point and the Sentinel's
+ * dungeon. Its centre is not a lattice point — it is a pure function of the
+ * seed (the hottest scorch point in a ring around arrival, memoized). Above
+ * ground: a basalt cone (radius 14, rising ~6 over the field) with an open
+ * 3×3 throat. Below: three rooms stacked on the shaft, each joined to the
+ * next by a step-well — a 5×5 shaft with one BASALT step per level walking
+ * the wall-ring in a spiral, so the way down is walkable back up, and a
+ * POWER_POLE chain hangs down the well's centre for the Arena's circuit.
+ *
+ *   Hall     21×17 × 5 — its walls hold three POWER_CONDUIT columns: the
+ *                        Sentinel's shield feed. Cut all three, it is mortal.
+ *   Gallery  15×15 × 4 — the cooling gallery. Two basalt plugs seal a 2×2
+ *                        WATER Source against each plug behind the north
+ *                        wall; break a plug and the Gallery floods.
+ *   Arena    21×21 × 7  — the Sentinel's floor: two prebuilt Shock Coil
+ *                        pylons stand ready, powered the moment a Grid
+ *                        closes onto the well's Pole chain.
+ *
+ * The rooms' basalt shell is painted over the column pass, so caves never
+ * eat the dungeon. Chunk painting claims last: the Volcano outranks every
+ * lattice site (and its candidate search avoids them anyway). */
+
+export const VOLC_R = 14;
+export interface Volcano {
+  x: number; z: number;   // shaft centre
+  f: number;              // surface floor at the throat
+  hallY: number; gallY: number; arenaY: number;
+  conduits: [number, number, number][]; // the three wall cells to cut
+  seals: [number, number, number][];    // the two Gallery plugs
+  coils: [number, number, number][];    // prebuilt Shock Coil cells
+}
+
+const volcCache = new Map<number, Volcano>();
+
+const clearOfLattice = (x: number, z: number, seed: number, L: number, R: number,
+  atSeed: (tx: number, tz: number, s: number) => boolean,
+  center: (tx: number, tz: number, s: number) => { x: number; z: number }): boolean => {
+  for (let tx = Math.floor((x - R) / L); tx <= Math.floor((x + R) / L); tx++)
+    for (let tz = Math.floor((z - R) / L); tz <= Math.floor((z + R) / L); tz++)
+      if (atSeed(tx, tz, seed)) {
+        const c = center(tx, tz, seed);
+        if (Math.hypot(c.x - x, c.z - z) < R) return false;
+      }
+  return true;
+};
+
+export function volcano(seed: number): Volcano {
+  const hit = volcCache.get(seed);
+  if (hit) return hit;
+  let bx = 0, bz = 0, bs = -1, ax = 0, az = 0, as = -1;
+  for (let gx = -14; gx <= 14; gx++) for (let gz = -14; gz <= 14; gz++) {
+    const x = gx * 64 + Math.floor(hash2(gx, gz, seed + 977) * 48) - 24;
+    const z = gz * 64 + Math.floor(hash2(gx, gz, seed + 991) * 48) - 24;
+    const d = Math.hypot(x, z);
+    if (d < 460 || d > 920) continue;
+    if (!clearOfLattice(x, z, seed, SETTLE_L, SETTLE_R + VOLC_R, settleAtSeed, settleCenter)) continue;
+    if (!clearOfLattice(x, z, seed, TRADER_L, TRADER_R + VOLC_R, traderAtSeed, traderCenter)) continue;
+    if (!clearOfLattice(x, z, seed, CAMP_L, CAMP_R + VOLC_R, campAtSeed, campCenter)) continue;
+    if (!clearOfLattice(x, z, seed, RELAY_L, RELAY_R + VOLC_R, relayAtSeed, relayCenter)) continue;
+    const s = scorchField(x, z, seed);
+    if (s > as) { as = s; ax = x; az = z; }
+    if (s > 0.78 && s > bs) { bs = s; bx = x; bz = z; }
+  }
+  if (bs < 0) { bx = ax; bz = az; } // no strong scorch in the ring: hottest point anyway
+  const x = Math.round(bx), z = Math.round(bz);
+  const f = Math.max(42, Math.round(heightAt(x, z, seed)));
+  const hallY = f - 12, gallY = hallY - 9, arenaY = gallY - 9;
+  const v: Volcano = {
+    x, z, f, hallY, gallY, arenaY,
+    conduits: [[x - 11, hallY + 2, z], [x + 11, hallY + 2, z], [x, hallY + 2, z - 9]],
+    seals: [[x - 5, gallY, z + 8], [x + 5, gallY, z + 8]],
+    coils: [[x - 6, arenaY, z - 6], [x + 6, arenaY, z - 6]],
+  };
+  volcCache.set(seed, v);
+  return v;
+}
+
+function paintVolcano(set: (x: number, y: number, z: number, id: number) => void, v: Volcano, seed: number) {
+  const { x, z, f, hallY, gallY, arenaY } = v;
+  // the cone: basalt from the ground up to a rim that slopes down to the field
+  for (let dx = -VOLC_R; dx <= VOLC_R; dx++) for (let dz = -VOLC_R; dz <= VOLC_R; dz++) {
+    const d = Math.hypot(dx, dz);
+    if (d > VOLC_R) continue;
+    const wx = x + dx, wz = z + dz;
+    const h = Math.round(heightAt(wx, wz, seed));
+    const lift = Math.max(0, Math.round(6 * (1 - d / (VOLC_R + 1))));
+    for (let y = h + 1; y <= f + lift; y++) set(wx, y, wz, BASALT);
+    for (let y = Math.max(f + lift + 1, h + 1); y < CH; y++) set(wx, y, wz, AIR);
+  }
+  // rooms first (shell seals them from caves), then the carves that open them
+  const room = (y0: number, hx: number, hz: number, hh: number) => {
+    for (let dx = -hx - 1; dx <= hx + 1; dx++) for (let dz = -hz - 1; dz <= hz + 1; dz++)
+      for (let y = y0 - 1; y <= y0 + hh; y++) set(x + dx, y, z + dz, BASALT);
+    for (let dx = -hx; dx <= hx; dx++) for (let dz = -hz; dz <= hz; dz++)
+      for (let y = y0; y < y0 + hh; y++) set(x + dx, y, z + dz, AIR);
+  };
+  room(hallY, 10, 8, 5);
+  room(gallY, 7, 7, 4);
+  room(arenaY, 10, 10, 7);
+  // the throat: crater bowl down to f, then the 3×3 shaft to the Hall floor
+  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++)
+    for (let y = f; y <= f + 6; y++) if (Math.hypot(dx, dz) <= 2.5) set(x + dx, y, z + dz, AIR);
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++)
+    for (let y = hallY; y <= f + 6; y++) set(x + dx, y, z + dz, AIR);
+  // step-wells: 5×5 shafts, one step per level spiralling the wall ring,
+  // with the Pole chain hanging down the middle (Pole reach 10 covers the
+  // Gallery; the Arena coils sit within a room of the lowest Pole)
+  const ring: [number, number][] = [];
+  for (let dx = -2; dx <= 2; dx++) ring.push([dx, 2]);
+  for (let dz = 1; dz >= -2; dz--) ring.push([2, dz]);
+  for (let dx = 1; dx >= -2; dx--) ring.push([dx, -2]);
+  for (let dz = -1; dz <= 1; dz++) ring.push([-2, dz]);
+  const well = (yFrom: number, yTo: number) => {
+    // shaft between the two rooms' floor planes: blocks yTo..yFrom-1 open,
+    // both rooms' floor blocks stay — the opening is a 5×5 hole in the
+    // upper floor, rimmed by the spiral: one step block per level walking
+    // the wall ring, so feet drop exactly one rise per stride
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++)
+      for (let y = yTo; y <= yFrom - 1; y++) set(x + dx, y, z + dz, AIR);
+    let i = 0;
+    for (let y = yTo; y <= yFrom - 1; y++) { set(x + ring[i % 16][0], y, z + ring[i % 16][1], BASALT); i++; }
+    for (let y = yFrom - 3; y >= yTo + 2; y -= 6) set(x, y, z, POWER_POLE);
+  };
+  well(hallY, gallY);
+  well(gallY, arenaY);
+  // conduits: three emissive columns set into the Hall walls
+  for (const [cx0, cy0, cz0] of [[x - 11, hallY + 1, z], [x + 11, hallY + 1, z], [x, hallY + 1, z - 9]] as const)
+    for (let y = cy0; y < cy0 + 3; y++) set(cx0, y, cz0, POWER_CONDUIT);
+  // plugs + coolant: a 2×2 WATER Source column behind each Gallery plug
+  for (const sx of [x - 5, x + 5]) {
+    set(sx, gallY, z + 8, BASALT); set(sx, gallY + 1, z + 8, BASALT);
+    for (let dz = 9; dz <= 10; dz++) for (let y = gallY - 1; y <= gallY + 1; y++)
+      set(sx, y, z + dz, y >= gallY ? WATER : BASALT);
+  }
+  // the Arena's pylons: prebuilt Shock Coils, inert until a Grid reaches them
+  for (const [kx, ky, kz] of v.coils) set(kx, ky, kz, SHOCK_COIL);
+  // light and the Sentinel's stores
+  for (const [lx, ly, lz] of [[x - 10, hallY, z - 8], [x + 10, hallY, z + 8],
+    [x - 7, gallY, z - 7], [x + 7, gallY, z + 7],
+    [x - 10, arenaY, z + 10], [x + 10, arenaY, z - 10]] as const) set(lx, ly, lz, LAMP);
+  for (const [cx0, cy0, cz0] of [[x - 9, hallY, z + 7], [x + 9, hallY, z + 7]] as const) set(cx0, cy0, cz0, CHEST);
+}
+
 /* ── Oil seeps ───────────────────────────────────────────────────────────────
  * The desert's black liquid, on its own lattice (coprime with both the
  * settlement and the Trader lattices, and with its own salts): a bowl of Oil
@@ -882,4 +1027,10 @@ export function genSilvarisChunk(args: SilvarisChunkArgs): void {
         cz * CS <= c.z + RELAY_R && cz * CS + CS - 1 >= c.z - RELAY_R)
       paintRelay(safeSet, c, seed);
   }
+  // The Volcano last: one per world, and its cone outranks every lattice
+  // claim (the candidate search already keeps it clear of their sites).
+  const V = volcano(seed);
+  if (cx * CS <= V.x + VOLC_R && cx * CS + CS - 1 >= V.x - VOLC_R &&
+      cz * CS <= V.z + VOLC_R && cz * CS + CS - 1 >= V.z - VOLC_R)
+    paintVolcano(safeSet, V, seed);
 }

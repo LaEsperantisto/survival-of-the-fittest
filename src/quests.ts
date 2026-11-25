@@ -3,7 +3,7 @@
 
 export interface QuestDef {
   id: string;
-  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "bread" | "dish" | "wreck" | "core" | "yoke" | "grid" | "factory" | "thruster" | "core_set" | "ship_grid" | "refine" | "liftoff" | "leave" | "arrive" | "dock" | "settle" | "electric" | "foundry_set" | "core2" | "superfuel" | "nomad" | "camp";
+  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "bread" | "dish" | "wreck" | "core" | "yoke" | "grid" | "factory" | "thruster" | "core_set" | "ship_grid" | "refine" | "liftoff" | "leave" | "arrive" | "dock" | "settle" | "electric" | "foundry_set" | "superfuel" | "nomad" | "camp" | "belly" | "bearing" | "cold" | "oilworks" | "sled" | "navcore" | "dungeon" | "sentinel" | "charted";
   title: string;
   desc: string;
   goal: number;
@@ -68,6 +68,14 @@ export const QUESTS: QuestDef[] = [
     reward: { item: "metal", n: 4 },
   },
   {
+    id: "belly", kind: "belly", title: "Belly of the Wreck",
+    desc: "The Second Wreck was cut open for its heart. Stand again inside your own wreck's hull and read the same cut where its drive was taken.", goal: 1,
+  },
+  {
+    id: "bearing", kind: "bearing", title: "Scorched Bearing",
+    desc: "The sand beyond the Second Wreck wears a scar — a trench a keel dragged for a kilometer. Walk the far end of the Gouge Field.", goal: 1,
+  },
+  {
     id: "frame", kind: "yoke", title: "Take the Yoke",
     desc: "The wreck's Ship Frame is already declared — Corners glint at its eight vertices. Craft Flight Controls at a Crafting Bench and set the yoke inside the Frame, aboard the Ship.", goal: 1,
   },
@@ -122,21 +130,65 @@ export const QUESTS: QuestDef[] = [
     desc: "The dwellers built here to stay: alabaster walls, metal plating, beds made, Chests stocked. Reach a Settlement and open a Chest — the shells out here are houses.", goal: 1,
   },
   {
-    id: "clean_currents", kind: "electric", title: "Clean Currents",
-    desc: "Wire an Electric Bench to the Grid and craft your first thing on it. This world's machines all start there.", goal: 1,
+    id: "cold_tools", kind: "cold", title: "Cold Tools",
+    desc: "The wreck's metal is done; this world hands out its own edges. Knap a Basalt tool at a Stone Workbench.", goal: 1,
+  },
+  {
+    id: "nomads_debt", kind: "nomad", title: "Nomad's Debt",
+    desc: "The Nomads carry what the Settlements forgot. Earn a camp's trust — three honest barters, or a deed the trade roads repeat — and hear a Keeper's chapter.", goal: 1,
+  },
+  {
+    id: "cut_antenna", kind: "camp", title: "Cut the Antenna",
+    desc: "The Machine Camps hear through their antennas. Bring one down: the patrols stand down for good — and a Reclaimer comes to answer it.", goal: 1,
+  },
+  {
+    id: "power_silence", kind: "electric", title: "Power the Silence",
+    desc: "The Wiring Bench is this world's Electric Bench — Panels, Poles and Batteries on Lead and Glass. Wire one to the Grid and craft your first thing on it.", goal: 1,
+  },
+  {
+    id: "sled_yard", kind: "sled", title: "The Sled Yard",
+    desc: "The distances out here eat walkers. Craft a Hover Sled at the Wiring Bench — it rides the ground, and it charges on a pad beside the Ship.", goal: 1,
   },
   {
     id: "alloys_engines", kind: "foundry_set", title: "Alloys & Engines",
     desc: "The alloy chain starts in your own yard: stand a Foundry on the ground and fire it up. From here, ore feeds you — no more wreck.", goal: 1,
   },
   {
-    id: "heart_hire", kind: "core2", title: "Heart for Hire",
-    desc: "No more wrecks to strip: Engine Cores come off the Assembly Bench now. Craft one — a heart you can replace yourself.", goal: 1,
+    id: "long_thirst", kind: "oilworks", title: "The Long Thirst",
+    desc: "This world bleeds black oil too. Work the Oilworks chain until a Fuel Works cooks your first Rocket Fuel canister.", goal: 1,
+  },
+  {
+    id: "dust_salt", kind: "nomad", title: "Dust and Salt",
+    desc: "A second camp trusts you now. Hear its Keeper — the story is kept in pieces, and pieces argue with each other.", goal: 1,
+  },
+  {
+    id: "second_reclaimer", kind: "camp", title: "Second Reclaimer",
+    desc: "Cut the second antenna. Whatever the camps call the one who silences them, the name is spreading.", goal: 1,
+  },
+  {
+    id: "scattered_story", kind: "nomad", title: "The Scattered Story",
+    desc: "Two more chapters, from Keepers who kept them apart: what dragged the wrecks out of the sky, and what still hunts the thing that ran.", goal: 2,
+  },
+  {
+    id: "a_chart", kind: "navcore", title: "A Chart Before the Dark",
+    desc: "Before the dark country: a Nav Core — the Ship's chartering brain, the only thing that reads a star chart. The recipe surfaces once the scattered story is told.", goal: 1,
+  },
+  {
+    id: "into_scorch", kind: "dungeon", title: "Into the Scorch",
+    desc: "The volcano's throat is the way down: enter the shaft in the Scorch Belt. Conduits hum in the dark, and something old waits at the bottom.", goal: 1,
+  },
+  {
+    id: "kill_sentinel", kind: "sentinel", title: "Kill the Sentinel",
+    desc: "The thing that dragged the wrecks across the sky stands at the bottom of the volcano. Cut its conduits, flood its cooling, and end it in the Arena.", goal: 1,
   },
   {
     id: "fuel_gods", kind: "superfuel", title: "Fuel of the Gods",
-    desc: "Cook Rocket Fuel and Graphite Ore at a Fuel Works into Super Rocket Fuel. The canister that opens worlds now comes from your own hands.", goal: 1,
-    completionText: "Phase 2 done: the Ship, the Settlements, and fuel you make yourself. The stars are Phase 3's.",
+    desc: "The Sentinel's death-gift is its recipe: cook Rocket Fuel and Graphite Ore at a Fuel Still into Super Rocket Fuel. The canister that opens worlds now comes from your own hands.", goal: 1,
+  },
+  {
+    id: "charted", kind: "charted", title: "Charted",
+    desc: "Super fuel in the ports, Nav Core aboard: set the Ship on a charted course and burn for the stars.", goal: 1,
+    completionText: "Phase 2 done: the Ship, the Settlements, the scattered story told, and fuel you make yourself. The other worlds are Phase 3's.",
   },
 ];
 

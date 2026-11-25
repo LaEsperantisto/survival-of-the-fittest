@@ -1,5 +1,5 @@
 import {
-  AIR, SAND, SANDSTONE, ROCK, GRAVEL, SALT, DEADWOOD, DIRT, HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL_PLATING, BEACON, CAMPFIRE,
+  AIR, SAND, SANDSTONE, ROCK, GRAVEL, SALT, DEADWOOD, DIRT, HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL_PLATING, BEACON, CAMPFIRE, GLASS,
   WATER, ADOBE, INSGLASS, ENGINECORE, CS, CH, REGULATOR, REGULATOR_HUSK, CACTUS, CACTUS_FRUIT,
   DOOR_INNER, DOOR_INNER_UPPER, CHEST, BED, BED_EXT, MELON_1, MELON_2, WHEAT_1, WHEAT_2, FARMLAND, GRASS, WOOD, LEAVES, SUGARCANE_1, SUGARCANE_2,
   APPLE_FRUIT,
@@ -69,6 +69,9 @@ export const CANISTER_L = 150;
 
 export class Structures {
   secondShip = { x: 0, z: 0 };
+  /** The far end of the gouge field: the trench the Second Wreck was dragged
+   *  in along, ending ~200 m out on the same bearing it came from. */
+  gougeFar = { x: 0, z: 0 };
   /** A guaranteed Town at a second-wreck's distance, so the goal chain can't dead-end. */
   homeTown: Town = { x: 0, z: 0 };
 
@@ -79,6 +82,8 @@ export class Structures {
     const ta = Math.atan2(this.secondShip.z, this.secondShip.x) + 0.9;
     const td = Math.hypot(this.secondShip.x, this.secondShip.z) * r.range(0.8, 1.15);
     this.homeTown = { x: Math.round(Math.cos(ta) * td), z: Math.round(Math.sin(ta) * td) };
+    const d2 = r.range(180, 260);
+    this.gougeFar = { x: Math.round(Math.cos(a) * (d + d2)), z: Math.round(Math.sin(a) * (d + d2)) };
   }
 
   /** Is there an oasis on lattice cell (ix,iz)? Never atop the crash, never
@@ -788,7 +793,7 @@ function paintShip(set: (x: number, y: number, z: number, id: number) => void, h
   for (const cx of [-6, 4]) for (const cy of [30, 35]) for (const cz of [-11, 11]) set(cx, cy, cz, FRAME_CORNER);
 }
 
-function paintSecondShip(set: (x: number, y: number, z: number, id: number) => void, t: { x: number; z: number }, seed: number) {
+function paintSecondShip(set: (x: number, y: number, z: number, id: number) => void, t: { x: number; z: number }, seed: number, far: { x: number; z: number }) {
   const r = new Rng(SP + 77);
   // a stub of the hull still stands where she hit: a 5x5 shell outline,
   // three tall, rounded at the corner posts like her sister wreck — but this
@@ -808,6 +813,24 @@ function paintSecondShip(set: (x: number, y: number, z: number, id: number) => v
   }
   // the Engine Core sits at the exact center of the debris field, on the ground
   set(t.x, Math.round(heightAt(seed, t.x, t.z)) + 1, t.z, ENGINECORE);
+  // the gouge field: a dragged-keel trench running out from the shell toward
+  // gougeFar — 5 wide, a block deep (two under the center line), the floor
+  // partly plowed to glass, wreck debris scattered along the lips
+  const dx = far.x - t.x, dz = far.z - t.z, len = Math.hypot(dx, dz) || 1;
+  const ux = dx / len, uz = dz / len, px = -uz, pz = ux;
+  const g = new Rng(SP + 91);
+  for (let s = 3; s < len - 2; s += 1) {
+    for (let w = -2; w <= 2; w++) {
+      const cx = Math.round(t.x + ux * s + px * w), cz = Math.round(t.z + uz * s + pz * w);
+      const h = Math.round(heightAt(seed, cx, cz));
+      set(cx, h, cz, AIR);
+      if (Math.abs(w) <= 1) {
+        set(cx, h - 1, cz, g.next() < 0.25 ? GLASS : AIR);
+        if (g.next() < 0.05) set(cx, h - 2, cz, AIR);
+      }
+      if (Math.abs(w) === 2 && g.next() < 0.06) set(cx, h + 1, cz, g.next() < 0.6 ? HULL : METAL_PLATING);
+    }
+  }
 }
 
 /** The full mature Living Tree rooted at (x, y, z) — (x, y, z) is the FIRST
@@ -1665,8 +1688,11 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number, w
     if (cx * CS <= mo.x + 24 && cx * CS + CS - 1 >= mo.x - 24 && cz * CS <= mo.z + 24 && cz * CS + CS - 1 >= mo.z - 24)
       paintCaveMouth(setW, mo, seed);
   }
-  if (Math.abs(cx * CS + 8 - st.secondShip.x) < 12 && Math.abs(cz * CS + 8 - st.secondShip.z) < 12)
-    paintSecondShip(setW, st.secondShip, seed);
+  // the wreck shell (±6) and the whole gouge trench run through this chunk?
+  const gsx0 = Math.min(st.secondShip.x, st.gougeFar.x) - 6, gsx1 = Math.max(st.secondShip.x, st.gougeFar.x) + 6;
+  const gsz0 = Math.min(st.secondShip.z, st.gougeFar.z) - 6, gsz1 = Math.max(st.secondShip.z, st.gougeFar.z) + 6;
+  if (cx * CS <= gsx1 && cx * CS + CS - 1 >= gsx0 && cz * CS <= gsz1 && cz * CS + CS - 1 >= gsz0)
+    paintSecondShip(setW, st.secondShip, seed, st.gougeFar);
 
   return c;
 }

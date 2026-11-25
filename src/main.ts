@@ -1,4 +1,4 @@
-import { Game } from "./game";
+import { Game, STATION_MODES, STATION_TITLES } from "./game";
 import { BLOCKS, isWater, type BlockDef } from "./blocks";
 import { Audio } from "./audio";
 import { ITEMS, BLOCK_TO_ITEM } from "./items";
@@ -388,8 +388,11 @@ function renderCatalog() {
     const rmatch = (out: string, ins: Record<string, number>) =>
       !rq || ITEMS[out].name.toLowerCase().includes(rq) ||
       Object.keys(ins).some((id) => ITEMS[id].name.toLowerCase().includes(rq));
-    const groups: [string, typeof RECIPES][] = [["By hand", []], ["At a Crafting Bench", []], ["At an Armoury", []]];
-    for (const r of RECIPES) if (rmatch(r.out, r.needs)) groups[r.station === null ? 0 : r.station === "armory" ? 2 : 1][1].push(r);
+    const groups: [string, typeof RECIPES][] = [["By hand", []], ...STATION_MODES.map((m) => [STATION_TITLES[m], []] as [string, typeof RECIPES])];
+    for (const r of RECIPES) {
+      if (r.locked && !game?.unlocks[r.out]) continue; // the world reveals these later
+      if (rmatch(r.out, r.needs)) groups[r.station === null ? 0 : 1 + STATION_MODES.indexOf(r.station)][1].push(r);
+    }
     for (const [title, list] of groups) {
       if (!list.length) continue;
       const h = document.createElement("div");

@@ -7,10 +7,12 @@ import { Audio } from "./audio";
 import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, sackUnits, sackFree, type ItemDef, type Slot } from "./items";
 import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_GROUP, ALAB_GATE, ALAB_GATE_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, CHEST_INTERFACE, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, TUNDROOT_1, TUNDROOT_2, EMBERBUSH_1, EMBERBUSH_2, EMBER_FRUIT, OAT_1, OAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, INSERTER, PLANTER, HARVESTER, REFINERY, POLE_LINK, DEVICE_REACH, isPowerBlock, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable,
   COOKPOT, WATER_CAGE, WATER_CAGE_FULL, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING, APPLE_FRUIT,
-  FRAME_CORNER, FLIGHT_CONTROLS, OIL, isFluid,
+  FRAME_CORNER, FLIGHT_CONTROLS, NAV_CORE, OIL, isFluid,
   HULL, CURVED_HULL, INSCRIPTION, DOCK_PAD, GLASS, CAMP_ANTENNA, HOVER_SLED, SNOW, SPIKE_BARRICADE,
   ALARM_CHIME, GUN_TURRET, SHOCK_COIL,
-  ELECTRIC_BENCH, ASSEMBLY_BENCH, FUEL_WORKS, FOUNDRY } from "./blocks";
+  ELECTRIC_BENCH, ASSEMBLY_BENCH, FUEL_WORKS, FOUNDRY,
+  RECYCLER, SIL_RECYCLER, HEARTH, WORKBENCH, TANNERY, CAULDRON, OIL_WORKS, WIRING_BENCH, FUEL_STILL,
+  BASALT, POWER_CONDUIT } from "./blocks";
 import { Ship, SHIP, FWD_DIR, massOf, emptyPort, migratePorts, rocketCharges, type Port, type ShipHit } from "./ship";
 import { computeFrame, type Box3, type FrameResult } from "./shipframe";
 import { meshShipCells } from "./renderer";
@@ -24,7 +26,7 @@ const LEAVE_BLACK = new THREE.Color(0x04050a);
 const PHASE2_LESSONS: Record<string, true> = { leave: true, arrive: true, dock: true, settle: true, superfuel: true };
 /** where a craft happens: every station kind in the recipe table */
 type StationMode = NonNullable<Recipe["station"]>;
-const STATION_TITLES: Record<StationMode, string> = {
+export const STATION_TITLES: Record<StationMode, string> = {
   bench: "Crafting Bench",
   armory: "Armoury — gear that guards the body",
   refinery: "Refinery — oil and coal, cooked into flight",
@@ -40,6 +42,14 @@ const STATION_TITLES: Record<StationMode, string> = {
   oilworks: "Oilworks — the black blood of this world, worked",
   still: "Still — sap and stalks distilled",
 };
+// every crafting station block opens its mode's panel with one shape
+export const STATION_MODES: StationMode[] = ["bench", "armory", "refinery", "electric", "foundry", "assembly", "fuel", "hearth", "workbench", "wiring", "tannery", "cauldron", "oilworks", "still"];
+const CRAFT_STATIONS: ReadonlyMap<number, StationMode> = new Map<number, StationMode>([
+  [BENCH, "bench"], [BENCH_EXT, "bench"], [ARMORY, "armory"], [REFINERY, "refinery"],
+  [ELECTRIC_BENCH, "electric"], [FOUNDRY, "foundry"], [ASSEMBLY_BENCH, "assembly"], [FUEL_WORKS, "fuel"],
+  [HEARTH, "hearth"], [WORKBENCH, "workbench"], [WIRING_BENCH, "wiring"], [TANNERY, "tannery"],
+  [CAULDRON, "cauldron"], [OIL_WORKS, "oilworks"], [FUEL_STILL, "still"],
+]);
 /** the HUD's words when each storm regime arrives and leaves */
 const STORM_TOASTS: Record<StormKind, { in: string; out: string }> = {
   sand: { in: "A Sandstorm rolls in — get out of the open.", out: "The Sandstorm passes." },
@@ -54,10 +64,11 @@ import {
   biomeAt as silBiomeAt, heightAt as silHeightAt, settleAt as silSettleAt, traderAt as silTraderAt,
   campNodeAt, relayNodeAt, traderCellAt, traderCellCenter, nearestTraderCamp,
   getSilvarisLoot, getSilvarisTraderLoot,
+  volcano, VOLC_R, type Volcano,
 } from "./silvaris";
 import { offersFor, SILVARIS_GOODS, type Offer } from "./trades";
 import { keeperName, keeperChapter } from "./keepers";
-import { RECIPES, SMELT, canCraft, doCraft, FIRE_FUEL, GEN_FUEL, POT_RECIPES, potHas, potConsume, type PotRecipe, type Recipe } from "./crafting";
+import { RECIPES, SMELT, canCraft, doCraft, FIRE_FUEL, GEN_FUEL, POT_RECIPES, RECYCLES, potHas, potConsume, type PotRecipe, type Recipe } from "./crafting";
 import { QUESTS, currentQuest, loadQuestState, questEvent, recordDeed, reconcile, type QuestDef, type QuestState } from "./quests";
 import { LESSON_BY_ID, LESSONS, INSCRIPTION_TEXTS, loadIdSet } from "./chronicle";
 import { Tutorial, INTRO_CINE, type CineSeg } from "./tutorial";
@@ -206,6 +217,7 @@ export class Game {
   private campTrust = new Set<string>();           // camps whose Keeper's trust is earned ("d:tx,tz"/"s:tx,tz")
   private campTrade: Record<string, number> = {};  // barters completed per camp — the desert's road to trust
   private chaptersRead = new Set<string>();        // Keeper chapters already heard, by camp key
+  unlocks: Record<string, true> = {};             // locked recipes the world has revealed, by output id
   private keeperAt = new Map<string, Mob>();       // the standing Keeper mobs, by camp key
   private story: { key: string; title: string; who: string; cards: string[]; card: number } | null = null;
   private stormToast = false;
@@ -302,7 +314,11 @@ export class Game {
   private silentCamps = new Set<string>();          // Camp antennas cut: patrols stay stood down (tx,tz)
   private raidedRelays = new Set<string>();         // Relay nodes that already answered this day's energize beat (tx|tz|day)
   private wasFrac = -1;                             // last frame's fraction of day, for the dawn edge
-  private wrath = 0;                                // machine provocation: every squad the Dominion sends escalates the next
+  private wrath = 0; // machine provocation: every squad the Dominion sends escalates the next
+  private volc: Volcano | null = null; // the Volcano of the current Silvaris ground
+  private sentinelFelled = false;      // the Sentinel has fallen (save: v4 `sentinel`)
+  private sentinelWaveT = 0;           // Arena guard countdown while the Sentinel stands
+  private shieldToastT = 0;           // cooldown on the shield-refusal hint
   private powerDirty = false;                       // a streamed chunk added gen-made power blocks
   private grids: { panel: string | null; panels: number; cells: Map<string, number>;
                    tripped: boolean; powered: boolean }[] = [];
@@ -356,6 +372,9 @@ export class Game {
   private openCore: BlockAt | null = null;        // the Core whose port panel is open
   private leaveShip: Ship | null = null;          // the Ship committed in the Leave Planet panel
   leaving: { t: number; sh: Ship } | null = null; // the Leave Planet climb cinematic, ~6 s
+  private chartedRun = false;                     // the same climb, run as the Phase-2 finale
+  private chartedRunShown = false;                // the chart overlay has opened
+  private chartHome = 0;                          // the deck's altitude when the vow was made
   shipGridDone = false;                           // Panel + Battery + Core once on one Grid
 
   constructor(public meta: WorldMeta, run: RunSave | null, parent: HTMLElement, private settings: Settings, private audio: Audio) {
@@ -378,6 +397,7 @@ export class Game {
       ]);
     // the fauna follows the planet from the first chunk in
     setFauna(this.planet, this.world.seed);
+    this.volc = this.planet === "silvaris" ? volcano(this.world.seed) : null;
     // the world sees grounded AND airborne Ships through this one hook:
     // a claimed cell reads as the Ship's block, never as the chunk under it
     this.world.cellProvider = (x, y, z) => {
@@ -871,7 +891,9 @@ export class Game {
     this.campTrust = new Set(run.dominion?.campTrust ?? []);
     this.campTrade = { ...(run.dominion?.campTrade ?? {}) };
     this.chaptersRead = new Set(run.dominion?.chaptersRead ?? []);
+    this.unlocks = { ...(run.dominion?.unlocks ?? {}) };
     this.wrath = run.wrath ?? 0;
+    this.sentinelFelled = !!run.sentinel;
     if (run.lastSleep) this.lastSleep = run.lastSleep;
     this.won = !!run.won;
     // ---- the ground under them ----
@@ -1097,6 +1119,8 @@ export class Game {
     this.shipDirty.clear();
     // the new planet's fauna from the first top-up on
     setFauna(planet, this.world.seed);
+    this.volc = planet === "silvaris" ? volcano(this.world.seed) : null;
+    this.sentinelWaveT = 0;
     this.renderer.setPlanetPalette(planet);
     this.survival.silvaris = planet === "silvaris";
     const pcx = Math.floor(this.player.pos.x / CS), pcz = Math.floor(this.player.pos.z / CS);
@@ -1157,8 +1181,9 @@ export class Game {
       cheats: { immortal: this.cheatInvincible, keep: this.keepInventory },
       chronicle: [...this.chronicle],
       codex: [...this.codex],
-      dominion: { silentCamps: [...this.silentCamps], raidedRelays: [...this.raidedRelays], campTrust: [...this.campTrust], campTrade: this.campTrade, chaptersRead: [...this.chaptersRead] },
+      dominion: { silentCamps: [...this.silentCamps], raidedRelays: [...this.raidedRelays], campTrust: [...this.campTrust], campTrade: this.campTrade, chaptersRead: [...this.chaptersRead], unlocks: this.unlocks },
       wrath: this.wrath || undefined,
+      sentinel: this.sentinelFelled || undefined,
       planet: this.planet,
       worlds: { desertis, ...(this.planets.silvaris ? { silvaris: this.planets.silvaris } : {}) },
     };
@@ -1317,7 +1342,16 @@ export class Game {
     if (done.reward) this.crashPod(done.reward.item, done.reward.n);
     this.audio.savePing();
     if (done.kind === "liftoff") hud.toast("Power runs through the wreck. Four dead engines left — find them a way to burn.");
+    // the scattered story hands over the charting brain: its recipe joins the Bench
+    if (done.id === "scattered_story") this.unlockRecipe("nav_core");
     this.renderQuest();
+  }
+
+  /** Reveal a locked recipe for good — the Catalog and the stations learn it. */
+  unlockRecipe(id: string) {
+    if (this.unlocks[id]) return;
+    this.unlocks[id] = true;
+    hud.toast(`New work revealed: ${ITEMS[id].name}.`);
   }
 
   // Quests are earned, not timed: pay off anything the player already did.
@@ -1552,6 +1586,12 @@ export class Game {
         const s = this.world.gen.secondShip;
         return { name: "Engine Core", x: s.x + 0.5, y: ground(s.x, s.z), z: s.z + 0.5, lmKey: "wreck2" };
       }
+      case "belly":
+        return { name: "Crash Site", x: 0.5, y: ground(0, 0), z: 0.5 };
+      case "bearing": {
+        const g = this.world.gen.gougeFar;
+        return { name: "Gouge Field", x: g.x + 0.5, y: ground(g.x, g.z), z: g.z + 0.5 };
+      }
       case "tool": {
         const cells: { x: number; y: number; z: number }[] = [];
         if (this.world.get(0, 31, -3) === BENCH) cells.push({ x: 0, y: 31, z: -3 });
@@ -1608,6 +1648,14 @@ export class Game {
         }
         return null;
       }
+      case "dungeon":
+      case "sentinel": {
+        // the way down is the throat: the guide beams the Volcano and lights
+        // its Landmark with it
+        const v = this.volc;
+        if (!v) return null;
+        return { name: "The Volcano", x: v.x + 0.5, y: v.f + 2, z: v.z + 0.5, lmKey: "volcano" };
+      }
       default: return null; // sky / mine / day: nothing to point at
     }
   }
@@ -1633,6 +1681,54 @@ export class Game {
       const s = this.world.gen.secondShip;
       if ((s.x + 0.5 - p.x) ** 2 + (s.z + 0.5 - p.z) ** 2 < 169) this.questBump("wreck");
     }
+    // the crash hull reads its own cut: stand inside it, look up
+    else if (q.kind === "belly" && this.planet !== "silvaris" &&
+      p.x * p.x + p.z * p.z < 16 && p.y > 27 && p.y < 41) { this.lesson("belly"); this.questBump("belly"); }
+    // the volcano reads its own threshold: step onto the cone and its
+    // Landmark lights, the Chronicle learns the Scorch, the way down is paid
+    else if ((q.kind === "dungeon" || q.kind === "sentinel") && this.volc) {
+      const v = this.volc;
+      if (Math.max(Math.abs(p.x - v.x), Math.abs(p.z - v.z)) <= VOLC_R + 3 && p.y <= v.f + 8 && p.y > v.arenaY - 8) {
+        this.revealed.add("volcano");
+        this.lesson("scorch");
+        if (q.kind === "dungeon") this.questBump("dungeon");
+      }
+    }
+    // the gouge field's near end is the Second Wreck itself
+    else if (q.kind === "bearing" && this.planet !== "silvaris") {
+      const s = this.world.gen.gougeFar;
+      if ((s.x + 0.5 - p.x) ** 2 + (s.z + 0.5 - p.z) ** 2 < 225) { this.lesson("bearing"); this.questBump("bearing"); }
+    }
+  }
+
+  /** The Volcano's own heartbeat: the Sentinel keeps its Arena — it wakes
+   *  when the player comes down, and the Arena answers with Sentry guards
+   *  while it stands. Once felled, the volcano is quiet for good. */
+  private volcFrame(dt: number) {
+    const v = this.volc;
+    if (!v || this.sentinelFelled) return;
+    const p = this.player.pos;
+    const near = Math.max(Math.abs(p.x - v.x), Math.abs(p.z - v.z)) < 56 && p.y < v.f + 12 && p.y > v.arenaY - 10;
+    const sm = this.mobs.find((m) => m.kind === "sentinel");
+    if (!sm) {
+      if (!near) return;
+      this.spawnMob("sentinel", v.x + 0.5, v.arenaY, v.z + 0.5);
+      this.sentinelWaveT = 6;
+      this.revealed.add("volcano");
+      this.lesson("scorch");
+      hud.toast("The floor of the Arena shifts. Something five cells tall unfolds out of the dark and turns to face you.");
+      return;
+    }
+    if (!near) return;
+    this.sentinelWaveT -= dt;
+    if (this.sentinelWaveT > 0) return;
+    this.sentinelWaveT = 20;
+    let machines = 0;
+    for (const m of this.mobs) if (MOB_DEFS[m.kind].machine) machines++;
+    if (machines >= 8) return;
+    const [gx, gz] = machines % 2 ? [v.x + 5, v.z + 5] : [v.x - 5, v.z + 5];
+    this.spawnMob("sentry", gx + 0.5, v.arenaY, gz + 0.5);
+    if (machines === 0) hud.toast("The walls cough: Sentry guards spill into the Arena with the Sentinel.");
   }
 
   /** Cheat-menu shortcut: jump the quest chain to index (== QUESTS.length
@@ -1750,6 +1846,8 @@ export class Game {
       lat(TRADER_L, "trader", "camp", "Nomad Camp");
       lat(SIL_CAMP_L, "camp", "camp", "Machine Camp");
       lat(SIL_RELAY_L, "relay", "tower", "Relay Tower");
+      if (this.volc && this.landmarkKnown("volcano", this.volc.x, this.volc.z))
+        out.push({ key: "volcano", x: this.volc.x, z: this.volc.z, kind: "volcano", label: "The Volcano" });
       return out;
     }
     const s = g.secondShip;
@@ -1939,7 +2037,7 @@ export class Game {
         if (t.remembered) { g2.fillStyle = "rgba(8,10,14,0.55)"; g2.fillRect(rx, rz, CS * sc, CS * sc); }
       }
     // Landmarks
-    const lmColor: Record<string, string> = { ship: "#66e5f0", wreck: "#cc4433", town: "#d8b74f", camp: "#b48ad8", tower: "#e05a4a", mouth: "#8a8f9a", oasis: "#41d878", canister: "#e08a4f", seep: "#8a6a35" };
+    const lmColor: Record<string, string> = { ship: "#66e5f0", wreck: "#cc4433", town: "#d8b74f", camp: "#b48ad8", tower: "#e05a4a", mouth: "#8a8f9a", oasis: "#41d878", canister: "#e08a4f", seep: "#8a6a35", volcano: "#e0682a" };
     for (const l of this.landmarkList(px, pz, r + 8)) {
       const mx = (l.x - x0) * sc, mz = (l.z - z0) * sc;
       if (mx < -4 || mz < -4 || mx > size + 4 || mz > size + 4) continue;
@@ -2075,6 +2173,7 @@ export class Game {
     this.wireSledUI();
     this.wireTurretUI();
     document.getElementById("flight-leave")!.onclick = () => this.openLeave();
+    document.getElementById("flight-charted")!.onclick = () => this.confirmCharted();
     document.getElementById("core-slot-0")!.onclick = () => this.coreSlotClick(0);
     document.getElementById("core-slot-1")!.onclick = () => this.coreSlotClick(1);
     (document.getElementById("btn-leave") as HTMLButtonElement).onclick = () => this.confirmLeave();
@@ -2669,6 +2768,7 @@ export class Game {
     });
     this.podFrame(dt);
     this.questFrame();
+    this.volcFrame(dt);
     this.guideFrame(dt);
     this.tut?.tick(dt);
     this.mobFrame(dt);
@@ -3018,9 +3118,36 @@ export class Game {
   // ---------- Defenses ----------
 
   private hurtMob(m: Mob, dmg: number) {
+    if (m.kind === "sentinel") {
+      // the shield holds while its conduits hum; drowned cooling doubles in
+      if (!this.conduitsCut()) {
+        m.hitFlash = 0.18;
+        if (this.timeSec > this.shieldToastT) {
+          this.shieldToastT = this.timeSec + 10;
+          hud.toast("The Sentinel's shield swallows the blow — three conduits feed it. Cut them in the Hall.");
+        }
+        return;
+      }
+      dmg *= 1 + this.openChannels() * 0.5;
+    }
     m.hp -= dmg;
     m.hitFlash = 0.18;
     if (m.hp <= 0) this.killMob(m, 0);
+  }
+
+  /** All three Hall-wall conduits cut? The read happens mid-fight, so the
+   *  Volcano's chunks are loaded by definition. */
+  private conduitsCut(): boolean {
+    const v = this.volc;
+    if (!v) return true;
+    return v.conduits.every(([x, y, z]) => this.world.get(x, y, z) !== POWER_CONDUIT);
+  }
+
+  /** How many Gallery plugs are broken (0..2): each halves into the Sentinel. */
+  private openChannels(): number {
+    const v = this.volc;
+    if (!v) return 0;
+    return v.seals.filter(([x, y, z]) => this.world.get(x, y, z) !== BASALT).length;
   }
 
   private isHostileMob(m: Mob): boolean {
@@ -3051,7 +3178,9 @@ export class Game {
           for (const m of [...this.mobs]) {
             if (Math.hypot(m.x - x - 0.5, m.z - z - 0.5) > 4 || Math.abs(m.y - y) > 3) continue;
             zapped = true;
-            this.hurtMob(m, MOB_DEFS[m.kind].machine ? 12 : 4);
+            // the Arena's prebuilt pylons were forged to bring down a Sentinel:
+            // a powered Coil hits it for twice what it hits anything else
+            this.hurtMob(m, m.kind === "sentinel" ? 24 : MOB_DEFS[m.kind].machine ? 12 : 4);
           }
           if (zapped) { this.coilPulse.set(k, now + 2); this.audio.thud(); }
         } else if (id === ALARM_CHIME) {
@@ -3241,6 +3370,19 @@ export class Game {
     const id = this.atGet(a);
     this.codex.add("b:" + id); // the Codex teaches what you have broken once
     this.questBump("mine");
+    // the Sentinel's conduits: no item form — they come down as Lead Rods,
+    // and the last one falling is what makes the Arena killable
+    if (id === POWER_CONDUIT) {
+      this.atSet(a, AIR);
+      this.giveOrDrop("leadrod", 2);
+      this.audio.blockBreak();
+      const left = this.volc ? this.volc.conduits.filter(([x, y, z]) => this.world.get(x, y, z) === POWER_CONDUIT).length : 0;
+      if (left === 0) hud.toast("The last conduit falls dark. Somewhere below, the Sentinel's shield gutters out — now it can bleed.");
+      else hud.toast(`A conduit falls dark — ${left} still feed the Sentinel's shield.`);
+      return;
+    }
+    if (id === BASALT && this.volc && this.volc.seals.some(([sx, sy, sz]) => sx === x && sy === y && sz === z))
+      hud.toast("The plug cracks — cold water roars into the Gallery. The Sentinel's cooling is drowned.");
     const doorG = DOOR_GROUP.get(id);
     if (doorG) {
       this.atSet(a, AIR);
@@ -3616,6 +3758,18 @@ export class Game {
     // one pelt off every hide species; the Skinner's skin number buys the rest
     if (def.hide) this.giveOrDrop(def.hide, Math.max(1, hides));
     hud.toast(`${def.name} killed.`);
+    // the Sentinel's death is a world event: its arena falls silent for good,
+    // and the Chronicle credits the death-gift that follows
+    if (m.kind === "sentinel") {
+      this.sentinelFelled = true;
+      // the death-gift: the Fuel Works recipe and the Still to cook it in
+      this.unlockRecipe("fuel_still");
+      this.unlockRecipe("super_fuel");
+      this.lesson("sentinel");
+      this.questBump("sentinel");
+      hud.toast("The Sentinel falls. Its core ticks down once, twice — and stops. Its recipe rides out of the wreck of it.");
+      this.saveNow(true);
+    }
   }
 
   /** Keep the current planet stocked: Desertis runs a stable surface
@@ -3631,7 +3785,8 @@ export class Game {
     // anything strayed far from the player gives its slot back — except a Nomad
     const p0 = this.player.pos;
     this.mobs = this.mobs.filter((m) => {
-      if (m.kind !== "trader" && Math.abs(m.x - p0.x) + Math.abs(m.z - p0.z) > 190) { this.renderer.removeSceneObject(m.vis.group); return false; }
+      // the Sentinel owns its Arena: no distance cull ever clears it out
+      if (m.kind !== "trader" && m.kind !== "sentinel" && Math.abs(m.x - p0.x) + Math.abs(m.z - p0.z) > 190) { this.renderer.removeSceneObject(m.vis.group); return false; }
       return true;
     });
     for (const m of this.mobs) counts[m.kind]++;
@@ -4599,14 +4754,9 @@ export class Game {
       }
       if (id === HOVER_SLED) { this.openSledPanel(this.atKey(at)); return; }
       if (id === GUN_TURRET) { this.openTurretPanel(this.atKey(at)); return; }
-      if (id === BENCH || id === BENCH_EXT) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("bench"); return; }
-      if (id === ARMORY) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("armory"); return; }
-      if (id === REFINERY) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("refinery"); return; }
-      // the Second Planet's four stations: one panel each, same shape as the Bench
-      if (id === ELECTRIC_BENCH) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("electric"); return; }
-      if (id === FOUNDRY) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("foundry"); return; }
-      if (id === ASSEMBLY_BENCH) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("assembly"); return; }
-      if (id === FUEL_WORKS) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("fuel"); return; }
+      const stn = CRAFT_STATIONS.get(id);
+      if (stn) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft(stn); return; }
+      if (id === RECYCLER || id === SIL_RECYCLER) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderRecycler(); return; }
       if (id === INSCRIPTION) { this.openInscription(x, z); return; }
       if (id === CAMPFIRE) {
         this.openFire = this.atKey(at);
@@ -6577,14 +6727,78 @@ export class Game {
     this.paintLeaveBtn(true);
   }
 
-  /** the Leave Planet button only exists while a Super-seated Ship is flown,
-   *  and only bites once every other row of the leap check reads good. */
+  /** the Leave Planet button exists on Desertis only, once a Super-seated
+   *  Ship is flown; on Silvaris the same seat lights Chart the Stars —
+   *  the finale flight the Nav Core was built for. */
   private paintLeaveBtn(airborne: boolean) {
     const btn = document.getElementById("flight-leave") as HTMLButtonElement | null;
-    if (!btn) return;
-    const superSeated = airborne && !!this.piloting?.fuel.some((pt) => pt.k === 2);
-    btn.classList.toggle("hidden", !superSeated);
-    btn.disabled = !superSeated || !this.leaveCheck(this.piloting).ok;
+    if (btn) {
+      const superSeated = airborne && !!this.piloting?.fuel.some((pt) => pt.k === 2);
+      const leap = superSeated && this.planet !== "silvaris";
+      btn.classList.toggle("hidden", !leap);
+      btn.disabled = !leap || !this.leaveCheck(this.piloting).ok;
+    }
+    const ch = document.getElementById("flight-charted") as HTMLButtonElement | null;
+    if (ch) {
+      const ready = airborne && this.chartReady(this.piloting);
+      ch.classList.toggle("hidden", !ready);
+      ch.disabled = !ready;
+    }
+  }
+
+  /** the finale is armed: the Sentinel is dead, the chart is aboard, the
+   *  canister that opens worlds sits in a port, and the Ship could leave
+   *  this sky anyway. */
+  private chartReady(sh: Ship | null): boolean {
+    if (this.planet !== "silvaris" || !this.sentinelFelled || !sh) return false;
+    if (currentQuest(this.quests)?.kind !== "charted") return false;
+    let nav = false;
+    for (const c of sh.cells.values()) if (c.id === NAV_CORE) { nav = true; break; }
+    return nav && sh.fuel.some((pt) => pt.k === 2) && this.leaveCheck(sh).ok;
+  }
+
+  /** the charted climb: the Super canister is spent whole, the sky goes
+   *  dark, and the Nav Core opens its chart — but this vow is not a
+   *  transit: the Ship comes back down under the same sky (Phase 3's). */
+  private confirmCharted() {
+    const sh = this.piloting;
+    if (!this.chartReady(sh)) { this.audio.error(); return; }
+    const idx = sh!.fuel.findIndex((pt) => pt.k === 2);
+    if (idx < 0) return;
+    sh!.fuel[idx] = emptyPort(); // the Super canister is consumed whole
+    this.piloting = null;
+    this.pilotLand = false;
+    document.getElementById("ui-flight")!.classList.add("hidden");
+    this.paintLeaveBtn(false);
+    this.chartedRun = true;
+    this.chartedRunShown = false;
+    this.chartHome = sh!.pos.y;
+    this.leaving = { t: 0, sh: sh! };
+    this.audio.door(); // the catch
+    this.audio.warn(); // and the engines' rising howl
+    hud.toast("The Nav Core opens its chart. The Super Rocket Fuel catches: the Ship climbs on a course written before the dwellers fell.");
+  }
+
+  /** the chart closes; the Ship settles back into the air it never really
+   *  left, and the main quest ends mid-sentence, aimed at Phase 3. */
+  private finishCharted(sh: Ship) {
+    this.leaving = null;
+    this.chartedRun = false;
+    document.getElementById("ui-chart")!.classList.add("hidden");
+    // the vow is not a transit: the climb unwinds, deck and crew back at
+    // the altitude the promise was made at, engines idling again
+    const rise = sh.pos.y - this.chartHome;
+    sh.pos.y = this.chartHome;
+    sh.prevPos = { ...sh.pos };
+    sh.vel = { x: 0, y: 0, z: 0 };
+    if (this.isAboard(sh)) this.player.pos.y -= rise;
+    this.updateShipGroup(sh);
+    this.enterPiloting(sh);
+    this.lesson("charted");
+    this.questBump("charted");
+    this.audio.win();
+    hud.toast("The chart folds. The far mark stays unwritten — the Fuel Works hums, and the blue canister now comes from your own hands.");
+    this.saveNow(true);
   }
 
   private wireSledUI() {
@@ -6831,7 +7045,11 @@ export class Game {
       sh.pos.z - Math.cos(sh.yaw) * 13 + (Math.random() - 0.5) * 0.3,
     );
     cam.lookAt(sh.pos.x, sh.pos.y + 1.5, sh.pos.z);
-    if (L.t >= 6) this.finishDeparture(sh);
+    if (this.chartedRun && L.t >= 3 && !this.chartedRunShown) {
+      this.chartedRunShown = true;
+      document.getElementById("ui-chart")!.classList.remove("hidden");
+    }
+    if (L.t >= 6) { if (this.chartedRun) this.finishCharted(sh); else this.finishDeparture(sh); }
   }
 
   /** Desertis closes its book; the Ship docks on Silvaris's arrival pad and
@@ -8178,6 +8396,7 @@ export class Game {
     for (const r of RECIPES) {
       // each recipe has exactly one home: hand, Bench, Armoury or Refinery — never two
       if (r.station !== mode) continue;
+      if (r.locked && !this.unlocks[r.out]) continue; // the world reveals these later
       const row = document.createElement("div");
       row.className = "craft-row";
       const label = `${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""}`;
@@ -8195,15 +8414,52 @@ export class Game {
         this.tut?.notify("craft");
         this.craftLesson(r.out);
         if (ITEMS[r.out]?.tool) this.questBump("tool");
-        if (r.out === "rocket_fuel") { this.questBump("refine"); hud.toast("Rocket Fuel, canistered. The Engine Core drinks it in the air."); }
+        if (r.out.startsWith("basalt_")) this.questBump("cold");
+        if (r.out === "rocket_fuel") { this.questBump(this.planet === "silvaris" ? "oilworks" : "refine"); hud.toast("Rocket Fuel, canistered. The Engine Core drinks it in the air."); }
         // the Second Planet's chain reads the station as much as the product
-        if (mode === "electric") this.questBump("electric");
-        if (r.out === "engine_core") this.questBump("core2");
+        if (mode === "electric" || mode === "wiring") this.questBump("electric");
+        if (r.out === "hover_sled") this.questBump("sled");
+        if (r.out === "nav_core") this.questBump("navcore");
         if (r.out === "super_fuel") { this.questBump("superfuel"); this.lesson("superfuel"); }
         this.audio.place();
         this.renderCraft(mode);
       };
       row.appendChild(b);
+      list.appendChild(row);
+    }
+  }
+
+  /** The Recycler: a deconstructor, not a recipe board — drop finished metal
+   *  things in and grind them back to Scrap, the one seam between the planets. */
+  private renderRecycler() {
+    document.getElementById("ui-craft")!.classList.remove("hidden");
+    document.getElementById("craft-title")!.textContent = "Recycler — finished metal, ground back to Scrap";
+    const list = document.getElementById("craft-list")!;
+    list.innerHTML = "";
+    const owned = new Set(this.inv.slots.map((s) => s.itemId).filter(Boolean));
+    let any = false;
+    for (const [id, n] of Object.entries(RECYCLES)) {
+      if (!owned.has(id)) continue;
+      any = true;
+      const row = document.createElement("div");
+      row.className = "craft-row";
+      row.innerHTML = `<span class="what"><img class="craft-art" src="${itemArtUrl(id)}" alt="">${ITEMS[id].name} <span class="needs">→ ${n}× Scrap</span></span>`;
+      const b = document.createElement("button");
+      b.textContent = "Grind";
+      b.onclick = () => {
+        if (!this.inv.removeItem(id, 1)) { this.audio.error(); return; }
+        this.giveOrDrop("scrap", n);
+        this.audio.place();
+        this.renderInv();
+        this.renderRecycler();
+      };
+      row.appendChild(b);
+      list.appendChild(row);
+    }
+    if (!any) {
+      const row = document.createElement("div");
+      row.className = "craft-row";
+      row.innerHTML = `<span class="what">Nothing in your pack can be ground. Bring finished metal things — tools, plating, dead machines.</span>`;
       list.appendChild(row);
     }
   }

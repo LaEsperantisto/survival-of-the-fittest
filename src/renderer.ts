@@ -16,6 +16,11 @@ import {
   ELECTRIC_BENCH, ASSEMBLY_BENCH, FUEL_WORKS, FOUNDRY, INSCRIPTION, DOCK_PAD,
   TITANIUM_ORE, GRAPHITE_ORE, SNOW, BASALT, TUNDROOT_1, TUNDROOT_2,
   EMBERBUSH_1, EMBERBUSH_2, EMBER_FRUIT,
+  RECYCLER, SIL_RECYCLER, HEARTH, WORKBENCH, TANNERY, CAULDRON, OIL_WORKS, WIRING_BENCH, FUEL_STILL,
+  ANTHRACITE_ORE, LEAD_ORE, SALTPETRE_ORE,
+  SIL_WOOD, SIL_LEAVES, SIL_SAPLING, OAT_1, OAT_2,
+  CAMP_ANTENNA, RELAY_TOWER, SPIKE_BARRICADE, ALARM_CHIME, GUN_TURRET, SHOCK_COIL, NAV_CORE,
+  HOVER_SLED, WOOD_POST, WOOD_RAILING, TABLE, STAINED_GLASS, POWER_CONDUIT,
   isSolid, isWater, isOpaque, isOil, isFluid, fluidStrength,
 } from "./blocks";
 import { World, ckey } from "./world";
@@ -27,7 +32,8 @@ import { SkyLighting, MAX_LIGHT, lidx } from "./light";
 const DOOR_BLOCKS = new Set([DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER,
   DOOR_INNER_OPEN, ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN]);
 /** blocks that render as crossed blade quads instead of cubes */
-const CROSS_BLOCKS = new Set([WHEAT_1, WHEAT_2, SAPLING, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING]);
+const CROSS_BLOCKS = new Set([WHEAT_1, WHEAT_2, SAPLING, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING,
+  SIL_SAPLING, OAT_1, OAT_2]);
 /** ground material that looks soaked while a fluid cell stands on it */
 const SOIL_BLOCKS = new Set([DIRT, FARMLAND, SAND, SANDSTONE, GRAVEL, SALT]);
 
@@ -321,7 +327,12 @@ export const TILE_LIST = [SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, DEADWOOD, G
   OIL, OIL7, OIL6, OIL5, OIL4, OIL3, OIL2, OIL1, OIL_SANDS, FRAME_CORNER, FLIGHT_CONTROLS,
   ELECTRIC_BENCH, ASSEMBLY_BENCH, FUEL_WORKS, FOUNDRY, INSCRIPTION, DOCK_PAD,
   TITANIUM_ORE, GRAPHITE_ORE, SNOW, BASALT, TUNDROOT_1, TUNDROOT_2,
-  EMBERBUSH_1, EMBERBUSH_2, EMBER_FRUIT];
+  EMBERBUSH_1, EMBERBUSH_2, EMBER_FRUIT,
+  RECYCLER, SIL_RECYCLER, HEARTH, WORKBENCH, TANNERY, CAULDRON, OIL_WORKS, WIRING_BENCH, FUEL_STILL,
+  ANTHRACITE_ORE, LEAD_ORE, SALTPETRE_ORE,
+  SIL_WOOD, SIL_LEAVES, SIL_SAPLING, OAT_1, OAT_2,
+  CAMP_ANTENNA, RELAY_TOWER, SPIKE_BARRICADE, ALARM_CHIME, GUN_TURRET, SHOCK_COIL, NAV_CORE,
+  HOVER_SLED, WOOD_POST, WOOD_RAILING, TABLE, STAINED_GLASS, POWER_CONDUIT];
 
 // extra face tiles, appended after the base tiles; each recipe is shaded with
 // the named block's base colour
@@ -1450,6 +1461,318 @@ export function getAtlasCanvas(): HTMLCanvasElement {
     px(6, 4, col(-0.26)); px(6, 5, col(-0.2));                                                        // stems to the node
     px(10, 6, col(-0.24)); px(10, 7, col(-0.18));
     px(7, 4, col(0.12)); px(8, 3, col(0.08));                                                         // leaf at the cluster
+  });
+
+  // ---- Phase 2 stations, ores, flora, defenses, structures ----
+  const stationShell = (cold: boolean) => {                                                          // shared machine-cabinet body
+    fbmFill((x, y, nn) => nn * 0.03 - 0.08 + (y % 6 === 0 ? -0.03 : 0));                              // steel plate
+    for (const y of [0, 15]) for (let x = 0; x < 16; x++) px(x, y, col(-0.28));                       // frame rails
+    for (const x of [0, 15]) for (let y = 1; y < 15; y++) px(x, y, col(-0.22));                       // stile edges
+    for (const [bx, by] of [[2, 2], [13, 2], [2, 13], [13, 13]] as const) px(bx, by, col(0.24));      // corner bolts
+    if (cold) for (let i = 0; i < 6; i++) px(rng.int(1, 14), rng.int(1, 14), col(0.1, 1, 0.02, 0.06, 0.12)); // frost flecks
+    else for (let i = 0; i < 6; i++) px(rng.int(1, 14), rng.int(1, 14), col(-0.1, 1, -0.02, -0.06, -0.1));   // dust pits
+  };
+  R(String(RECYCLER), () => {
+    stationShell(false);
+    for (let y = 2; y <= 5; y++) for (let x = 3; x <= 12; x++) {                                      // wide feed hopper
+      const w = 12 - (y - 2) * 2;
+      if (x < 8 - w / 2 || x > 7 + w / 2) continue;
+      px(x, y, (x === Math.round(8 - w / 2) || x === Math.round(7 + w / 2)) ? col(0.2) : col(-0.12));
+    }
+    for (let r = 0; r < 4; r++) for (let a = 0; a < 8; a++) {                                         // shredder gear face
+      const ang = (a / 8) * Math.PI * 2 + r * 0.3;
+      px(8 + Math.round(Math.cos(ang) * r), 10 + Math.round(Math.sin(ang) * r * 0.8), r === 3 || a % 2 ? col(0.16) : col(-0.05));
+    }
+    px(8, 10, col(0.3));
+    for (let i = 0; i < 5; i++) { const x = rng.int(3, 12), y = rng.int(7, 13); px(x, y, col(-0.02, 1, 0.06, -0.04, -0.1)); } // rust flecks
+  });
+  R(String(SIL_RECYCLER), () => {
+    stationShell(true);
+    for (let y = 2; y <= 5; y++) for (let x = 3; x <= 12; x++) {                                      // same hopper silhouette
+      const w = 12 - (y - 2) * 2;
+      if (x < 8 - w / 2 || x > 7 + w / 2) continue;
+      px(x, y, (x === Math.round(8 - w / 2) || x === Math.round(7 + w / 2)) ? col(0.2) : col(-0.12));
+    }
+    for (let r = 0; r < 4; r++) for (let a = 0; a < 8; a++) {                                         // shredder gear, cold blue core
+      const ang = (a / 8) * Math.PI * 2 + r * 0.3;
+      px(8 + Math.round(Math.cos(ang) * r), 10 + Math.round(Math.sin(ang) * r * 0.8), r === 3 || a % 2 ? col(0.16) : col(-0.05));
+    }
+    px(8, 10, col(0.2, 1, -0.05, 0.05, 0.2));
+  });
+  R(String(HEARTH), () => {
+    fbmFill((x, y, nn) => nn * 0.04 - 0.02);                                                          // the base colour IS the flame: keep a warm plate
+    for (let a = 0; a < 12; a++) {                                                                    // basalt ring, darkened rim
+      const ang = (a / 12) * Math.PI * 2;
+      px(8 + Math.round(Math.cos(ang) * 7), 8 + Math.round(Math.sin(ang) * 6.5), col(-0.55, 1, -0.3, -0.28, -0.18));
+    }
+    for (let y = 6; y <= 11; y++) for (let x = 5; x <= 10; x++) {                                     // flame body
+      const d = Math.hypot((x - 7.5) * 1.2, (y - 8) * 0.7);
+      if (d > 3.6 - (y > 9 ? (y - 9) * 0.9 : 0)) continue;
+      px(x, y, y > 9 ? col(0.14, 1, 0.1, -0.1, -0.3) : col(0.3, 1, 0.2, -0.05, -0.35));               // hot core, red roots
+    }
+    for (let i = 0; i < 4; i++) px(rng.int(6, 9), rng.int(4, 6), col(0.42, 1, 0.3, 0.05, -0.4));      // sparks aloft
+    for (const [lx, ly] of [[5, 12], [10, 12], [7, 13], [9, 13]] as const) px(lx, ly, col(-0.6, 1, -0.25, -0.3, -0.15)); // charred logs
+  });
+  R(String(WORKBENCH), () => {
+    fbmFill((x, y, nn) => nn * 0.05 + (y % 4 === 0 ? -0.06 : 0));                                     // plank bench body
+    for (let x = 0; x < 16; x++) { px(x, 3, col(0.18)); px(x, 4, col(0.06)); }                        // bright worktop edge
+    for (let y = 5; y <= 7; y++) for (let x = 2; x <= 8; x++) if (x + y % 2 !== 9) px(x, y, col(-0.04)); // pegboard shadow
+    for (let y = 5; y <= 7; y++) { px(4, y, col(0.3, 1, 0.02, 0.02, 0.08)); px(7, y, col(0.26, 1, 0, 0, 0.1)); } // hanging tools
+    for (let x = 9; x <= 14; x++) { px(x, 5, col(-0.34, 1, -0.1, -0.1, -0.14)); px(x, 6, col(-0.2, 1, -0.05, -0.05, -0.1)); } // saw slot
+    px(12, 7, col(0.22)); px(13, 7, col(0.14));                                                       // handle
+    for (let i = 0; i < 8; i++) speckle(3, 0.1);                                                      // wood chips
+  });
+  R(String(TANNERY), () => {
+    fbmFill((x, y, nn) => nn * 0.04 - 0.02);                                                          // stretched hide fills the cell
+    for (const x of [1, 14]) for (let y = 0; y < 16; y++) px(x, y, x === 1 ? col(0.22) : col(-0.05));  // frame posts
+    for (let x = 2; x <= 13; x++) { px(x, 1, col(0.18)); px(x, 14, col(-0.14)); }                     // crossbeams
+    for (let y = 3; y <= 12; y++) for (let x = 3; x <= 12; x++) {                                     // scraped hide, wavy scrape marks
+      const w = Math.sin(x * 0.9 + y * 0.35) * 0.06;
+      px(x, y, col((y - 7) * 0.012 + w + (x % 5 === 0 ? -0.05 : 0)));
+    }
+    for (const [sx, sy] of [[3, 3], [12, 3], [3, 12], [12, 12], [7, 2], [8, 13]] as const) px(sx, sy, col(0.34, 1, 0.05, 0.02, -0.06)); // stretching pegs
+    for (let i = 0; i < 4; i++) crack(4, 0.05, -0.1);                                                 // hide seams
+  });
+  R(String(CAULDRON), () => {
+    fill("rgba(0,0,0,0)");                                                                            // open frame, glow shows through
+    for (const [lx, ly] of [[4, 9], [5, 12], [6, 13], [7, 13], [10, 9], [10, 12], [9, 13], [8, 13]] as const) px(lx, ly, col(-0.75, 1, -0.15, -0.3, -0.18)); // tripod legs
+    for (let y = 3; y <= 9; y++) for (let x = 3; x <= 12; x++) {                                      // iron belly
+      const d = Math.hypot((x - 7.5) * 0.8, (y - 6.2) * 1.1);
+      if (d > 4.6) continue;
+      px(x, y, d > 3.9 ? col(-0.5, 1, -0.15, -0.2, -0.22) : x < 6 ? col(0.08) : col(-0.2));
+    }
+    for (let x = 4; x <= 11; x++) px(x, 2, x > 8 ? col(0.2, 1, 0.1, 0.02, -0.12) : col(-0.35, 1, -0.1, -0.15, -0.2)); // rim, stew on the left
+    for (const [cx, cy] of [[5, 13], [6, 14], [9, 14], [10, 13]] as const) px(cx, cy, col(0.3, 1, 0.12, -0.12, -0.35)); // embers beneath
+    px(8, 1, col(0.4, 1, 0.15, -0.05, -0.2)); px(7, 0, col(0.3, 1, 0.1, -0.08, -0.25));              // steam wisp
+  });
+  R(String(OIL_WORKS), () => {
+    stationShell(true);
+    for (let y = 1; y <= 10; y++) for (let x = 2; x <= 5; x++) {                                      // still column at left
+      px(x, y, x === 2 || x === 5 || y === 1 ? col(0.16) : col(-0.24));
+    }
+    for (let y = 3; y <= 9; y += 2) { px(3, y, col(0.02, 1, 0.02, -0.06, -0.14)); px(4, y, col(0.02, 1, 0.02, -0.06, -0.14)); } // oil sight bands
+    px(3, 11, col(0.02, 1, 0.16, 0.02, -0.2)); px(4, 11, col(0.02, 1, 0.2, 0.05, -0.25));            // dark oil pool in the gauge
+    for (let x = 6; x <= 13; x++) { px(x, 4, col(0.2)); px(x, 5, col(-0.02)); }                       // transfer pipe
+    for (let y = 6; y <= 13; y++) px(13, y, col(0.12));
+    px(13, 13, col(-0.3, 1, 0.14, 0, -0.22));                                                        // tap nozzle weeping oil
+    px(12, 14, col(0.02, 1, 0.14, 0, -0.2));
+    px(9, 2, col(0.3, 1, -0.1, 0.1, 0.2)); px(10, 2, col(0.2, 1, -0.1, 0.08, 0.16));                 // pressure valve light
+  });
+  R(String(WIRING_BENCH), () => {
+    stationShell(true);
+    for (let y = 2; y <= 6; y++) for (let x = 2; x <= 9; x++) px(x, y, (x + y) % 2 ? col(-0.1) : col(0.02)); // solder board
+    for (let i = 0; i < 3; i++) {                                                                     // copper coil loops
+      const cx = 4 + i * 2.5;
+      for (let a = 0; a < 8; a++) { const ang = (a / 8) * Math.PI * 2; px(Math.round(cx + Math.cos(ang) * 1.6), 10 + Math.round(Math.sin(ang) * 1.3), col(0.1, 1, 0.32, 0.12, -0.2)); }
+    }
+    for (let x = 10; x <= 14; x++) px(x, 9, col(0.14, 1, 0.4, 0.16, -0.24));                          // wire run
+    for (let y = 10; y <= 13; y++) px(14, y, col(0.1, 1, 0.38, 0.14, -0.22));
+    px(12, 5, col(0.45, 1, 0.2, 0.35, 0.3)); px(11, 4, col(0.4, 1, 0.15, 0.3, 0.25)); px(13, 6, col(0.35, 1, 0.1, 0.3, 0.2)); // spark
+  });
+  R(String(FUEL_STILL), () => {
+    stationShell(true);
+    for (let y = 2; y <= 9; y++) for (let x = 4; x <= 10; x++) {                                      // glass retort
+      const d = Math.hypot((x - 7) * 0.9, (y - 5.5) * 0.75);
+      if (d > 3.4) continue;
+      px(x, y, col(-0.06, 0.5, 0.12, 0.18, 0.3));
+    }
+    for (let y = 7; y <= 9; y++) for (let x = 5; x <= 9; x++) px(x, y, col(-0.02, 1, -0.1, 0.1, 0.5)); // blue fuel level
+    for (let x = 6; x <= 8; x++) px(x, 1, col(0.2, 0.6, 0.15, 0.2, 0.3));                             // neck
+    for (let x = 11; x <= 14; x++) px(x, 3, col(0.14));                                               // condenser tube
+    for (let y = 4; y <= 8; y++) px(14, y, col(0.1));
+    px(14, 8, col(0.2, 1, -0.12, 0.08, 0.42));                                                       // drawn-off blue drip
+    px(13, 9, col(0.1, 1, -0.1, 0.06, 0.35));
+    for (let i = 0; i < 3; i++) px(rng.int(5, 9), rng.int(3, 5), col(0.35, 0.5, 0.2, 0.25, 0.3));    // glass highlights
+  });
+  R(String(ANTHRACITE_ORE), () => {
+    fbmFill((x, y, nn) => nn * 0.09 - 0.04);                                                          // basalt host, dark
+    crack(10, 0.05, -0.16);
+    for (let i = 0; i < 4; i++) {                                                                     // jet conchoidal nodules
+      const cx = rng.int(3, 12), cy = rng.int(3, 12), r = rng.int(2, 4);
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        const d = Math.hypot(dx, dy); if (d > r + 0.2) continue;
+        px(cx + dx, cy + dy, d > r - 0.5 ? col(-0.4) : dx <= 0 && dy <= 0 ? col(-0.16) : col(-0.34));
+      }
+      px(cx - 1, cy - 1, col(-0.02, 1, 0.1, 0.1, 0.16));                                              // oily glassy sheen
+    }
+    for (let i = 0; i < 6; i++) px(rng.int(0, 15), rng.int(0, 15), col(-0.5));
+  });
+  R(String(LEAD_ORE), () => {
+    fbmFill((x, y, nn) => nn * 0.09 + 0.04);                                                          // pale oxidised rock
+    crack(9, 0.05, -0.14);
+    for (let i = 0; i < 4; i++) {                                                                     // soft galena blobs
+      const cx = rng.int(3, 12), cy = rng.int(3, 12), r = rng.int(2, 3);
+      for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.hypot(dx, dy) > r + 0.2) continue;
+        px(cx + dx, cy + dy, dx + dy < 0 ? col(-0.1, 1, -0.14, -0.1, -0.02) : col(-0.24, 1, -0.2, -0.16, -0.04));
+      }
+      px(cx, cy, col(-0.02, 1, -0.12, -0.08, 0.04));                                                 // dulle blue-grey lustre
+    }
+    speckle(8, 0.08);
+  });
+  R(String(SALTPETRE_ORE), () => {
+    fbmFill((x, y, nn) => nn * 0.08 + 0.1);                                                           // bleached salt crust
+    for (let i = 0; i < 5; i++) {                                                                     // needle crystals
+      const cx = rng.int(2, 13), cy = rng.int(2, 13), L = rng.int(2, 4), dir = rng.next() > 0.5;
+      for (let s = 0; s < L; s++) px(cx + (dir ? s : 0), cy + (dir ? 0 : s), col(0.28, 1, 0.05, 0.05, 0.02));
+      px(cx, cy, col(0.4, 1, 0.08, 0.08, 0.06));
+    }
+    for (let i = 0; i < 4; i++) { const x = rng.int(1, 14), y = rng.int(1, 14); px(x, y, col(-0.18)); px(x + 1, y + 1, col(-0.1)); } // crust pits
+    for (let i = 0; i < 5; i++) px(rng.int(0, 15), rng.int(0, 15), col(0.34, 1, 0.1, 0.1, 0.12));     // bright efflorescence
+  });
+  R(String(SIL_WOOD), () => {
+    fbmFill((x, y, nn) => nn * 0.04 + (x % 3 === 1 ? 0.06 : x % 3 === 0 ? -0.04 : 0));                // pale bark, vertical peel strips
+    for (let i = 0; i < 3; i++) { const x0 = rng.int(1, 13); for (let y = 0; y < 16; y++) if ((x0 + y) % 3 < 2) px(x0 + (y % 3) - 1, y, col(-0.16)); } // dark frost seams
+    for (let i = 0; i < 10; i++) px(rng.int(0, 15), rng.int(0, 15), col(0.22, 1, 0.0, 0.04, 0.1));    // silver bark flecks
+    px(1, 1, col(0.3)); px(2, 1, col(0.22)); px(1, 2, col(0.18));                                     // lichen patch
+    px(12, 13, col(0.26)); px(13, 12, col(0.2));
+  });
+  R(String(SIL_LEAVES), () => {
+    fbmFill((x, y, nn) => nn * 0.1 + ((x + y * 2) % 3 === 0 ? 0.08 : -0.04));                         // fine needle mass
+    for (let y = 2; y < 16; y += 3) for (let x = (y % 2); x < 16; x += 2) px(x, y, col(0.2, 1, -0.02, 0.06, 0.14)); // bright underside sprays
+    for (let i = 0; i < 5; i++) { const x = rng.int(2, 13); for (let y = rng.int(1, 12); y < rng.int(9, 15); y++) px(x, y, col(-0.16)); } // twig shadows
+    for (let i = 0; i < 8; i++) px(rng.int(0, 15), rng.int(0, 15), col(0.3, 1, 0.02, 0.08, 0.18));    // frost tips
+  });
+  R(String(SIL_SAPLING), () => {
+    fill("rgba(0,0,0,0)");                                                                            // seedling on crossed quads
+    for (let y = 10; y <= 15; y++) { px(7, y, col(0.02)); px(8, y, col(0.12)); }                      // pale shoot
+    px(6, 9, col(0.22)); px(5, 8, col(0.16)); px(9, 9, col(0.18)); px(10, 8, col(0.12));              // first needle fans
+    px(6, 10, col(0.3, 1, 0.0, 0.05, 0.12)); px(9, 10, col(0.26, 1, 0, 0.04, 0.1));                   // silver frost sheen
+    for (let i = 0; i < 3; i++) px(rng.int(5, 10), rng.int(14, 15), col(-0.12));                      // soil crumbs
+  });
+  R(String(OAT_1), () => {
+    fill("rgba(0,0,0,0)");                                                                            // green shoot, crossed quads
+    for (const bx of [6, 9]) {                                                                        // two upright blades
+      for (let y = 11; y <= 15; y++) px(bx, y, col(0.06));
+      px(bx - 1, 10, col(0.12)); px(bx + (bx === 6 ? -1 : 1), 9, col(0.16));
+    }
+    px(7, 9, col(0.2)); px(10, 8, col(0.18)); px(8, 12, col(-0.06));
+  });
+  R(String(OAT_2), () => {
+    fill("rgba(0,0,0,0)");                                                                            // ripe stand, crossed quads
+    for (const bx of [4, 7, 10, 13]) {                                                                // gold stalks
+      for (let y = 5; y <= 15; y++) px(bx, y, col(bx % 2 ? 0.04 : -0.04));
+      for (let y = 3; y <= 6; y++) { px(bx - (y % 2), y, col(0.24)); px(bx + (y % 2), y + 1, col(0.14)); } // drooping oat heads
+    }
+    for (let i = 0; i < 4; i++) px(rng.int(5, 10), rng.int(6, 12), col(-0.1));                        // husk shadows
+  });
+  R(String(CAMP_ANTENNA), () => {
+    fbmFill((x, y, nn) => nn * 0.03 - 0.02);                                                          // crate base fills the cell
+    for (let x = 3; x <= 12; x++) { px(x, 12, col(0.1)); px(x, 13, col(-0.04)); }                     // crate lid
+    for (let y = 13; y <= 15; y++) for (let x = 3; x <= 12; x++) px(x, y, (x + y) % 4 === 0 ? col(0.18) : col(-0.06)); // crate planks
+    for (let y = 1; y <= 11; y++) { px(7, y, col(0.24)); px(8, y, col(0.08)); }                       // mast
+    for (let y = 2; y <= 5; y++) for (let x = 4; x <= 11; x++) if (Math.hypot((x - 7.5) * 1.1, y - 3.4) < 2.6) px(x, y, y > 2 ? col(0.3, 1, 0.02, 0.04, 0.08) : col(0.12)); // parrot dish
+    px(7, 0, col(0.4, 1, 0.5, 0.05, -0.2)); px(8, 0, col(0.3, 1, 0.4, 0.02, -0.15));                  // beacon light
+    for (let i = 0; i < 4; i++) px(rng.int(9, 11), rng.int(6, 9), col(-0.2));                         // guy-rope anchors
+  });
+  R(String(RELAY_TOWER), () => {
+    fill("rgba(0,0,0,0)");                                                                            // lattice stands in air
+    for (let y = 0; y <= 15; y++) { px(6, y, col(-0.3)); px(9, y, col(-0.3)); }                       // rails
+    for (let y = 1; y <= 15; y += 2) { for (let x = 7; x <= 8; x++) px(x, y, col(0.12)); px(6, y, col(0.06)); px(9, y, col(0.06)); } // rungs
+    for (let y = 2; y <= 14; y += 4) { px(7, y, col(-0.1)); px(8, y + 1, col(-0.1)); }                // diagonal bracing
+    for (let y = 0; y <= 6; y += 2) { px(5, y, col(0.34, 1, 0.4, 0.05, -0.15)); px(10, y, col(0.3, 1, 0.35, 0.04, -0.12)); } // warning-red lights
+    for (let y = 0; y <= 2; y++) { px(7 + y, y, col(0.24)); px(8 - y, y, col(0.24)); }                // aerial V
+    for (let y = 13; y <= 15; y++) for (let x = 4; x <= 11; x++) if (x + y % 3 < 11) px(x, y, col(-0.34)); // concrete footing
+  });
+  R(String(SPIKE_BARRICADE), () => {
+    fill("rgba(0,0,0,0)");                                                                            // silhouette only
+    for (let y = 10; y <= 15; y++) for (let x = 0; x < 16; x++) px(x, y, (y % 3 === 0 || x % 4 === 0) ? col(0.08) : col(-0.08)); // timber base beam
+    for (const sx of [2, 6, 10, 14]) {                                                                // angled spikes
+      for (let y = 14; y >= 1; y--) {
+        const x = sx + Math.round((14 - y) * 0.18 * (sx % 4 ? 1 : -1));
+        px(x, y, y < 3 ? col(0.3, 1, 0.06, 0.06, 0.02) : col(-0.14));
+      }
+    }
+    for (let x = 0; x < 16; x++) if (x % 4 === 1) px(x, 9, col(0.2));                                 // lashings
+  });
+  R(String(ALARM_CHIME), () => {
+    fbmFill((x, y, nn) => nn * 0.03 - 0.06);                                                          // bracket plate behind
+    for (let x = 5; x <= 10; x++) px(x, 1, col(0.22));                                                // crossbar
+    for (let y = 2; y <= 8; y++) for (let x = 5; x <= 10; x++) {                                      // brass bell
+      const w = 2 + (y - 2); if (x < 8 - w / 2 || x > 7 + w / 2) continue;
+      px(x, y, x === Math.round(8 - w / 2) || x === Math.round(7 + w / 2) ? col(-0.1) : y < 4 ? col(0.26, 1, 0.14, 0.08, -0.1) : col(0.06, 1, 0.08, 0.04, -0.08));
+    }
+    px(7, 9, col(0.3, 1, 0.12, 0.06, -0.1)); px(8, 9, col(0.24, 1, 0.1, 0.05, -0.1));                 // clapper lip
+    px(4, 4, col(0.4, 1, 0.1, 0.3, 0.3)); px(11, 5, col(0.35, 1, 0.08, 0.28, 0.28));                  // sound sparks
+    for (let y = 11; y <= 15; y++) { px(6, y, col(0.06)); px(9, y, col(0.02)); }                      // power posts
+  });
+  R(String(GUN_TURRET), () => {
+    stationShell(true);
+    for (let y = 2; y <= 6; y++) for (let x = 5; x <= 10; x++) px(x, y, (x === 5 || x === 10 || y === 2) ? col(0.18) : col(-0.1)); // gun housing
+    for (let x = 3; x <= 13; x++) { px(x, 4, col(0.28)); px(x, 5, col(0.04)); }                       // long barrel
+    px(2, 4, col(0.34)); px(1, 4, col(0.24));                                                         // muzzle brake
+    for (let y = 8; y <= 13; y++) for (let x = 9; x <= 14; x++) px(x, y, (x === 9 || y === 13) ? col(0.14) : col(-0.14, 1, 0.02, 0.0, -0.04)); // ammo crate
+    for (let y = 9; y <= 12; y += 2) { px(11, y, col(0.3, 1, 0.24, 0.12, -0.1)); px(12, y, col(0.26, 1, 0.2, 0.1, -0.08)); } // round tips
+    px(6, 4, col(0.4, 1, 0.1, 0.14, 0.3)); px(8, 4, col(0.35, 1, 0.08, 0.12, 0.25));                  // tracer feed glow
+  });
+  R(String(SHOCK_COIL), () => {
+    fill("rgba(0,0,0,0)");                                                                            // open coil frame
+    for (const [cx, cy, r] of [[8, 8, 6], [8, 8, 4]] as const) {                                      // torus rings
+      for (let a = 0; a < 24; a++) { const ang = (a / 24) * Math.PI * 2; px(cx + Math.round(Math.cos(ang) * r), cy + Math.round(Math.sin(ang) * r * 0.85), col(a % 2 ? 0.2 : -0.1)); }
+    }
+    for (let a = 0; a < 10; a++) {                                                                    // arcing current between rings
+      const t = a / 10 * Math.PI * 2;
+      px(8 + Math.round(Math.cos(t) * 5), 8 + Math.round(Math.sin(t) * 4.2), col(0.3, 1, 0.1, 0.35, 0.5));
+      px(8 + Math.round(Math.cos(t + 0.3) * 5.6), 8 + Math.round(Math.sin(t + 0.3) * 4.6), col(0.2, 1, 0.05, 0.3, 0.45));
+    }
+    px(8, 8, col(0.45, 1, 0.15, 0.4, 0.55)); px(7, 7, col(0.3, 1, 0.1, 0.3, 0.4));                    // core flash
+    for (let y = 13; y <= 15; y++) for (let x = 6; x <= 9; x++) px(x, y, col(-0.2));                  // insulator foot
+  });
+  R(String(NAV_CORE), () => {
+    stationShell(true);
+    for (let y = 3; y <= 12; y++) for (let x = 3; x <= 12; x++) {                                     // violet core panel
+      const edge = y === 3 || y === 12 || x === 3 || x === 12;
+      px(x, y, edge ? col(0.2) : col(-0.1 + noise1(x * 0.7, y * 0.7) * 0.1, 1, 0.16, 0.02, 0.3));
+    }
+    for (let x = 4; x <= 11; x++) px(x, 7, col(0.35, 1, 0.25, 0.05, 0.45));                           // star-chart bus line
+    for (let y = 4; y <= 11; y += 2) px(8, y, col(0.3, 1, 0.2, 0.04, 0.4));
+    px(5, 5, col(0.5, 1, 0.35, 0.15, 0.6)); px(10, 6, col(0.45, 1, 0.3, 0.12, 0.55)); px(7, 10, col(0.4, 1, 0.28, 0.1, 0.5)); // wayfinder sparks
+    px(2, 7, col(-0.3)); px(13, 8, col(-0.3));                                                        // data ports
+  });
+  R(String(HOVER_SLED), () => {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) px(x, y, col(-0.02 + noise1(x * 0.6, y * 0.6) * 0.05)); // pale plate body
+    for (let x = 1; x <= 14; x++) { px(x, 2, col(0.2)); px(x, 3, col(0.02)); }                        // deck edge
+    for (let x = 1; x <= 14; x++) { px(x, 12, col(-0.16)); }                                          // hull seam
+    for (const [cx, cy] of [[4, 9], [11, 9]] as const) {                                             // hover rings glow cyan
+      for (let a = 0; a < 16; a++) { const ang = (a / 16) * Math.PI * 2; px(cx + Math.round(Math.cos(ang) * 2.4), cy + Math.round(Math.sin(ang) * 1.7), a % 2 ? col(0.2, 1, -0.05, 0.2, 0.4) : col(0.0, 1, -0.08, 0.12, 0.3)); }
+      px(cx, cy, col(0.3, 1, 0, 0.25, 0.45));
+    }
+    for (let y = 5; y <= 8; y++) for (let x = 6; x <= 9; x++) px(x, y, (x === 6 || x === 9) ? col(0.16) : col(-0.2)); // cargo well
+  });
+  R(String(WOOD_POST), () => {
+    fill("rgba(0,0,0,0)");                                                                            // slim post in air
+    for (let y = 0; y <= 15; y++) { px(7, y, col(0.1)); px(8, y, col(-0.06)); }                       // hewn post
+    for (let y = 2; y <= 14; y += 4) px(7, y, col(0.26));                                             // binding notches
+    for (let x = 5; x <= 10; x++) px(x, 1, col(0.16)); px(6, 0, col(0.1));                            // chamfered cap
+    for (let i = 0; i < 5; i++) px(7 + rng.int(0, 1), rng.int(3, 14), col(-0.16));                    // grain splits
+  });
+  R(String(WOOD_RAILING), () => {
+    fill("rgba(0,0,0,0)");                                                                            // see-through fence
+    for (const x of [1, 14]) for (let y = 2; y <= 15; y++) px(x, y, col(0.08));                       // end stiles
+    for (const y of [3, 8]) for (let x = 1; x <= 14; x++) px(x, y, x % 3 ? col(0.14) : col(-0.04));   // top and mid rails
+    for (let x = 5; x <= 10; x += 2) for (let y = 9; y <= 15; y++) px(x, y, col(-0.02));              // mid pickets
+  });
+  R(String(TABLE), () => {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) px(x, y, col((y % 5 === 0 ? -0.08 : 0.02) + noise1(x * 0.5, y * 0.9) * 0.04)); // plank top fills cell
+    for (let x = 0; x < 16; x++) px(x, 0, col(0.16));                                                 // bright far edge
+    for (let y = 0; y < 16; y += 5) for (let x = 0; x < 16; x++) if ((x + y) % 7 === 0) px(x, y, col(-0.16)); // plank seams
+    for (const [lx, ly] of [[2, 13], [13, 13], [2, 9], [13, 9]] as const) px(lx, ly, col(-0.22));     // leg shadows
+  });
+  R(String(STAINED_GLASS), () => {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++)                                         // tinted pane with leading
+      px(x, y, col(((x + y) % 8 < 4 ? 0.06 : -0.04) + (x % 7 === 0 || y % 7 === 0 ? -0.24 : 0), 0.75, 0.1, 0.06, 0.18));
+    for (let y = 0; y < 16; y++) { px(0, y, col(0.3, 0.9, -0.2, -0.24, -0.2)); px(15, y, col(0.3, 0.9, -0.2, -0.24, -0.2)); } // lead frame
+    for (let x = 0; x < 16; x++) { px(x, 0, col(0.3, 0.9, -0.2, -0.24, -0.2)); px(x, 15, col(0.3, 0.9, -0.2, -0.24, -0.2)); }
+    for (let i = 0; i < 4; i++) px(rng.int(2, 13), rng.int(1, 6), col(0.4, 0.5, 0.2, 0.2, 0.25));     // sky highlights
+  });
+  R(String(POWER_CONDUIT), () => {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) px(x, y, col(-0.1 + noise1(x * 0.6, y * 0.6) * 0.05)); // dark pipe body
+    for (let x = 0; x < 16; x++) { px(x, 5, col(0.14)); px(x, 6, col(0.02)); }                        // pipe crown highlight
+    for (let x = 0; x < 16; x++) px(x, 10, col(-0.3));                                                // under-seam
+    for (const fx of [3, 12]) for (let y = 3; y <= 12; y++) px(fx, y, col(0.2));                      // bolted flanges
+    for (let y = 7; y <= 8; y++) for (let x = 0; x < 16; x++) if ((x + y) % 6 < 3) px(x, y, col(0.1, 1, 0.3, 0.22, -0.1)); // hazard stripes
+    for (let x = 1; x < 15; x += 3) px(x, 8, col(0.42, 1, 0.25, 0.4, 0.1));                           // current pulses (emissive base)
+    speckle(6, 0.08);
   });
   R(String(WIND_TURBINE), () => {
     fbmFill((x, y, nn) => nn * 0.03 - 0.04);                                                            // pale sky plate

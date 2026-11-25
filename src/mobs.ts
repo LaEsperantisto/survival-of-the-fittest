@@ -7,7 +7,7 @@ import { SIL_SEA, SB_BOREAL, biomeAt, silvarisSpawns } from "./silvaris";
 export type MobKind =
   | "snake" | "rat" | "scorpion" | "wurm" | "trader" | "vulture" | "tortoise" | "fennec"
   | "stalker" | "tideback" | "brushbuck"
-  | "warden" | "sentry" | "breaker" | "hauler";
+  | "warden" | "sentry" | "breaker" | "hauler" | "sentinel";
 
 export interface MobDef {
   kind: MobKind;
@@ -136,6 +136,17 @@ export const MOB_DEFS: Record<MobKind, MobDef> = {
     retaliateR: 12, // neutral until struck — and the strike calls the neighbours down
     drops: [{ itemId: "metal", count: 3 }, { itemId: "scrap", count: 2 }, { itemId: "machine_part", count: 1 }],
     dropChance: [1, 1, 0.8],
+  },
+  // the Volcano's warden: shielded until its conduits are cut (game.ts gates
+  // the damage), and the death-gift the Chronicle credits with the Fuel
+  // Works recipes. Nothing about it spawns by chance — game.ts stations it.
+  sentinel: {
+    kind: "sentinel", name: "Sentinel", hp: 900, speed: 1.7,
+    aggroR: 46, fleeR: 0, biteDmg: 26, biteCd: 1.8,
+    hitR: 1.6, height: 5, machine: true,
+    drops: [{ itemId: "metal", count: 8 }, { itemId: "machine_part", count: 4 },
+            { itemId: "machine_heart", count: 1 }],
+    dropChance: [1, 1, 1],
   },
 };
 
@@ -1541,7 +1552,16 @@ export function makeMobMesh(kind: MobKind): MobVisual {
     case "sentry": return attachFlash(makeMachine("sentry"));
     case "breaker": return attachFlash(makeMachine("breaker"));
     case "hauler": return attachFlash(makeMachine("hauler"));
+    case "sentinel": return attachFlash(makeSentinel());
   }
+}
+
+// The Sentinel: the breaker rig stood up to five cells tall — a shielded
+// arena warden, its optic ringed by the emitter that hums over the Arena.
+function makeSentinel(): MobShape {
+  const v = makeMachine("breaker");
+  v.group.scale.setScalar(2.3);
+  return v;
 }
 
 // ---------------------------------------------------------------- fauna modes
@@ -1573,8 +1593,8 @@ export function faunaTargets(): Record<MobKind, number> {
   // machines never stock by chance: game.ts stations them at sites (Camps,
   // Relays, the Wreck) — the random loop keeps its hands off them
   if (faunaPlanet === "desertis")
-    return { snake: 4, rat: 8, scorpion: 4, wurm: 1, trader: 0, vulture: 3, tortoise: 2, fennec: 2, stalker: 0, tideback: 0, brushbuck: 0, warden: 0, sentry: 0, breaker: 0, hauler: 0 };
-  return { snake: 0, rat: 0, scorpion: 0, wurm: 0, trader: 0, vulture: 0, tortoise: 0, fennec: 0, stalker: 3, tideback: 3, brushbuck: 6, warden: 0, sentry: 0, breaker: 0, hauler: 0 };
+    return { snake: 4, rat: 8, scorpion: 4, wurm: 1, trader: 0, vulture: 3, tortoise: 2, fennec: 2, stalker: 0, tideback: 0, brushbuck: 0, warden: 0, sentry: 0, breaker: 0, hauler: 0, sentinel: 0 };
+  return { snake: 0, rat: 0, scorpion: 0, wurm: 0, trader: 0, vulture: 0, tortoise: 0, fennec: 0, stalker: 3, tideback: 3, brushbuck: 6, warden: 0, sentry: 0, breaker: 0, hauler: 0, sentinel: 0 };
 }
 
 /** The kinds the top-up loop should try, in spawn order. */

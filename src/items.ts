@@ -295,7 +295,7 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "cargo_sled", name: "Cargo Sled", desc: "An upgrade frame for the Hover Sled: a 3×3 sled-chest rides along, fed and emptied from the Sled panel.", w: 2, h: 2, mass: 8.0, color: "#6f6a58" }),
   I({ id: "sled_blade", name: "Sled Blade", desc: "A Sled upgrade: while riding, snow, leaves and shallow water part in your path — for a sip of charge.", w: 2, h: 1, mass: 4.0, color: "#8a90a0" }),
   I({ id: "sled_drill", name: "Sled Drill", desc: "A Sled upgrade: digs Caches and machine wreckage at the yoke — no dismounting, no swinging.", w: 2, h: 1, mass: 5.0, color: "#9a8a5a" }),
-  I({ id: "nav_core", name: "Nav Core", desc: "The Ship's chartering brain: where it has been, what worlds answer, and how to reach them. Crafted at the Assembly Bench after the Sentinel falls.", w: 1, h: 2, mass: 5.0, block: NAV_CORE, color: "#8a6ac8" }),
+  I({ id: "nav_core", name: "Nav Core", desc: "The Ship's chartering brain: where it has been, what worlds answer, and how to reach them. The Keepers give up the design once the scattered story is told.", w: 1, h: 2, mass: 5.0, block: NAV_CORE, color: "#8a6ac8" }),
   // ---- Phase-2 stone & snow: the materials tools are cut from ----
   I({ id: "basalt", name: "Basalt", desc: "Silvaris' dark stone, torn from the rock faces. Its wood-equivalent: tools, hearths, walls.", w: 1, h: 1, mass: 1.1, block: BASALT, color: "#4c4846" }),
   I({ id: "snow_block", name: "Snow Block", desc: "Packed from Powder Snow. Melts fast in a Sealed Space; good enough for a winter wall.", w: 1, h: 1, mass: 0.4, block: SNOW, color: "#e6ecf2" }),
