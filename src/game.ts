@@ -1159,7 +1159,7 @@ export class Game {
     this.planets[this.planet] = this.snapshotPlanet();
     const desertis = this.planets.desertis ?? emptyWorldRun(this.meta.seedStr);
     return {
-      v: 3,
+      v: 4,
       seedStr: this.meta.seedStr,
       time: this.timeSec, playSec: this.playSec,
       days: this.dayNumber(),
