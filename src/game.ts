@@ -63,11 +63,12 @@ import {
   ARR_Y, SIL_SEA, SETTLE_L, TRADER_L, CAMP_L as SIL_CAMP_L, RELAY_L as SIL_RELAY_L, SB_ALPINE, SB_BOREAL, SB_SCORCH,
   biomeAt as silBiomeAt, heightAt as silHeightAt, settleAt as silSettleAt, traderAt as silTraderAt,
   campNodeAt, relayNodeAt, traderCellAt, traderCellCenter, nearestTraderCamp,
-  getSilvarisLoot, getSilvarisTraderLoot,
+  getSilvarisLoot, getSilvarisTraderLoot, getMachineLoot, getRelayLoot, campAt as silCampAt, relayAt as silRelayAt,
   volcano, VOLC_R, type Volcano,
 } from "./silvaris";
-import { offersFor, SILVARIS_GOODS, type Offer } from "./trades";
+import { offersFor, silOffersFor, commissionFor, OFFER_POOL, SILVARIS_GOODS, type Offer } from "./trades";
 import { keeperName, keeperChapter } from "./keepers";
+import { campStores, relicStores } from "./loot";
 import { RECIPES, SMELT, canCraft, doCraft, FIRE_FUEL, GEN_FUEL, POT_RECIPES, RECYCLES, potHas, potConsume, type PotRecipe, type Recipe } from "./crafting";
 import { QUESTS, currentQuest, loadQuestState, questEvent, recordDeed, reconcile, type QuestDef, type QuestState } from "./quests";
 import { LESSON_BY_ID, LESSONS, INSCRIPTION_TEXTS, loadIdSet } from "./chronicle";
@@ -217,6 +218,8 @@ export class Game {
   private campTrust = new Set<string>();           // camps whose Keeper's trust is earned ("d:tx,tz"/"s:tx,tz")
   private campTrade: Record<string, number> = {};  // barters completed per camp — the desert's road to trust
   private chaptersRead = new Set<string>();        // Keeper chapters already heard, by camp key
+  private tradeCommission: Offer | null = null; // the camp's one big ask today
+  private commissionDay: Record<string, number> = {}; // camp key -> day its commission was filled
   unlocks: Record<string, true> = {};             // locked recipes the world has revealed, by output id
   private keeperAt = new Map<string, Mob>();       // the standing Keeper mobs, by camp key
   private story: { key: string; title: string; who: string; cards: string[]; card: number } | null = null;
@@ -750,21 +753,37 @@ export class Game {
       hud.toast("Someone's stores — untouched since the town emptied.");
       this.questBump("supplies");
     } else if (desert && !known && !aboard && cells.some((c) => this.inOutpost(c.x, c.z))) {
-      // the relic crew's stores: copper for their wires, salt for their food,
-      // one precious iron rod for whatever else survived
-      for (const it of [{ itemId: "copperrod", count: 3 }, { itemId: "salt", count: 2 }, { itemId: "metal", count: 1 }]) {
-        for (let i = 0; i < it.count; i++) {
-          const s: Slot = { itemId: it.itemId, x: 0, y: 0 };
-          if (!Game.placeSlotFree(ci, s)) this.dropEntity(it.itemId, 1, 2);
+      // the relic crew's stores: copper for their wires, salt for their food —
+      // how much of anything survived is a sum the crew never wrote down
+      {
+        let salt = 0;
+        const r = () => hash2(cells[0].x, cells[0].z, this.seed + (++salt) * 7);
+        for (const it of relicStores(r)) {
+          for (let i = 0; i < it.count; i++) {
+            const s: Slot = { itemId: it.itemId, x: 0, y: 0 };
+            if (!Game.placeSlotFree(ci, s)) this.dropEntity(it.itemId, 1, 2);
+          }
         }
       }
-      hud.toast("A Grid Relic's stores — copper wire, salt, and one last iron rod.");
+      hud.toast("A Grid Relic's stores — wire, salt, and whatever else held.");
       this.questBump("supplies");
+    } else if (desert && !known && !aboard && structuresOf(this.seed).campNear(cells[0].x, cells[0].z, 12) !== null) {
+      // a Nomad camp's store hut: road goods for the trade roads
+      {
+        let salt = 0;
+        const r = () => hash2(cells[0].x, cells[0].z, this.seed + (++salt) * 7);
+        for (const it of campStores(r)) {
+          for (let i = 0; i < it.count; i++) {
+            const s: Slot = { itemId: it.itemId, x: 0, y: 0 };
+            if (!Game.placeSlotFree(ci, s)) this.dropEntity(it.itemId, 1, 2);
+          }
+        }
+      }
+      hud.toast("A Nomad camp's stores — road goods, salted and dry.");
     } else if (!aboard && this.planet === "silvaris") {
-      // the Dueliers' stores. A trader camp's Chest is the stall's counter: it
-      // never holds loot — it opens the camp's barter table. No walking Nomads
-      // stand at Silvaris camps (fauna keeps the camps quiet), so the
-      // counter itself is the shop.
+      // the Dueliers' stores. A trader camp's Chest is the stall's counter:
+      // it never holds loot — it opens the camp's barter table, the same one
+      // the walking Nomad keeps by the awning.
       const c = cells[0];
       const camp = silTraderAt(c.x, c.z, this.world.seed);
       if (camp) {
@@ -783,20 +802,35 @@ export class Game {
           hud.toast("A Nomad camp's stores — goods carried between the worlds.");
         }
       } else {
-        const sit = silSettleAt(c.x, c.z, this.world.seed);
-        if (sit && !known) {
+        const mc = silCampAt(c.x, c.z, this.world.seed);
+        const rl = mc ? null : silRelayAt(c.x, c.z, this.world.seed);
+        if ((mc || rl) && !known) {
           let salt = 0;
           const r = () => hash2(c.x, c.z, this.world.seed + (++salt) * 7);
-          for (const it of getSilvarisLoot(r)) {
+          for (const it of (mc ? getMachineLoot(r) : getRelayLoot(r))) {
             for (let i = 0; i < it.n; i++) {
               const s: Slot = { itemId: it.item, x: 0, y: 0 };
               if (!Game.placeSlotFree(ci, s)) this.dropEntity(it.item, 1, 2);
             }
           }
-          hud.toast("A Settlement's stores — kit for the second world.");
-          // "The Settlements" is earned by walking into one and opening a Chest:
-          // the chest has to stand on the site, near its centre
-          if (Math.max(Math.abs(sit.x - c.x), Math.abs(sit.z - c.z)) <= 20) this.questBump("settle");
+          hud.toast(mc ? "The Machine Camp's stores — spare parts, Slugs, and battery salt."
+            : "The Relay Tower's maintenance cache — salt, wire, and tower parts.");
+        } else {
+          const sit = silSettleAt(c.x, c.z, this.world.seed);
+          if (sit && !known) {
+            let salt = 0;
+            const r = () => hash2(c.x, c.z, this.world.seed + (++salt) * 7);
+            for (const it of getSilvarisLoot(r)) {
+              for (let i = 0; i < it.n; i++) {
+                const s: Slot = { itemId: it.item, x: 0, y: 0 };
+                if (!Game.placeSlotFree(ci, s)) this.dropEntity(it.item, 1, 2);
+              }
+            }
+            hud.toast("A Settlement's stores — kit for the second world.");
+            // "The Settlements" is earned by walking into one and opening a Chest:
+            // the chest has to stand on the site, near its centre
+            if (Math.max(Math.abs(sit.x - c.x), Math.abs(sit.z - c.z)) <= 20) this.questBump("settle");
+          }
         }
       }
     }
@@ -885,12 +919,13 @@ export class Game {
     this.survival.invincible = this.cheatInvincible;
     this.chronicle = loadIdSet(run.chronicle, new Set(LESSONS.map((l) => l.id)));
     this.chronLast = this.chronicle.size ? [...this.chronicle].pop()! : null;
-    this.codex = loadIdSet(run.codex, new Set([...Object.keys(ITEMS), ...BLOCKS.map((_, i) => "b:" + i)]));
+    this.codex = loadIdSet(run.codex, new Set([...Object.keys(ITEMS), ...BLOCKS.map((_, i) => "b:" + i), ...Object.keys(MOB_DEFS).map((k) => "m:" + k)]));
     this.silentCamps = new Set(run.dominion?.silentCamps ?? []);
     this.raidedRelays = new Set(run.dominion?.raidedRelays ?? []);
     this.campTrust = new Set(run.dominion?.campTrust ?? []);
     this.campTrade = { ...(run.dominion?.campTrade ?? {}) };
     this.chaptersRead = new Set(run.dominion?.chaptersRead ?? []);
+    this.commissionDay = { ...(run.dominion?.commissionDay ?? {}) };
     this.unlocks = { ...(run.dominion?.unlocks ?? {}) };
     this.wrath = run.wrath ?? 0;
     this.sentinelFelled = !!run.sentinel;
@@ -1181,7 +1216,7 @@ export class Game {
       cheats: { immortal: this.cheatInvincible, keep: this.keepInventory },
       chronicle: [...this.chronicle],
       codex: [...this.codex],
-      dominion: { silentCamps: [...this.silentCamps], raidedRelays: [...this.raidedRelays], campTrust: [...this.campTrust], campTrade: this.campTrade, chaptersRead: [...this.chaptersRead], unlocks: this.unlocks },
+      dominion: { silentCamps: [...this.silentCamps], raidedRelays: [...this.raidedRelays], campTrust: [...this.campTrust], campTrade: this.campTrade, chaptersRead: [...this.chaptersRead], unlocks: this.unlocks, commissionDay: this.commissionDay },
       wrath: this.wrath || undefined,
       sentinel: this.sentinelFelled || undefined,
       planet: this.planet,
@@ -1635,6 +1670,29 @@ export class Game {
           name: "Settlement", x: c.x + 0.5, y: c.y + 1, z: c.z + 0.5,
           lmKey: `settle:${Math.round(c.x / SETTLE_L)},${Math.round(c.z / SETTLE_L)}`,
         };
+      }
+      case "nomad": {
+        // the road runs through camps: point at a owed Keeper first, else at
+        // the nearest Nomad camp — this quest is walked, not waited for
+        let best: { x: number; z: number } | null = null, bd = Infinity;
+        for (const key of this.campTrust) {
+          if (this.chaptersRead.has(key)) continue;
+          const [txs, tzs] = key.slice(2).split(",");
+          const c = key[0] === "s"
+            ? traderCellCenter(Number(txs), Number(tzs), this.world.seed)
+            : structuresOf(this.seed).campCenter(Number(txs), Number(tzs));
+          const d = (c.x - p.x) ** 2 + (c.z - p.z) ** 2;
+          if (d < bd) { bd = d; best = c; }
+        }
+        if (best)
+          return { name: "The Keeper", x: best.x + 0.5, y: Math.round(this.planet === "silvaris"
+            ? silHeightAt(best.x, best.z, this.world.seed) : heightAt(this.seed, best.x, best.z)) + 2, z: best.z + 0.5 };
+        const c = this.planet === "silvaris"
+          ? nearestTraderCamp(p.x, p.z, this.world.seed, 4000)
+          : structuresOf(this.seed).nearestCamp(p.x, p.z);
+        if (!c) return null;
+        return { name: "Nomad Camp", x: c.x + 0.5, y: Math.round(this.planet === "silvaris"
+          ? silHeightAt(c.x, c.z, this.world.seed) : heightAt(this.seed, c.x, c.z)) + 2, z: c.z + 0.5 };
       }
       case "leave": {
         // the leap begins at the controls: point at the Ship's yoke
@@ -3789,7 +3847,11 @@ export class Game {
       if (m.kind !== "trader" && m.kind !== "sentinel" && Math.abs(m.x - p0.x) + Math.abs(m.z - p0.z) > 190) { this.renderer.removeSceneObject(m.vis.group); return false; }
       return true;
     });
-    for (const m of this.mobs) counts[m.kind]++;
+    for (const m of this.mobs) {
+      counts[m.kind]++;
+      // the Codex learns a creature the first time one stands before you
+      if (Math.abs(m.x - this.player.pos.x) + Math.abs(m.z - this.player.pos.z) < 30) this.codex.add("m:" + m.kind);
+    }
     const p = this.player.pos;
     for (const kind of faunaSpawnKinds()) {
       const underground = kind === "scorpion" || kind === "wurm";
@@ -3834,7 +3896,7 @@ export class Game {
         }
       }
     }
-    if (this.planet === "desertis") this.ensureTraders();
+    this.ensureTraders();
     this.ensureKeepers();
     this.ensureMachines();
   }
@@ -3953,23 +4015,37 @@ export class Game {
       }
   }
 
-  /** One immovable Nomad standing in front of each nearby camp's stall. */
+  /** One Nomad stands at each nearby camp's stall — on both worlds. On
+   *  Silvaris the Fauna keeps the camps quiet, so the Nomads walk the
+   *  stalls themselves; a trusted camp's place is taken by its Keeper. */
   private ensureTraders() {
-    const stx = structuresOf(this.seed);
     const p = this.player.pos, R = 110;
-    const tx0 = Math.floor((p.x - R) / CAMP_L), tx1 = Math.floor((p.x + R) / CAMP_L);
-    const tz0 = Math.floor((p.z - R) / CAMP_L), tz1 = Math.floor((p.z + R) / CAMP_L);
+    const sil = this.planet === "silvaris";
+    const L = sil ? TRADER_L : CAMP_L;
+    const tx0 = Math.floor((p.x - R) / L), tx1 = Math.floor((p.x + R) / L);
+    const tz0 = Math.floor((p.z - R) / L), tz1 = Math.floor((p.z + R) / L);
     for (let tx = tx0; tx <= tx1; tx++) for (let tz = tz0; tz <= tz1; tz++) {
-      if (!stx.campAt(tx, tz)) continue;
-      const c = stx.campCenter(tx, tz);
-      if (Math.hypot(c.x - p.x, c.z - p.z) > R) continue;
-      const key = tx + "," + tz;
+      let cx: number, cz: number;
+      if (sil) {
+        if (!traderCellAt(tx, tz, this.world.seed)) continue;
+        const c = traderCellCenter(tx, tz, this.world.seed);
+        if (Math.hypot(c.x - p.x, c.z - p.z) > R) continue;
+        if (this.keeperAt.has("s:" + tx + "," + tz)) continue; // the Keeper stands here already
+        cx = c.x + 2.5; cz = c.z + 1; // beside the stall counter
+      } else {
+        const stx = structuresOf(this.seed);
+        if (!stx.campAt(tx, tz)) continue;
+        const c = stx.campCenter(tx, tz);
+        if (Math.hypot(c.x - p.x, c.z - p.z) > R) continue;
+        const spot = campTraderSpot(c);
+        cx = spot.x; cz = spot.z;
+      }
+      const key = (sil ? "s:" : "d:") + tx + "," + tz;
       const cur = this.traderAt.get(key);
       if (cur && this.mobs.includes(cur)) continue;
-      const spot = campTraderSpot(c);
-      const gy = this.mobSurface(spot.x, spot.z);
+      const gy = this.mobSurface(cx, cz);
       if (gy <= 1) continue; // camp chunks not streamed in yet — next round
-      this.spawnMob("trader", spot.x, gy, spot.z);
+      this.spawnMob("trader", cx, gy, cz);
       this.traderAt.set(key, this.mobs[this.mobs.length - 1]);
     }
     if (this.traderAt.size) {
@@ -4091,10 +4167,31 @@ export class Game {
   // No coin: every offer swaps goods, five per camp per day, deterministic —
   // leave and come back the same in-game day and the table is identical.
 
+  private tradeTableKey(): string {
+    const L = this.planet === "silvaris" ? TRADER_L : CAMP_L;
+    return (this.planet === "silvaris" ? "s:" : "d:") + Math.round(this.tradeCamp!.x / L) + "," + Math.round(this.tradeCamp!.z / L);
+  }
+
+  /** Today's table for the standing camp: five swaps plus one road
+   *  commission, filled at most once a day. */
+  private buildTradeTable(pool: Offer[], seed: number, picks: () => Offer[]) {
+    this.tradeOffers = picks();
+    const filled = this.commissionDay[this.tradeTableKey()] === this.dayNumber();
+    this.tradeCommission = filled ? null : commissionFor(pool, seed, this.tradeCamp!.x, this.tradeCamp!.z, this.dayNumber());
+  }
+
   private openTrade(trader: Mob) {
-    const camp = structuresOf(this.seed).nearestCamp(trader.x, trader.z);
-    this.tradeCamp = camp ? { x: camp.x, z: camp.z } : { x: trader.x, z: trader.z };
-    this.tradeOffers = offersFor(this.seed, this.tradeCamp.x, this.tradeCamp.z, this.dayNumber());
+    if (this.planet === "silvaris") {
+      const camp = silTraderAt(trader.x, trader.z, this.world.seed);
+      this.tradeCamp = camp ? { x: camp.x, z: camp.z } : { x: trader.x, z: trader.z };
+      this.buildTradeTable(SILVARIS_GOODS, this.world.seed,
+        () => silOffersFor(this.world.seed, this.tradeCamp!.x, this.tradeCamp!.z, this.dayNumber()));
+    } else {
+      const camp = structuresOf(this.seed).nearestCamp(trader.x, trader.z);
+      this.tradeCamp = camp ? { x: camp.x, z: camp.z } : { x: trader.x, z: trader.z };
+      this.buildTradeTable(OFFER_POOL, this.seed,
+        () => offersFor(this.seed, this.tradeCamp!.x, this.tradeCamp!.z, this.dayNumber()));
+    }
     this.ui = "trade";
     this.unlockPointer();
     this.renderTrade();
@@ -4102,12 +4199,12 @@ export class Game {
     this.audio.pickup();
   }
 
-  /** The Silvaris stall: a camp's Chest opens its barter table. No walking
-   *  Nomad stands here — Fauna keeps the camps quiet — so the counter itself
-   *  is the shop, and it trades the second world's own goods. */
+  /** The Silvaris stall counter: the Chest opens the same table its walking
+   *  Nomad keeps — for the moments the Nomad wandered off. */
   private openSilTrade(camp: { x: number; z: number }) {
     this.tradeCamp = { x: camp.x, z: camp.z };
-    this.tradeOffers = SILVARIS_GOODS.map((o) => ({ want: [...o.want], give: [...o.give] }));
+    this.buildTradeTable(SILVARIS_GOODS, this.world.seed,
+      () => silOffersFor(this.world.seed, camp.x, camp.z, this.dayNumber()));
     this.ui = "trade";
     this.unlockPointer();
     this.renderTrade();
@@ -4118,26 +4215,29 @@ export class Game {
   private renderTrade() {
     const box = document.getElementById("trade-offers")!;
     box.innerHTML = "";
-    for (let i = 0; i < this.tradeOffers.length; i++) {
-      const o = this.tradeOffers[i];
+    const add = (o: Offer, i: number, lab: string) => {
       const row = document.createElement("div");
-      row.className = "trade-row";
+      row.className = "trade-row" + (i === -1 ? " commission" : "");
       const side = (list: { itemId: string; count: number }[]) =>
         list.map((w) => `<span class="trade-item">${ITEMS[w.itemId].name}${w.count > 1 ? " ×" + w.count : ""}</span>`).join(" + ");
       row.innerHTML = `<span class="trade-side want">${side(o.want)}</span><span class="trade-arrow">→</span><span class="trade-side give">${side(o.give)}</span>`;
       const b = document.createElement("button");
-      b.textContent = "Trade";
+      b.textContent = lab;
       b.onclick = () => this.trade(i);
       row.appendChild(b);
       box.appendChild(row);
-    }
+    };
+    for (let i = 0; i < this.tradeOffers.length; i++) add(this.tradeOffers[i], i, "Trade");
+    if (this.tradeCommission) add(this.tradeCommission, -1, "Commission");
     (document.getElementById("trade-note")!).textContent =
-      `Day ${this.dayNumber()} — the Nomad restocks the table at every dawn.`;
+      `Day ${this.dayNumber()} — the table turns at dawn. The commission stands once.`;
   }
 
   private trade(i: number) {
     if (this.ui !== "trade") return;
-    const o = this.tradeOffers[i];
+    const commission = i === -1;
+    const o = commission ? this.tradeCommission : this.tradeOffers[i];
+    if (!o) return;
     for (const w of o.want) {
       if (!this.inv.has(w.itemId, w.count)) {
         hud.toast(`You don't have ${w.count} × ${ITEMS[w.itemId].name}.`);
@@ -4148,14 +4248,18 @@ export class Game {
     for (const w of o.want) this.inv.removeItem(w.itemId, w.count);
     for (const g of o.give) this.giveOrDrop(g.itemId, g.count);
     if (this.tradeCamp) {
-      // three good-faith trades and they know your face: the Keeper will speak
-      const L = this.planet === "silvaris" ? TRADER_L : CAMP_L;
-      const key = (this.planet === "silvaris" ? "s:" : "d:") + Math.round(this.tradeCamp.x / L) + "," + Math.round(this.tradeCamp.z / L);
+      // three good-faith barters and they know your face: the Keeper will speak
+      const key = this.tradeTableKey();
+      if (commission) {
+        this.commissionDay[key] = this.dayNumber();
+        this.tradeCommission = null;
+      }
       const n = (this.campTrade[key] ?? 0) + 1;
       this.campTrade[key] = n;
       if (n === 3) this.trustCamp(key, "They know your face now — the camp's Keeper will speak with you.");
+      else if (n < 3) hud.toast(`Barter ${n} of 3 at this camp — the road is watching.`);
     }
-    hud.toast("Traded.");
+    hud.toast(commission ? "The commission is filled — a deed the trade roads repeat." : "Traded.");
     this.audio.drink();
     this.renderTrade();
   }

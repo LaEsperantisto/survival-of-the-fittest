@@ -311,8 +311,10 @@ export class Structures {
   /** The nearest camp within `rad` of (x,z), or null. */
   campNear(x: number, z: number, rad: number): Camp | null {
     let best: Camp | null = null, bd = rad;
-    const t0 = Math.floor((x - rad) / CAMP_L), t1 = Math.floor((x + rad) / CAMP_L);
-    const s0 = Math.floor((z - rad) / CAMP_L), s1 = Math.floor((z + rad) / CAMP_L);
+    // ±1 cell beyond the radius box: a jittered centre can lean out of its
+    // own lattice cell, and a caller standing at the centre must still find it
+    const t0 = Math.floor((x - rad) / CAMP_L) - 1, t1 = Math.floor((x + rad) / CAMP_L) + 1;
+    const s0 = Math.floor((z - rad) / CAMP_L) - 1, s1 = Math.floor((z + rad) / CAMP_L) + 1;
     for (let tx = t0; tx <= t1; tx++) for (let tz = s0; tz <= s1; tz++) {
       if (!this.campAt(tx, tz)) continue;
       const c = this.campCenter(tx, tz), d = Math.hypot(c.x - x, c.z - z);

@@ -14,7 +14,7 @@ import {
   TITANIUM_ORE, GRAPHITE_ORE, TUNDROOT_1, TUNDROOT_2, EMBERBUSH_1, EMBERBUSH_2, EMBER_FRUIT,
   SIL_WOOD, SIL_LEAVES, OAT_1, OAT_2,
   INSCRIPTION, DOCK_PAD, METAL_PLATING, GLASS, DOOR_CLOSED, DOOR_UPPER,
-  BED, BED_EXT, CHEST, LAMP, CAMPFIRE,
+  BED, BED_EXT, CHEST, CHEST_CONNECTOR, LAMP, CAMPFIRE,
   ALABASTER, OIL, OIL_SANDS, LEAD_ORE, SALTPETRE_ORE, CAMP_ANTENNA,
   POWER_CONDUIT, POWER_POLE, SHOCK_COIL,
   CS, CH,
@@ -484,9 +484,30 @@ export function campAt(x: number, z: number, seed: number): { x: number; z: numb
   return null;
 }
 
-function paintMachineCamp(set: (x: number, y: number, z: number, id: number) => void, c: { x: number; z: number }, seed: number) {
-  const f = Math.max(Math.round(heightAt(c.x, c.z, seed)), SIL_SEA + 1);
-  for (let x = c.x - 4; x <= c.x + 4; x++) for (let z = c.z - 4; z <= c.z + 4; z++) set(x, f, z, BASALT);
+/** Camp layout variants, pure in the site (same world, same camp forever):
+ * 0 Watchpost (the old wreck, an antenna on a raised mast deck), 1 a buried
+ * supply Bunker under a hatch, 2 a low Scrapyard of broken plating rows,
+ * 3 a walled Depot with a roofed shelter. Every variant stays inside
+ * Chebyshev 8 of the site (the paint window's reach), leaves exactly one
+ * CAMP_ANTENNA within 10 of the centre — game.ts maps a cut antenna back
+ * to its camp by that distance — and lights its interior with a LAMP. */
+const campVariant = (c: { x: number; z: number }, seed: number): number =>
+  Math.floor(hash2(c.x, c.z, seed + 721) * 4);
+
+/** Level a Chebyshev-r pad of ground to f and cap it with plating — every
+ *  camp variant stands on one, so walls and floors never fight the slope. */
+function campPad(set: (x: number, y: number, z: number, id: number) => void,
+  c: { x: number; z: number }, r: number, f: number, seed: number) {
+  for (let x = c.x - r; x <= c.x + r; x++) for (let z = c.z - r; z <= c.z + r; z++) {
+    const h = Math.round(heightAt(x, z, seed));
+    for (let y = Math.min(h, f) + 1; y <= Math.max(h, f); y++) set(x, y, z, y <= h ? AIR : BASALT);
+    set(x, f, z, BASALT);
+  }
+}
+
+function paintWatchpost(set: (x: number, y: number, z: number, id: number) => void,
+  c: { x: number; z: number }, seed: number, f: number) {
+  campPad(set, c, 4, f, seed);
   // chassis slabs: three low mounds of old plating, half-buried
   for (let i = 0; i < 3; i++) {
     const mx = c.x - 3 + Math.floor(hash2(c.x + i, c.z - i, seed + 711) * 6);
@@ -496,11 +517,139 @@ function paintMachineCamp(set: (x: number, y: number, z: number, id: number) => 
     if (hash2(mx, mz, seed + 717) > 0.5) set(mx + 1, f + 1, mz, METAL_PLATING);
     if (hash2(mx, mz, seed + 719) > 0.6) set(mx, f + 1, mz + 1, BASALT); // rubble
   }
-  // the dead antenna: a stubby mast with its dish still pointed at nothing
-  for (let y = 1; y <= 3; y++) set(c.x + 3, f + y, c.z - 3, BASALT);
-  set(c.x + 3, f + 4, c.z - 3, CAMP_ANTENNA);
-  // the store the machines never bothered to lock
-  set(c.x - 3, f + 1, c.z + 3, CHEST);
+  // the dead antenna on a raised mast deck: plating steps up to a platform
+  const mx = c.x + 3, mz = c.z - 3;
+  for (let y = 1; y <= 3; y++) set(mx, f + y, mz, BASALT);
+  set(mx - 1, f + 1, mz, METAL_PLATING);
+  set(mx - 1, f + 2, mz, METAL_PLATING);
+  for (const [dx, dz] of [[-1, 0], [-1, -1], [0, -1]] as const)
+    set(mx + dx, f + 3, mz + dz, METAL_PLATING);
+  set(mx, f + 4, mz, CAMP_ANTENNA); // the dish still pointed at nothing
+  set(mx - 1, f + 4, mz - 1, LAMP); // a light over the deck
+  // the store they never bothered to lock: Chest — Connector — Chest
+  set(c.x - 4, f + 1, c.z + 3, CHEST);
+  set(c.x - 3, f + 1, c.z + 3, CHEST_CONNECTOR);
+  set(c.x - 2, f + 1, c.z + 3, CHEST);
+}
+
+function paintBunker(set: (x: number, y: number, z: number, id: number) => void,
+  c: { x: number; z: number }, seed: number, f: number) {
+  // the yard above is nearly nothing: a small pad, gravel drifts, a mast
+  campPad(set, c, 4, f, seed);
+  for (let i = 0; i < 3; i++) {
+    const gx = c.x - 3 + Math.floor(hash2(c.x - i, c.z + i, seed + 741) * 7);
+    const gz = c.z - 3 + Math.floor(hash2(c.x + i, c.z - i, seed + 743) * 7);
+    set(gx, f, gz, GRAVEL);
+  }
+  const mastH = Math.round(heightAt(c.x - 5, c.z + 4, seed));
+  set(c.x - 5, mastH + 1, c.z + 4, BASALT);
+  set(c.x - 5, mastH + 2, c.z + 4, BASALT);
+  set(c.x - 5, mastH + 3, c.z + 4, CAMP_ANTENNA); // the bunker's ear to the Grid
+  // the supply room, sealed in solid basalt seven down, then opened
+  const fy = f - 7;
+  for (let x = c.x - 7; x <= c.x + 1; x++) for (let z = c.z - 3; z <= c.z + 3; z++)
+    for (let y = fy - 1; y <= fy + 4; y++) set(x, y, z, BASALT);
+  for (let x = c.x - 6; x <= c.x; x++) for (let z = c.z - 2; z <= c.z + 2; z++)
+    for (let y = fy + 1; y <= fy + 3; y++) set(x, y, z, AIR);
+  // the hatch: a 3x3 shaft with one basalt step per level spiralling the
+  // wall ring — the volcano step-well's pattern, walked down from the pad
+  const sx0 = c.x - 4, sz0 = c.z;
+  for (let x = sx0; x <= sx0 + 2; x++) for (let z = sz0; z <= sz0 + 2; z++)
+    for (let y = fy + 1; y <= f; y++) set(x, y, z, AIR);
+  const ring: [number, number][] = [[0, 0], [1, 0], [2, 0], [2, 1], [2, 2], [1, 2], [0, 2], [0, 1]];
+  for (let i = 0; i <= f - 2 - fy; i++) set(sx0 + ring[i][0], fy + 1 + i, sz0 + ring[i][1], BASALT);
+  for (let x = sx0 - 1; x <= sx0 + 3; x++) for (let z = sz0 - 1; z <= sz0 + 3; z++) // a collar keeps walkers off the hole
+    if (x === sx0 - 1 || x === sx0 + 3 || z === sz0 - 1 || z === sz0 + 3) set(x, f + 1, z, BASALT);
+  set(c.x - 3, f + 1, c.z + 1, LAMP); // the hatchway lamp, hanging over the shaft
+  // inside: Chests on the rails, a dead Pole line, crates, two lamps
+  set(c.x - 6, fy + 1, c.z - 1, CHEST);
+  set(c.x - 6, fy + 1, c.z, CHEST_CONNECTOR);
+  set(c.x - 6, fy + 1, c.z + 1, CHEST);
+  set(c.x - 5, fy + 1, c.z - 2, CHEST);
+  for (let y = fy + 1; y <= fy + 3; y++) set(c.x - 1, y, c.z, POWER_POLE);
+  set(c.x - 1, fy + 1, c.z - 2, METAL_PLATING); // crate stacks
+  set(c.x - 1, fy + 2, c.z - 2, METAL_PLATING);
+  set(c.x - 3, fy + 1, c.z - 2, BASALT);
+  set(c.x - 5, fy + 3, c.z - 1, LAMP);
+  set(c.x - 1, fy + 3, c.z + 1, LAMP);
+}
+
+function paintScrapyard(set: (x: number, y: number, z: number, id: number) => void,
+  c: { x: number; z: number }, seed: number, f: number) {
+  campPad(set, c, 5, f, seed);
+  // gravel drifts over the plating
+  for (let x = c.x - 5; x <= c.x + 5; x++) for (let z = c.z - 5; z <= c.z + 5; z++)
+    if (hash2(x, z, seed + 745) > 0.72) set(x, f, z, GRAVEL);
+  // broken plating rows: three runs of four, plating and basalt stumps
+  for (let i = 0; i < 3; i++) {
+    const rz = c.z - 4 + i * 3 + Math.floor(hash2(c.x + i, c.z + i, seed + 747) * 2);
+    const x0 = c.x - 4 + Math.floor(hash2(c.x - i, c.z - i, seed + 749) * 3);
+    for (let j = 0; j < 4; j++) {
+      const x = x0 + j;
+      if (hash2(x, rz, seed + 751) > 0.45)
+        set(x, f + 1, rz, hash2(x, rz, seed + 753) > 0.4 ? METAL_PLATING : BASALT);
+      if (hash2(x, rz, seed + 755) > 0.72) set(x, f + 2, rz, METAL_PLATING);
+    }
+  }
+  // the machines never hauled off: a plating husk with a snapped Pole
+  const jx = c.x + 2, jz = c.z + 2;
+  set(jx, f + 1, jz, METAL_PLATING);
+  set(jx + 1, f + 1, jz, METAL_PLATING);
+  set(jx, f + 1, jz + 1, BASALT);
+  set(jx, f + 2, jz, METAL_PLATING);
+  set(jx + 1, f + 1, jz + 1, POWER_POLE);
+  // the antenna they left standing — a short mast, dish low and reachable
+  set(c.x - 4, f + 1, c.z - 4, BASALT);
+  set(c.x - 4, f + 2, c.z - 4, BASALT);
+  set(c.x - 4, f + 3, c.z - 4, CAMP_ANTENNA);
+  set(c.x - 4, f + 3, c.z - 3, LAMP);
+  // the salvage that never got inventoried
+  set(c.x + 4, f + 1, c.z + 3, CHEST);
+  set(c.x + 4, f + 1, c.z + 4, CHEST_CONNECTOR);
+  set(c.x + 4, f + 1, c.z + 5, CHEST);
+}
+
+function paintDepot(set: (x: number, y: number, z: number, id: number) => void,
+  c: { x: number; z: number }, seed: number, f: number) {
+  campPad(set, c, 6, f, seed);
+  // the wall: basalt to a plating band, a plated gate in the south face
+  for (let x = c.x - 6; x <= c.x + 6; x++) for (let z = c.z - 6; z <= c.z + 6; z++) {
+    if (Math.abs(x - c.x) !== 6 && Math.abs(z - c.z) !== 6) continue;
+    for (let y = f + 1; y <= f + 3; y++) set(x, y, z, y === f + 3 ? METAL_PLATING : BASALT);
+  }
+  set(c.x, f + 1, c.z + 6, DOOR_CLOSED);
+  set(c.x, f + 2, c.z + 6, DOOR_UPPER);
+  // the roofed shelter against the north wall
+  const hx0 = c.x - 3, hx1 = c.x + 3, hz0 = c.z - 5, hz1 = c.z - 2;
+  for (let x = hx0; x <= hx1; x++) for (let z = hz0; z <= hz1; z++)
+    for (let y = f + 1; y <= f + 4; y++) {
+      const e = x === hx0 || x === hx1 || z === hz0 || z === hz1;
+      set(x, y, z, (y === f + 4 || (e && y <= f + 3)) ? METAL_PLATING : AIR);
+    }
+  set(c.x - 1, f + 2, hz1, GLASS); set(c.x + 1, f + 2, hz1, GLASS);
+  set(c.x, f + 1, hz1, DOOR_CLOSED); set(c.x, f + 2, hz1, DOOR_UPPER);
+  // the garrison's stores: a bed, Chests on the rails, a lamp
+  set(c.x + 2, f + 1, hz0 + 1, BED); set(c.x + 2, f + 1, hz0 + 2, BED_EXT);
+  set(c.x - 2, f + 1, hz0 + 1, CHEST);
+  set(c.x - 2, f + 1, hz0 + 2, CHEST_CONNECTOR);
+  set(c.x - 1, f + 1, hz0 + 1, CHEST);
+  set(c.x - 2, f + 3, hz0 + 2, LAMP);
+  set(c.x - 1, f + 3, c.z + 6, LAMP); // over the gate, in the wall band
+  // corner steps to the mast cap: the antenna rides the NW wall, hip-high
+  // to whoever stands on the steps (hypot 7.8 from the centre)
+  set(c.x - 4, f + 1, c.z - 5, METAL_PLATING);
+  set(c.x - 5, f + 1, c.z - 5, METAL_PLATING);
+  set(c.x - 5, f + 2, c.z - 5, METAL_PLATING);
+  set(c.x - 5, f + 4, c.z - 6, CAMP_ANTENNA);
+}
+
+function paintMachineCamp(set: (x: number, y: number, z: number, id: number) => void, c: { x: number; z: number }, seed: number) {
+  const f = Math.max(Math.round(heightAt(c.x, c.z, seed)), SIL_SEA + 1);
+  const v = campVariant(c, seed);
+  if (v === 1) paintBunker(set, c, seed, f);
+  else if (v === 2) paintScrapyard(set, c, seed, f);
+  else if (v === 3) paintDepot(set, c, seed, f);
+  else paintWatchpost(set, c, seed, f);
 }
 
 const relayAtSeed = (tx: number, tz: number, seed: number): boolean => {
@@ -825,6 +974,33 @@ export function getSilvarisTraderLoot(rng: () => number): SilLoot[] {
   if (rng() < 0.6) out.push({ item: "seed_emberbush", n: 2 });
   if (rng() < 0.5) out.push({ item: "metal", n: 2 });
   if (rng() < 0.4) out.push({ item: "lamp", n: 1 });
+  return out;
+}
+
+/** A Machine Camp's stores: chassis shards, Lead and battery salt, Slugs —
+ *  everything a patrol squad eats or breaks. A spare Heart is rare loot:
+ *  the kill-drop stays the prime way to one. */
+export function getMachineLoot(rng: () => number): SilLoot[] {
+  const out: SilLoot[] = [{ item: "machine_part", n: 2 + (rng() * 3 | 0) }, { item: "slug", n: 3 + (rng() * 5 | 0) }];
+  if (rng() < 0.75) out.push({ item: "scrap", n: 3 + (rng() * 4 | 0) });
+  if (rng() < 0.7) out.push({ item: "leadrod", n: 1 + (rng() * 3 | 0) });
+  if (rng() < 0.6) out.push({ item: "saltpetre", n: 1 + (rng() * 3 | 0) });
+  if (rng() < 0.5) out.push({ item: "steel_plating", n: 2 + (rng() * 2 | 0) });
+  if (rng() < 0.4) out.push({ item: "elec_lamp", n: 1 });
+  if (rng() < 0.3) out.push({ item: "battery", n: 1 });
+  if (rng() < 0.25) out.push({ item: "titan_plating", n: 1 + (rng() * 2 | 0) });
+  if (rng() < 0.15) out.push({ item: "machine_heart", n: 1 }); // a fallen squad's spare
+  return out;
+}
+
+/** A Relay Tower's maintenance cache: salt, wire, and the tower's own parts. */
+export function getRelayLoot(rng: () => number): SilLoot[] {
+  const out: SilLoot[] = [{ item: "saltpetre", n: 2 + (rng() * 3 | 0) }, { item: "scrap", n: 2 + (rng() * 3 | 0) }];
+  if (rng() < 0.7) out.push({ item: "leadrod", n: 1 + (rng() * 2 | 0) });
+  if (rng() < 0.55) out.push({ item: "machine_part", n: 1 + (rng() * 2 | 0) });
+  if (rng() < 0.45) out.push({ item: "power_pole", n: 1 + (rng() * 2 | 0) });
+  if (rng() < 0.35) out.push({ item: "slug", n: 2 + (rng() * 4 | 0) });
+  if (rng() < 0.2) out.push({ item: "titan_plating", n: 1 + (rng() * 2 | 0) });
   return out;
 }
 

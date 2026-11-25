@@ -6,7 +6,8 @@ import { MOB_DEFS } from "./mobs";
 import { QUESTS } from "./quests";
 import { LESSONS } from "./chronicle";
 import { RECIPES, SMELT, HEARTH_SMELT, POT_RECIPES } from "./crafting";
-import { itemArtUrl, blockTileUrl } from "./icons";
+import { itemArtUrl, blockTileUrl, mobArtUrl } from "./icons";
+import { MOB_LORE, MOB_HOME, type MobKind } from "./mobs";
 import {
   WorldMeta, RunSave, Settings, listWorlds, createWorld, loadRun, deleteWorld,
   getSettings, setSettings, exportRun, importRun,
@@ -183,7 +184,7 @@ let catalogTab: "items" | "recipes" = "items";
 let catalogSearch = "";
 
 // The Codex's five shelves, listed alphabetically (the shelf order IS the alphabet here).
-const CAT_SECTIONS = ["Food & Water", "Machines & Power", "Materials & Building", "Oddities", "Tools & Gear"] as const;
+const CAT_SECTIONS = ["Creatures", "Food & Water", "Machines & Power", "Materials & Building", "Oddities", "Tools & Gear"] as const;
 const FOOD_IDS: Record<string, true> = { canister_full: true, canister_empty: true, bucket: true, bucket_full: true,
   hot_water_pouch: true, prickly_pear: true, dune_melon: true, wheat: true, bread: true, apple: true, sugar_cane: true,
   rat_raw: true, rat_cooked: true, vulture_raw: true, vulture_cooked: true };
@@ -191,7 +192,10 @@ const TOOL_IDS: Record<string, true> = { wood_pickaxe: true, wood_shovel: true, 
   stone_shovel: true, stone_axe: true, metal_pickaxe: true, metal_shovel: true, metal_axe: true,
   metal_disassembler: true, alloy_pickaxe: true, alloy_shovel: true, alloy_axe: true, alloy_disassembler: true,
   voidbreaker: true, sword: true, stinger_blade: true, reptile_armor: true, tortoise_cuirass: true, wurmsuit: true,
-  backpack1: true, backpack2: true, visor: true, body_regulator: true, head_lantern: true, coolant_cell: true };
+  backpack1: true, backpack2: true, visor: true, body_regulator: true, head_lantern: true, coolant_cell: true,
+  basalt_knife: true, bone_knife: true, titanium_knife: true, carbide_knife: true,
+  bone_harpoon: true, titanium_harpoon: true, carbide_harpoon: true, bone_bucket: true,
+  buckguard: true, snowcloak: true, tideback_cuirass: true };
 const ODD_IDS: Record<string, true> = { catalyst: true, engine_core: true, beacon: true, surveyor_pin: true, tracker: true, apple_pip: true };
 const MACHINE_IDS: Record<string, true> = { lamp: true, regulator: true, regulator_broken: true, storm_breaker: true,
   storm_breaker_broken: true, power_pole: true, power_panel: true, gen_wood: true,
@@ -203,7 +207,7 @@ function itemSection(id: string): string {
   if (id in FOOD_IDS) return "Food & Water";
   if (id in MACHINE_IDS) return "Machines & Power";
   if (id in ODD_IDS) return "Oddities";
-  if (id in TOOL_IDS) return "Tools & Gear";
+  if (id in TOOL_IDS || ITEMS[id]?.tool) return "Tools & Gear";
   return "Materials & Building";
 }
 function blockSection(b: BlockDef): string {
@@ -292,7 +296,7 @@ function renderCatalog() {
       }
       return row;
     };
-    const card = (key: string, art: string, name: string, meta: string, desc: string, known: boolean, links: HTMLElement | null) => {
+    const card = (key: string, art: string, name: string, meta: string, desc: string, known: boolean, links: HTMLElement | null, lockedNote = "carry it, craft it, or mine it once") => {
       const el = document.createElement("div");
       el.className = "cat-card" + (known ? "" : " locked");
       el.id = key;
@@ -301,7 +305,7 @@ function renderCatalog() {
       const txt = document.createElement("div");
       txt.innerHTML = `<b>${name}</b><div class="cat-meta">${meta}</div>` +
         (known ? `<div class="cat-desc">${desc}</div>`
-          : `<div class="cat-locked">Locked — carry it, craft it, or mine it once: the Codex remembers.</div>`);
+          : `<div class="cat-locked">Locked — ${lockedNote}: the Codex remembers.</div>`);
       el.append(img, txt);
       if (links) el.append(links);
       // every card reads the same size; one click unfolds the whole entry
@@ -349,6 +353,20 @@ function renderCatalog() {
           item?.desc ?? "Found in the world; mine it to collect it." + (b.minTier > 0 ? ` Needs a tier-${b.minTier} ${b.tool ?? "tool"}.` : ""),
           !learned || learned.has("b:" + b.id) || (!!item && learned.has(item.id)),
           segs.length ? linkRow(segs) : null),
+      });
+    }
+    for (const kind of Object.keys(MOB_DEFS) as MobKind[]) {
+      const def = MOB_DEFS[kind];
+      const segs: { lab: string; chips: [string, string][]; plain: string[] }[] = [];
+      const drops = [...new Set(def.drops.map((d) => d.itemId))];
+      if (drops.length) segs.push({ lab: "Drops", chips: drops.map((id) => [ITEMS[id].name, "cat-i-" + id] as [string, string]), plain: [] });
+      if (def.hide) segs.push({ lab: "Hide under", chips: [[ITEMS[def.hide].name, "cat-i-" + def.hide]], plain: [] });
+      entries.push({
+        sort: def.name, section: "Creatures", q: `${def.name} ${MOB_LORE[kind]}`,
+        card: () => card("cat-m-" + kind, mobArtUrl(kind), def.name,
+          `${MOB_HOME[kind]} · ${def.machine ? "Machine Dominion" : def.aggroR > 0 ? "dangerous" : def.retaliateR && def.retaliateR > 0 ? "neutral until struck" : def.kind === "trader" ? "trades at camps" : "harmless"}`,
+          MOB_LORE[kind], !learned || learned.has("m:" + kind), segs.length ? linkRow(segs) : null,
+          def.kind === "trader" ? "stand before one" : "meet one — it will not wait"),
       });
     }
     entries.sort((a, b) => a.sort.localeCompare(b.sort));

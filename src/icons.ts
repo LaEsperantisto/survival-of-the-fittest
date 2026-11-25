@@ -1212,6 +1212,137 @@ function drawArt(id: string, w: number, h: number, color: string, tier = ""): HT
       g.fillStyle = "#8fd0e8"; g.fillRect(6, 3, 3, 1);                          // drive glow
       return cv;
     }
+    case "mob_snake": {                                                        // hooded coil on the sand
+      poly(g, [[10, 27], [22, 27], [20, 21], [12, 21]], "#776038");            // coiled base
+      poly(g, [[12, 21], [20, 21], [19, 12], [14, 12]], "#8a7040");            // raised neck
+      poly(g, [[13, 12], [19, 12], [17, 7], [15, 7]], "#9a7e48");              // hood
+      g.fillStyle = "#241a10"; g.fillRect(15, 9, 1, 1); g.fillRect(17, 9, 1, 1); // eyes
+      g.fillStyle = "#c8b088"; g.fillRect(12, 23, 8, 1);                       // belly band
+      return cv;
+    }
+    case "mob_rat": {                                                          // big-eared hopper, long tail
+      g.fillStyle = "#8a6f4a"; g.fillRect(11, 16, 9, 7);                       // body
+      poly(g, [[19, 16], [24, 12], [23, 17], [20, 19]], "#9a7e58");            // haunch
+      g.fillStyle = "#9a7e58"; g.fillRect(10, 12, 5, 5);                       // head
+      g.fillStyle = "#c8a888"; g.fillRect(9, 8, 3, 5); g.fillRect(14, 8, 3, 5); // ears up
+      g.fillStyle = "#241a10"; g.fillRect(11, 14, 1, 1);                       // eye
+      g.fillStyle = "#b08868"; poly(g, [[11, 23], [13, 23], [13, 25], [11, 25]], "#b08868"); // feet
+      for (let i = 0; i < 6; i++) g.fillRect(20 + i, 22 - i, 2, 1);            // tail
+      return cv;
+    }
+    case "mob_scorpion": {                                                     // armoured plates, curled tail
+      poly(g, [[9, 20], [23, 20], [21, 14], [11, 14]], "#8a5a30");             // carapace
+      g.fillStyle = "#a06a38"; g.fillRect(11, 15, 10, 2);                      // plate line
+      g.fillStyle = "#6a4424"; g.fillRect(6, 17, 4, 3); g.fillRect(22, 17, 4, 3); // pincer arms
+      g.fillStyle = "#6a4424"; g.fillRect(4, 15, 3, 3); g.fillRect(25, 15, 3, 3); // pincers
+      poly(g, [[22, 14], [26, 9], [24, 5], [21, 6], [23, 10], [20, 13]], "#7a4e28"); // tail arc
+      g.fillStyle = "#c8552b"; g.fillRect(23, 4, 2, 2);                        // stinger
+      return cv;
+    }
+    case "mob_wurm": {                                                         // segmented dune tube, maw ring
+      for (let y = 8; y <= 24; y += 4) { poly(g, [[9, y], [23, y], [22, y + 3], [10, y + 3]], y % 8 ? "#8a6a44" : "#7a5c3a"); }
+      g.fillStyle = "#3a2c1c"; g.fillRect(11, 8, 10, 3);                       // maw
+      for (let x = 12; x <= 19; x += 2) g.fillStyle = "#d8c8a8", g.fillRect(x, 9, 1, 2); // teeth
+      g.fillStyle = "#c8a878"; g.fillRect(10, 19, 12, 1);                      // segment shine
+      return cv;
+    }
+    case "mob_trader": {                                                       // hooded roadfolk, trade staff
+      poly(g, [[11, 26], [21, 26], [20, 10], [12, 10]], "#7a5c42");            // robe
+      g.fillStyle = "#5c4630"; g.fillRect(12, 16, 8, 2);                       // sash
+      poly(g, [[12, 10], [20, 10], [18, 4], [14, 4]], "#8a6f52");              // hood
+      g.fillStyle = "#2a2018"; g.fillRect(14, 7, 4, 2);                        // shade under the hood
+      g.fillStyle = "#b9c0ca"; g.fillRect(23, 6, 2, 20);                       // staff
+      poly(g, [[22, 4], [26, 4], [24, 7]], "#c8a878");                         // wrap on the staff
+      return cv;
+    }
+    case "mob_vulture": {                                                      // hooked beak, spread wing
+      poly(g, [[6, 16], [26, 12], [24, 20], [8, 22]], "#3c3836");              // swept wing
+      g.fillStyle = "#2c2826"; g.fillRect(14, 18, 6, 6);                       // body
+      g.fillStyle = "#c8c0b8"; g.fillRect(15, 12, 4, 5);                       // grey head
+      poly(g, [[19, 13], [24, 14], [19, 16]], "#c8552b");                      // hooked beak
+      g.fillStyle = "#151412"; g.fillRect(16, 13, 1, 1);                       // eye
+      return cv;
+    }
+    case "mob_tortoise": {                                                     // spiked dome, slow legs
+      poly(g, [[6, 22], [9, 12], [23, 12], [26, 22]], "#5c6150");              // dome
+      for (let x = 8; x <= 22; x += 5) poly(g, [[x, 12], [x + 2, 12], [x + 1, 9]], "#8a8f78"); // spikes
+      g.fillStyle = "#46503c"; g.fillRect(8, 18, 16, 2);                       // rim band
+      g.fillStyle = "#7a7f62"; g.fillRect(25, 17, 4, 4);                       // head
+      g.fillStyle = "#46503c"; g.fillRect(8, 23, 4, 3); g.fillRect(20, 23, 4, 3); // feet
+      return cv;
+    }
+    case "mob_fennec": {                                                       // outsized ears, small fox
+      g.fillStyle = "#b98e5c"; g.fillRect(11, 17, 10, 6);                      // body
+      g.fillStyle = "#c8a878"; g.fillRect(20, 15, 5, 5);                       // head
+      poly(g, [[20, 15], [21, 5], [23, 14]], "#c8a878"); poly(g, [[23, 14], [26, 6], [25, 15]], "#d8bc94"); // huge ears
+      g.fillStyle = "#241a10"; g.fillRect(23, 17, 1, 1);                       // eye
+      poly(g, [[9, 20], [6, 23], [11, 23]], "#b98e5c");                        // brush tail
+      return cv;
+    }
+    case "mob_stalker": {                                                      // white coat, black eyes
+      poly(g, [[7, 23], [10, 14], [22, 14], [25, 23]], "#d8dee6");             // body
+      g.fillStyle = "#c4ccd6"; g.fillRect(21, 9, 6, 6);                        // head low
+      g.fillStyle = "#151412"; g.fillRect(24, 11, 2, 2);                       // black eyes
+      g.fillStyle = "#c4ccd6"; g.fillRect(8, 24, 3, 4); g.fillRect(14, 24, 3, 4); g.fillRect(20, 24, 3, 4); // legs
+      poly(g, [[7, 16], [3, 13], [7, 19]], "#e8ecf2");                         // tail flag
+      return cv;
+    }
+    case "mob_tideback": {                                                     // plated shallows wall
+      poly(g, [[4, 23], [7, 12], [24, 10], [28, 22]], "#4c6660");              // body
+      for (let x = 7; x <= 23; x += 5) g.fillStyle = "#3a524c", g.fillRect(x, 13, 4, 6); // plates
+      g.fillStyle = "#6a8a80"; g.fillRect(7, 11, 18, 1);                       // ridge
+      g.fillStyle = "#3a524c"; g.fillRect(25, 14, 4, 4);                       // head low
+      g.fillStyle = "#c8552b"; g.fillRect(27, 15, 1, 1);                       // eye
+      return cv;
+    }
+    case "mob_brushbuck": {                                                    // antlered herd buck
+      g.fillStyle = "#7a5c3a"; g.fillRect(10, 15, 11, 6);                      // body
+      g.fillStyle = "#8a6f4a"; g.fillRect(20, 11, 5, 5);                       // head
+      g.fillStyle = "#d8c890"; g.fillRect(21, 10, 1, 1); g.fillRect(24, 10, 1, 1); // antler nubs
+      poly(g, [[21, 11], [19, 4], [22, 8]], "#c8a878"); poly(g, [[24, 11], [27, 4], [24, 8]], "#c8a878"); // antlers
+      g.fillStyle = "#6a4e30"; g.fillRect(11, 21, 2, 5); g.fillRect(18, 21, 2, 5); // legs
+      return cv;
+    }
+    case "mob_warden": {                                                       // pedestal eye
+      g.fillStyle = "#4a505c"; g.fillRect(12, 18, 8, 8);                       // pedestal
+      poly(g, [[11, 18], [21, 18], [19, 10], [13, 10]], "#5c6470");            // eye housing
+      g.fillStyle = "#35e0ff"; g.fillRect(14, 12, 4, 4);                       // teal eye
+      g.fillStyle = "#20262e"; g.fillRect(15, 13, 2, 2);                       // pupil
+      g.fillStyle = "#3a4048"; g.fillRect(9, 16, 14, 2);                       // shoulder bar
+      return cv;
+    }
+    case "mob_sentry": {                                                       // bipedal red visor
+      g.fillStyle = "#4a505c"; g.fillRect(13, 8, 7, 10);                       // torso
+      g.fillStyle = "#c8552b"; g.fillRect(14, 9, 5, 2);                        // visor slit
+      g.fillStyle = "#3a4048"; g.fillRect(12, 18, 3, 8); g.fillRect(18, 18, 3, 8); // legs
+      g.fillStyle = "#5c6470"; g.fillRect(9, 10, 3, 6); g.fillRect(21, 10, 3, 6); // arm pods
+      g.fillStyle = "#8fd0e8"; g.fillRect(22, 12, 1, 2);                       // claw glow
+      return cv;
+    }
+    case "mob_breaker": {                                                      // squat siege machine
+      poly(g, [[6, 24], [6, 12], [22, 9], [26, 20], [24, 24]], "#54484e");     // mass
+      g.fillStyle = "#c8552b"; g.fillRect(8, 14, 4, 2); g.fillRect(15, 12, 5, 2); // hot seams
+      g.fillStyle = "#8a8f98"; poly(g, [[26, 14], [30, 12], [30, 16]], "#8a8f98"); // ram nose
+      g.fillStyle = "#332c30"; g.fillRect(8, 24, 14, 4);                       // treads
+      g.fillStyle = "#c05050"; g.fillRect(11, 17, 3, 3);                       // core cage
+      return cv;
+    }
+    case "mob_hauler": {                                                       // loaded cargo carrier
+      g.fillStyle = "#4a505c"; g.fillRect(7, 14, 16, 6);                       // chassis
+      g.fillStyle = "#8a8f98"; g.fillRect(9, 8, 6, 6); g.fillRect(16, 10, 6, 4); // cargo crates
+      g.fillStyle = "#c8a878"; g.fillRect(10, 9, 4, 1); g.fillRect(17, 11, 4, 1); // lash straps
+      g.fillStyle = "#332c30"; g.fillRect(6, 20, 18, 4);                       // treads
+      g.fillStyle = "#35e0ff"; g.fillRect(23, 15, 2, 2);                       // running lamp
+      return cv;
+    }
+    case "mob_sentinel": {                                                     // monolith of the Hall
+      poly(g, [[11, 28], [11, 6], [21, 4], [21, 28]], "#3c3238");              // monolith body
+      g.fillStyle = "#c05050"; g.fillRect(13, 9, 6, 4);                        // the red eye
+      g.fillStyle = "#8fd0e8"; g.fillRect(14, 10, 4, 1);                       // shield glint
+      g.fillStyle = "#54484e"; g.fillRect(8, 14, 3, 8); g.fillRect(21, 14, 3, 8); // arm struts
+      g.fillStyle = "#c8552b"; g.fillRect(12, 20, 8, 1);                       // conduit seam
+      return cv;
+    }
   }
   return null;
 }
@@ -1274,4 +1405,17 @@ export function itemArtUrl(itemId: string, rot = 0, charges?: number): string {
 /** 16px atlas tile of a world block as a dataURL (catalog block preview). */
 export function blockTileUrl(blockId: number): string {
   const [c, g] = mk(T, T); blit(g, 0, 0, blockId); return c.toDataURL();
+}
+
+const mobArtCache: Record<string, string> = {};
+/** 16px portrait of a creature as a dataURL (Codex card). */
+export function mobArtUrl(kind: string): string {
+  if (!mobArtCache[kind]) {
+    const [cv, g] = mk(T, T);
+    g.imageSmoothingEnabled = false;
+    const art = drawArt("mob_" + kind, 1, 1, "#888888");
+    if (art) g.drawImage(art, 0, 0);
+    mobArtCache[kind] = cv.toDataURL();
+  }
+  return mobArtCache[kind];
 }

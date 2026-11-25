@@ -150,6 +150,35 @@ export const MOB_DEFS: Record<MobKind, MobDef> = {
   },
 };
 
+/** What the road says about each creature — Catalog copy only, never rules. */
+export const MOB_LORE: Record<MobKind, string> = {
+  snake:    "Thin, quick, and everywhere the sand is. It strikes first because it would rather not be eaten.",
+  rat:      "A hopper with a sack of fleas on its back. More meat than a fight, if you can catch one.",
+  scorpion: "Armoured, patient, and it leaves the stinger behind — which is the part worth having.",
+  wurm:     "The dunes' own weather: it surfaces to eat. Its hide turns heat; its chitin takes an edge.",
+  trader:   "The road's own people. They walk between camps with goods the Settlements forgot; trade with one long enough and its Keeper will speak.",
+  vulture:  "It circles what you will leave behind, and it is patient about it. It will take a few pieces of you too.",
+  tortoise: "A wall on legs. The shell is worth the walk around; nothing else about it hurries.",
+  fennec:   "Big ears, faster feet. It watches you decide, then decides for itself.",
+  stalker:  "The Boreal's fast hunger. White coat, black appetite. It will test you at a run.",
+  tideback: "Shallows' armour — nothing bites through the hide; only a Harpoon sees meat. Hit it and the whole shore answers.",
+  brushbuck:"The herds of the second world: four, six, a dozen at the salt line. Skinned for cold kit, meat for the Cauldron.",
+  warden:   "The Dominion's watchful eye. On Silvaris it holds; in the desert one wanders, and it remembers the Ship.",
+  sentry:   "Camps' fast enforcer. It walks the antennas and answers noise — including yours.",
+  breaker:  "The walls' end. It walks into a settlement to unmake it; only a Heart is worth its weight.",
+  hauler:   "Neutral until struck — then every machine within a shout comes to its help. It carries the camps' salvage.",
+  sentinel: "The Volcano's warden, shielded by the conduits in its Hall. Cut the three, and it can die — and its gift ends Phase 2.",
+};
+
+/** Where a creature is found, for the Catalog's one-line home.", */
+export const MOB_HOME: Record<MobKind, "Desertis" | "Silvaris" | "Both worlds"> = {
+  snake: "Desertis", rat: "Desertis", scorpion: "Desertis", wurm: "Desertis",
+  vulture: "Desertis", tortoise: "Desertis", fennec: "Desertis",
+  stalker: "Silvaris", tideback: "Silvaris", brushbuck: "Silvaris",
+  trader: "Both worlds", warden: "Both worlds", sentry: "Silvaris", breaker: "Silvaris",
+  hauler: "Silvaris", sentinel: "Silvaris",
+};
+
 // ---------------------------------------------------------------- shared bits
 
 // one unit cube reused by every mob part; shapes come from mesh.scale

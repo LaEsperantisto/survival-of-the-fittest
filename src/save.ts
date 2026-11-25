@@ -146,8 +146,8 @@ export interface RunSave {
   worldMode?: "easy" | "hard" | "phase2"; // fixed at world creation (Phase 0/1/2 Start)
   cheats?: { immortal?: boolean; keep?: boolean }; // cheat-menu toggles that persist with the world
   chronicle?: string[];                   // lesson ids seen (chronicle.ts)
-  codex?: string[];                       // item ids (and "b:<blockId>") first carried/crafted/mined
-  dominion?: { silentCamps?: string[]; raidedRelays?: string[]; campTrust?: string[]; campTrade?: Record<string, number>; chaptersRead?: string[]; unlocks?: Record<string, true> }; // cut Camp antennas (tx,tz) / Relays that already raided (tx|tz|day) / trusted Keeper camps ("d:tx,tz"/"s:tx,tz") / trades per camp / chapters already heard / locked recipes the world has revealed
+  codex?: string[];                       // item ids, "b:<blockId>", "m:<mobKind>" first carried/crafted/mined/met
+  dominion?: { silentCamps?: string[]; raidedRelays?: string[]; campTrust?: string[]; campTrade?: Record<string, number>; chaptersRead?: string[]; unlocks?: Record<string, true>; commissionDay?: Record<string, number> }; // cut Camp antennas (tx,tz) / Relays that already raided (tx|tz|day) / trusted Keeper camps ("d:tx,tz"/"s:tx,tz") / trades per camp / chapters already heard / locked recipes the world has revealed / day each camp's road commission was taken
   // ---- v4: Phase 2 run state (clean break: v3 worlds' block ids no longer exist) ----
   sentinel?: boolean;                     // the Sentinel has fallen
   wrath?: number;                         // machine provocation level: squads escalate with it

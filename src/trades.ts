@@ -56,3 +56,31 @@ export function offersFor(seed: number, campX: number, campZ: number, day: numbe
   }
   return picks;
 }
+
+/** The Silvaris table turns with the day too — same shape, that world's
+ *  own goods. Camps never deal Super Rocket Fuel: that stays craft-only. */
+export function silOffersFor(seed: number, campX: number, campZ: number, day: number): Offer[] {
+  const picks: Offer[] = [];
+  const taken = new Set<number>();
+  for (let i = 0; i < 5; i++) {
+    let idx = Math.floor(hash2(campX - i * 11, campZ + i * 5, seed + day * 101 + 613) * SILVARIS_GOODS.length);
+    while (taken.has(idx)) idx = (idx + 1) % SILVARIS_GOODS.length;
+    taken.add(idx);
+    const o = SILVARIS_GOODS[idx];
+    picks.push({ want: o.want.map((w) => ({ ...w })), give: o.give.map((v) => ({ ...v })) });
+  }
+  return picks;
+}
+
+/** The camp's one big ask today — the road commission: bulk goods hauled
+ *  in exchange for scarcer goods than the everyday swap. One per camp per
+ *  day, and it is the deed the trade roads repeat. */
+export function commissionFor(pool: Offer[], seed: number, campX: number, campZ: number, day: number): Offer {
+  const pick = pool[Math.floor(hash2(campX + 5, campZ - 9, seed + day * 131 + 977) * pool.length)];
+  const want = 2 + Math.floor(hash2(campX - 3, campZ + 7, seed + day * 131 + 61) * 2);   // ×2..3
+  const give = 1 + Math.floor(hash2(campX + 11, campZ + 2, seed + day * 131 + 43) * 2);  // ×1..2
+  return {
+    want: pick.want.map((w) => ({ ...w, count: w.count * want })),
+    give: pick.give.map((v) => ({ ...v, count: v.count * give })),
+  };
+}
