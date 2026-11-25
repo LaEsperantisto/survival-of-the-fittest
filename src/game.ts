@@ -5,10 +5,11 @@ import { Survival, REGULATOR_ROOM_MAX, SAFE_HI, type StormKind } from "./surviva
 import { Renderer } from "./renderer";
 import { Audio } from "./audio";
 import { Inventory, ITEMS, BLOCK_TO_ITEM, slotDims, sackUnits, sackFree, type ItemDef, type Slot } from "./items";
-import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_GROUP, ALAB_GATE, ALAB_GATE_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, CHEST_INTERFACE, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, INSERTER, PLANTER, HARVESTER, REFINERY, POLE_LINK, DEVICE_REACH, isPowerBlock, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable,
+import { BLOCKS, AIR, WATER, SAND, SANDSTONE, DIRT, SALT, DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_GROUP, ALAB_GATE, ALAB_GATE_OPEN, BEACON, BENCH, BENCH_EXT, CAMPFIRE, LAMP, ENGINECORE, CHEST, CHEST_CONNECTOR, CHEST_INTERFACE, CACTUS, CACTUS_FRUIT, FARMLAND, MELON_1, MELON_2, WHEAT_1, WHEAT_2, TUNDROOT_1, TUNDROOT_2, EMBERBUSH_1, EMBERBUSH_2, EMBER_FRUIT, OAT_1, OAT_2, BED, BED_EXT, REGULATOR, GRASS, WOOD, LEAVES, SAPLING, THRUSTER, THRUSTER_LIT, STORM_BREAKER, STORM_BREAKER_R, ARMORY, REGULATOR_HUSK, STORM_BREAKER_HUSK, POWER_PANEL, POWER_POLE, GEN_WOOD, WIND_TURBINE, SOLAR_PANEL, BATTERY, ELEC_LAMP, INSERTER, PLANTER, HARVESTER, REFINERY, POLE_LINK, DEVICE_REACH, isPowerBlock, CS, CH, DAY_SECONDS, isSolid, isWater, blockDisplayName, rotatable,
   COOKPOT, WATER_CAGE, WATER_CAGE_FULL, SUGARCANE_1, SUGARCANE_2, APPLE_SAPLING, APPLE_FRUIT,
   FRAME_CORNER, FLIGHT_CONTROLS, OIL, isFluid,
-  HULL, CURVED_HULL, INSCRIPTION, DOCK_PAD, GLASS,
+  HULL, CURVED_HULL, INSCRIPTION, DOCK_PAD, GLASS, CAMP_ANTENNA, HOVER_SLED, SNOW, SPIKE_BARRICADE,
+  ALARM_CHIME, GUN_TURRET, SHOCK_COIL,
   ELECTRIC_BENCH, ASSEMBLY_BENCH, FUEL_WORKS, FOUNDRY } from "./blocks";
 import { Ship, SHIP, FWD_DIR, massOf, emptyPort, migratePorts, rocketCharges, type Port, type ShipHit } from "./ship";
 import { computeFrame, type Box3, type FrameResult } from "./shipframe";
@@ -31,6 +32,13 @@ const STATION_TITLES: Record<StationMode, string> = {
   foundry: "Foundry — new ores, cooked to metal",
   assembly: "Assembly Bench — the Ship's heavy parts",
   fuel: "Fuel Works — rocket fuel, cooked into the blue canister",
+  hearth: "Hearth — the dwellers' fire, stone and bread",
+  workbench: "Stone Workbench — the dwellers' bench",
+  wiring: "Wiring Bench — lead and salt, power the Silvan way",
+  tannery: "Tannery — hides and sinew worked tough",
+  cauldron: "Cauldron — the pot that never leaves the fire",
+  oilworks: "Oilworks — the black blood of this world, worked",
+  still: "Still — sap and stalks distilled",
 };
 /** the HUD's words when each storm regime arrives and leaves */
 const STORM_TOASTS: Record<StormKind, { in: string; out: string }> = {
@@ -42,16 +50,18 @@ import { MOB_DEFS, makeMobMesh, setFauna, faunaTargets, faunaSpawnKinds, pickSil
 import { hashStr, hash2 } from "./noise";
 import { heightAt, biomeAt, TOWN_L, CAMP_L, CAVE_MOUTH_L, OUTPOST_L, OASIS_L, SEEP_L, CANISTER_L, PHASE2_CORE, treePlan, appleTreePlan, TreePart, structuresOf, campTraderSpot } from "./gen";
 import {
-  ARR_Y, SIL_SEA, SETTLE_L, TRADER_L, SB_ALPINE, SB_BOREAL, SB_SCORCH,
+  ARR_Y, SIL_SEA, SETTLE_L, TRADER_L, CAMP_L as SIL_CAMP_L, RELAY_L as SIL_RELAY_L, SB_ALPINE, SB_BOREAL, SB_SCORCH,
   biomeAt as silBiomeAt, heightAt as silHeightAt, settleAt as silSettleAt, traderAt as silTraderAt,
+  campNodeAt, relayNodeAt, traderCellAt, traderCellCenter, nearestTraderCamp,
   getSilvarisLoot, getSilvarisTraderLoot,
 } from "./silvaris";
 import { offersFor, SILVARIS_GOODS, type Offer } from "./trades";
+import { keeperName, keeperChapter } from "./keepers";
 import { RECIPES, SMELT, canCraft, doCraft, FIRE_FUEL, GEN_FUEL, POT_RECIPES, potHas, potConsume, type PotRecipe, type Recipe } from "./crafting";
 import { QUESTS, currentQuest, loadQuestState, questEvent, recordDeed, reconcile, type QuestDef, type QuestState } from "./quests";
 import { LESSON_BY_ID, LESSONS, INSCRIPTION_TEXTS, loadIdSet } from "./chronicle";
 import { Tutorial, INTRO_CINE, type CineSeg } from "./tutorial";
-import { WorldMeta, RunSave, FireSave, PotSave, Planet, WorldRun, migrateRun, emptyWorldRun, saveRun, exportRun, Settings } from "./save";
+import { WorldMeta, RunSave, FireSave, PotSave, Planet, WorldRun, SledSave, migrateRun, emptyWorldRun, saveRun, exportRun, Settings } from "./save";
 import { itemArtUrl } from "./icons";
 import * as hud from "./hud";
 
@@ -116,7 +126,11 @@ export interface Mob {
   bank: number;    // circling direction (±1) while soaring
   hitFlash?: number;  // seconds left of the red damage flash
   flashOn?: boolean;  // whether the visual currently has flash materials swapped in
-  enraged?: number;   // seconds left of payback: a retaliating species chases the player inside its radius
+  enraged?: number; // seconds left of payback: a retaliating species chases the player inside its radius
+  fled?: boolean;   // desert Warden beat: this one has already shown it fears the Wreck
+  raid?: { tx: number; tz: number; eat?: string }; // dispatched by a Relay (tx,tz) / the Wreck response: march orders, eat?: grid cell "x,y,z"
+  chew?: number;    // seconds of chewing poured into the current raid target
+  keeperKey?: string; // a Camp's Keeper (story NPC), "d:tx,tz"/"s:tx,tz": trades never route to a Keeper
   vis: MobVisual;
 }
 export interface Raycast { hit: { x: number; y: number; z: number } | null; water: { x: number; y: number; z: number } | null; face: THREE.Vector3; /** set when the crosshair is on an airborne hull: the EXACT ship-local cell behind the coarse display cell in `hit`, plus the ship-local face it was entered through */ ship?: { sh: Ship; ix: number; iy: number; iz: number; fx: number; fy: number; fz: number } }
@@ -130,6 +144,12 @@ export interface BlockAt {
   ix: number; iy: number; iz: number;
   sh?: Ship;
 }
+
+// what an automatic Planter will put in a prepared bed, both planets alike
+const PLANTABLE_SEEDS: Record<string, number> = {
+  seed_melon: MELON_1, seed_wheat: WHEAT_1, seed_tundroot: TUNDROOT_1,
+  seed_emberbush: EMBERBUSH_1, seed_oats: OAT_1,
+};
 
 export class Game {
   seed: number;
@@ -183,6 +203,11 @@ export class Game {
   private traderAt = new Map<string, Mob>();      // camp lattice cell -> its resident Trader
   private tradeOffers: Offer[] = [];
   private tradeCamp: { x: number; z: number } | null = null;
+  private campTrust = new Set<string>();           // camps whose Keeper's trust is earned ("d:tx,tz"/"s:tx,tz")
+  private campTrade: Record<string, number> = {};  // barters completed per camp — the desert's road to trust
+  private chaptersRead = new Set<string>();        // Keeper chapters already heard, by camp key
+  private keeperAt = new Map<string, Mob>();       // the standing Keeper mobs, by camp key
+  private story: { key: string; title: string; who: string; cards: string[]; card: number } | null = null;
   private stormToast = false;
   private mobSpawnAcc = 9;
   private attackCd = 0;
@@ -202,7 +227,7 @@ export class Game {
   private prevHp = 100;
   private lastHitFlash = -10;
   private lastDmgAt = -10;
-  ui: null | "inv" | "bench" | "cache" | "flycheck" | "trade" | "core" | "leave" = null;
+  ui: null | "inv" | "bench" | "cache" | "flycheck" | "trade" | "story" | "core" | "leave" | "sled" | "turret" = null;
   openCacheId: number | null = null;
   openStation: [number, number, number] | null = null;
   private breaking: { x: number; y: number; z: number; need: number; elapsed: number; shId?: number; ix?: number; iy?: number; iz?: number } | null = null;
@@ -210,6 +235,19 @@ export class Game {
   private rayBlind = false;
   // planted crops: "x,y,z" -> accumulated good-conditions seconds
   crops = new Map<string, number>();
+  // placed Hover Sleds: "x,y,z" -> charge 0-100, bolted upgrades, stowed cargo
+  private sleds = new Map<string, { charge: number; up: Record<string, true>; cargo: { itemId: string; n: number }[] }>();
+  private riding: string | null = null;   // sled cell being ridden
+  private openSled: string | null = null; // sled panel target
+  private sledTick = 0;                   // 1 Hz dock-recharge accumulator
+  // Defenses: Turret magazine + fire gates, Chime edge-detection, Coil pulse clock
+  private turretAmmo = new Map<string, number>();     // Turret cell -> Slugs loaded
+  private turretReady = new Map<string, number>();    // Turret cell -> next shot (timeSec)
+  private turretNoFauna = new Set<string>();          // Turrets told not to shoot fauna
+  private openTurret: string | null = null;           // Turret panel target
+  private chimeSeen = new Map<string, boolean>();     // Chime cell -> a hostile was inside 10
+  private coilPulse = new Map<string, number>();      // Coil cell -> next pulse (timeSec)
+  private spikeTick = 0;                              // Spike Barricade damage accumulator
   private cropAcc = 0;
   private treeAcc = 0;
   private appleAcc = 0;
@@ -261,6 +299,10 @@ export class Game {
   private fxAcc = 0;                                // machine-FX collection tick accumulator
   private batteryCharge = new Map<string, number>(); // Battery cell -> stored units
   private trippedPanels = new Set<string>();        // Power Panel cells latched off
+  private silentCamps = new Set<string>();          // Camp antennas cut: patrols stay stood down (tx,tz)
+  private raidedRelays = new Set<string>();         // Relay nodes that already answered this day's energize beat (tx|tz|day)
+  private wasFrac = -1;                             // last frame's fraction of day, for the dawn edge
+  private wrath = 0;                                // machine provocation: every squad the Dominion sends escalates the next
   private powerDirty = false;                       // a streamed chunk added gen-made power blocks
   private grids: { panel: string | null; panels: number; cells: Map<string, number>;
                    tripped: boolean; powered: boolean }[] = [];
@@ -700,8 +742,8 @@ export class Game {
       this.questBump("supplies");
     } else if (!aboard && this.planet === "silvaris") {
       // the Dueliers' stores. A trader camp's Chest is the stall's counter: it
-      // never holds loot — it opens the camp's barter table. There are no
-      // walking Traders on Silvaris (fauna keeps the camps quiet), so the
+      // never holds loot — it opens the camp's barter table. No walking Nomads
+      // stand at Silvaris camps (fauna keeps the camps quiet), so the
       // counter itself is the shop.
       const c = cells[0];
       const camp = silTraderAt(c.x, c.z, this.world.seed);
@@ -718,7 +760,7 @@ export class Game {
               if (!Game.placeSlotFree(ci, s)) this.dropEntity(it.item, 1, 2);
             }
           }
-          hud.toast("A trader camp's stores — goods carried between the worlds.");
+          hud.toast("A Nomad camp's stores — goods carried between the worlds.");
         }
       } else {
         const sit = silSettleAt(c.x, c.z, this.world.seed);
@@ -824,6 +866,12 @@ export class Game {
     this.chronicle = loadIdSet(run.chronicle, new Set(LESSONS.map((l) => l.id)));
     this.chronLast = this.chronicle.size ? [...this.chronicle].pop()! : null;
     this.codex = loadIdSet(run.codex, new Set([...Object.keys(ITEMS), ...BLOCKS.map((_, i) => "b:" + i)]));
+    this.silentCamps = new Set(run.dominion?.silentCamps ?? []);
+    this.raidedRelays = new Set(run.dominion?.raidedRelays ?? []);
+    this.campTrust = new Set(run.dominion?.campTrust ?? []);
+    this.campTrade = { ...(run.dominion?.campTrade ?? {}) };
+    this.chaptersRead = new Set(run.dominion?.chaptersRead ?? []);
+    this.wrath = run.wrath ?? 0;
     if (run.lastSleep) this.lastSleep = run.lastSleep;
     this.won = !!run.won;
     // ---- the ground under them ----
@@ -862,6 +910,7 @@ export class Game {
         jobs: p.jobs.map((j) => ({ out: j.r.out, cook: j.cook })),
       } satisfies PotSave])),
       battery: [...this.batteryCharge],
+      turretAmmo: [...this.turretAmmo],
       genFuel: [...this.genFuel],
       trippedPanels: [...this.trippedPanels],
       crops: [...this.crops],
@@ -869,6 +918,7 @@ export class Game {
       appleTrees: [...this.appleTrees],
       fruitRegrow: [...this.fruitRegrow],
       coreFuel: [...this.coreFuel].map(([k, f]) => [k, f.map((pt) => ({ ...pt }))] as [string, Port[]]),
+      sleds: [...this.sleds].map(([k, s]) => [k, { charge: s.charge, up: s.up, cargo: s.cargo.map((c) => [c.itemId, c.n] as [string, number]) }] as SledSave),
       ships: [...this.ships.values()].map((s) => s.snapshot()),
       beaconMarks: this.beaconMarks,
       entities: this.entities.filter((e) => !e.buried).map((e) => ({ x: e.x, y: e.y, z: e.z, itemId: e.itemId, charges: e.charges, age: Math.floor(e.age ?? 0), stack: e.stack })),
@@ -906,6 +956,7 @@ export class Game {
     this.world.resetFor(hashStr(w.seedStr || this.meta.seedStr || this.meta.id), this.worldMode, planet, w.deltas, w.rots);
     this.planet = planet;
     this.piloting = null;
+    this.riding = null;
     // Ships ride outside the chunks: restore the entities; their power cells are
     // indexed with the rest of the Grid state below
     this.beaconMarks = w.beaconMarks ?? [];
@@ -985,10 +1036,12 @@ export class Game {
       this.gauges.set(k, this.potLit(k) ? p.charge : 0);
     }
     this.batteryCharge = new Map(w.battery ?? []);
+    this.turretAmmo = new Map(w.turretAmmo ?? []);
     this.genFuel = new Map(w.genFuel ?? []);
     this.trippedPanels = new Set(w.trippedPanels ?? []);
     this.renderer.fires = this.gauges;
     this.crops = new Map(w.crops ?? []);
+    this.sleds = new Map((w.sleds ?? []).map(([k, s]) => [k, { charge: s.charge, up: s.up ?? {}, cargo: (s.cargo ?? []).map(([itemId, n]) => ({ itemId, n })) }]));
     this.appleTrees = new Map(w.appleTrees ?? []);
     this.fruitRegrow = new Map(w.fruitRegrow ?? []);
     if (w.melonHint) this.melonHintShown = true;
@@ -1104,6 +1157,8 @@ export class Game {
       cheats: { immortal: this.cheatInvincible, keep: this.keepInventory },
       chronicle: [...this.chronicle],
       codex: [...this.codex],
+      dominion: { silentCamps: [...this.silentCamps], raidedRelays: [...this.raidedRelays], campTrust: [...this.campTrust], campTrade: this.campTrade, chaptersRead: [...this.chaptersRead] },
+      wrath: this.wrath || undefined,
       planet: this.planet,
       worlds: { desertis, ...(this.planets.silvaris ? { silvaris: this.planets.silvaris } : {}) },
     };
@@ -1428,9 +1483,11 @@ export class Game {
    *  sweeping around the node on a reach-sized grid. Pure in the seed, so each
    *  node is swept once and remembered. */
   private silSites = new Map<string, { x: number; y: number; z: number } | null>();
-  private silSiteNode(kind: "settle" | "trader", tx: number, tz: number): { x: number; y: number; z: number } | null {
+  private silSiteNode(kind: "settle" | "trader" | "camp" | "relay", tx: number, tz: number): { x: number; y: number; z: number } | null {
     const k = `${kind}:${tx},${tz}`;
     if (this.silSites.has(k)) return this.silSites.get(k)!;
+    if (kind === "camp") { this.silSites.set(k, campNodeAt(tx, tz, this.world.seed)); return this.silSites.get(k)!; }
+    if (kind === "relay") { this.silSites.set(k, relayNodeAt(tx, tz, this.world.seed)); return this.silSites.get(k)!; }
     const settle = kind === "settle";
     const L = settle ? SETTLE_L : TRADER_L, step = settle ? 12 : 6;
     const at = settle ? silSettleAt : silTraderAt;
@@ -1447,8 +1504,8 @@ export class Game {
     return hit;
   }
 
-  private nearestSilSite(kind: "settle" | "trader", x: number, z: number) {
-    const L = kind === "settle" ? SETTLE_L : TRADER_L;
+  private nearestSilSite(kind: "settle" | "trader" | "camp" | "relay", x: number, z: number) {
+    const L = kind === "settle" ? SETTLE_L : kind === "trader" ? TRADER_L : kind === "camp" ? SIL_CAMP_L : SIL_RELAY_L;
     const tx = Math.floor(x / L), tz = Math.floor(z / L);
     let best: { x: number; y: number; z: number } | null = null, bd = Infinity;
     for (let ax = tx - 1; ax <= tx + 1; ax++) for (let az = tz - 1; az <= tz + 1; az++) {
@@ -1679,7 +1736,7 @@ export class Game {
     if (this.planet === "silvaris") {
       // the second world's own Landmarks: the Dueliers' Settlements and the
       // trader camps that barter with them. Desert lattices hold nothing here.
-      const lat = (L: number, kind: "settle" | "trader", mapKind: string, label: string) => {
+      const lat = (L: number, kind: "settle" | "trader" | "camp" | "relay", mapKind: string, label: string) => {
         const t0 = Math.floor((px - rad) / L) - 1, t1 = Math.floor((px + rad) / L) + 1;
         const s0 = Math.floor((pz - rad) / L) - 1, s1 = Math.floor((pz + rad) / L) + 1;
         for (let tx = t0; tx <= t1; tx++) for (let tz = s0; tz <= s1; tz++) {
@@ -1690,7 +1747,9 @@ export class Game {
         }
       };
       lat(SETTLE_L, "settle", "town", "Settlement");
-      lat(TRADER_L, "trader", "camp", "Trader Camp");
+      lat(TRADER_L, "trader", "camp", "Nomad Camp");
+      lat(SIL_CAMP_L, "camp", "camp", "Machine Camp");
+      lat(SIL_RELAY_L, "relay", "tower", "Relay Tower");
       return out;
     }
     const s = g.secondShip;
@@ -1738,7 +1797,7 @@ export class Game {
       }
     };
     lat(TOWN_L, (tx, tz) => g.townCenter(tx, tz), "town", "Town");
-    lat(CAMP_L, (tx, tz) => g.campCenter(tx, tz), "camp", "Trader Camp");
+    lat(CAMP_L, (tx, tz) => g.campCenter(tx, tz), "camp", "Nomad Camp");
     lat(CAVE_MOUTH_L, (tx, tz) => g.mouthCenter(tx, tz), "mouth", "Cave Mouth");
     return out;
   }
@@ -1782,7 +1841,7 @@ export class Game {
       }
     };
     scan(TOWN_L, (tx, tz) => g.townAt(tx, tz), (tx, tz) => g.townCenter(tx, tz), "town", "a Town", 5);
-    scan(CAMP_L, (tx, tz) => g.campAt(tx, tz), (tx, tz) => g.campCenter(tx, tz), "camp", "a Trader Camp", 4);
+    scan(CAMP_L, (tx, tz) => g.campAt(tx, tz), (tx, tz) => g.campCenter(tx, tz), "camp", "a Nomad Camp", 4);
     scan(CAVE_MOUTH_L, (tx, tz) => g.mouthAt(tx, tz), (tx, tz) => g.mouthCenter(tx, tz), "mouth", "a Cave Mouth", 6);
     if (!cands.length) { hud.toast("The Tracker spins uselessly — every Landmark around you is already on your Map."); this.audio.error(); return; }
     let best = cands[0], bd = Infinity;
@@ -1880,7 +1939,7 @@ export class Game {
         if (t.remembered) { g2.fillStyle = "rgba(8,10,14,0.55)"; g2.fillRect(rx, rz, CS * sc, CS * sc); }
       }
     // Landmarks
-    const lmColor: Record<string, string> = { ship: "#66e5f0", wreck: "#cc4433", town: "#d8b74f", camp: "#b48ad8", mouth: "#8a8f9a", oasis: "#41d878", canister: "#e08a4f", seep: "#8a6a35" };
+    const lmColor: Record<string, string> = { ship: "#66e5f0", wreck: "#cc4433", town: "#d8b74f", camp: "#b48ad8", tower: "#e05a4a", mouth: "#8a8f9a", oasis: "#41d878", canister: "#e08a4f", seep: "#8a6a35" };
     for (const l of this.landmarkList(px, pz, r + 8)) {
       const mx = (l.x - x0) * sc, mz = (l.z - z0) * sc;
       if (mx < -4 || mz < -4 || mx > size + 4 || mz > size + 4) continue;
@@ -1935,7 +1994,8 @@ export class Game {
           (ae instanceof HTMLInputElement || ae instanceof HTMLTextAreaElement)) return;
       this.keys.add(ke.code);
       if (ke.code === "KeyE") {
-        if (this.piloting) {
+        if (this.ui === "story") this.advanceStory();
+        else if (this.piloting) {
           // E aimed at the yoke frees the cursor over the instrument panel
           // while the Ship flies on; E again takes the hands back. E aimed
           // anywhere else is still the way off the yoke.
@@ -1948,6 +2008,7 @@ export class Game {
         } else if (this.ui === "flycheck") this.closeFlycheck();
         else this.act();
       }
+      if (this.ui === "story" && (ke.code === "Enter" || ke.code === "Space")) this.advanceStory();
       if (ke.code === "KeyQ" && !this.piloting) this.useItem();
       if (ke.code === "KeyX") this.surge();
       if (ke.code === "KeyT") this.toggleLantern();
@@ -2011,6 +2072,8 @@ export class Game {
     on("keyup", (e) => this.keys.delete((e as KeyboardEvent).code));
     document.getElementById("surge-btn")!.onclick = () => this.surge();
     this.wireFlightUI();
+    this.wireSledUI();
+    this.wireTurretUI();
     document.getElementById("flight-leave")!.onclick = () => this.openLeave();
     document.getElementById("core-slot-0")!.onclick = () => this.coreSlotClick(0);
     document.getElementById("core-slot-1")!.onclick = () => this.coreSlotClick(1);
@@ -2310,6 +2373,14 @@ export class Game {
     if (this.paused) { this.renderer.render(); return; }
     this.timeSec += dt;
     this.playSec += dt;
+    // Raid squads are night things: they go limp and are done at dawn (canon).
+    const fr01 = (this.timeSec % DAY_SECONDS) / DAY_SECONDS;
+    if (this.wasFrac < 0.25 && fr01 >= 0.25 && this.mobs.some((m) => m.raid)) {
+      for (const m of this.mobs) if (m.raid) this.renderer.removeSceneObject(m.vis.group);
+      this.mobs = this.mobs.filter((m) => !m.raid);
+      hud.toast("Dawn. The raid machines sag and go still.");
+    }
+    this.wasFrac = fr01;
 
     const pcx = Math.floor(this.player.pos.x / 16), pcz = Math.floor(this.player.pos.z / 16);
     this.renderer.ensureChunks(this.world, pcx, pcz);
@@ -2359,7 +2430,14 @@ export class Game {
         if (!sh.grounded && sh.spinTo === null && this.isAboard(sh)) { hull = sh; break; }
       this.player.hull = hull;
       if (hull) this.rayBlind = true;
-      this.player.update(dt, mx, mz, jump, this.speedMul);
+      const riding = this.riding ? this.sleds.get(this.riding) : null;
+      const moving = mx !== 0 || mz !== 0;
+      this.player.update(dt, mx, mz, jump, this.speedMul * (riding ? 1.9 : 1));
+      if (riding && moving) {
+        riding.charge = Math.max(0, riding.charge - dt * (1 + (riding.up["sled_blade"] ? 0.5 : 0)));
+        if (riding.up["sled_blade"]) this.sledBlade(mx, mz);
+        if (riding.charge <= 0) { this.dismountSled("The charge is spent — the sled settles in the snow."); }
+      }
       if (hull) this.rayBlind = false;
       // landing a fall: the first 4 blocks are free; ~16 without armour is lethal
       if (this.player.lastFallDist > 0) {
@@ -2572,6 +2650,8 @@ export class Game {
     this.caches = this.caches.filter((c) => c.items.length);
     this.regulatorGlow();
     this.updateCrops(dt);
+    this.updateSleds(dt);
+    this.updateDefenses(dt);
     this.updatePower(dt);
     this.updateTrees(dt);
     this.updateApples(dt);
@@ -2678,7 +2758,9 @@ export class Game {
   }
 
   private promptFor(t: Raycast | null): string | null {
-    if (this.nearestTrader()) return "E: Trade with the Trader";
+    const keeper = this.nearestKeeper();
+    if (keeper) return "E: Speak with " + this.keeperOf(keeper).name;
+    if (this.nearestTrader()) return "E: Trade with the Nomad";
     if (!t) return null;
     const at = this.atOf(t);
     if (at) {
@@ -2705,7 +2787,7 @@ export class Game {
       if (id === INSCRIPTION) return "E: Read the Inscription";
       if (id === CAMPFIRE) return "E: Cook at the Campfire";
       if (id === COOKPOT) return "E: Cook at the Cooking Pot";
-      if (id === MELON_2 || id === WHEAT_2 || id === CACTUS_FRUIT || id === SUGARCANE_2 || id === APPLE_FRUIT) return "E: Harvest";
+      if (id === MELON_2 || id === WHEAT_2 || id === CACTUS_FRUIT || id === SUGARCANE_2 || id === APPLE_FRUIT || id === TUNDROOT_2 || id === OAT_2 || id === EMBERBUSH_2) return "E: Harvest";
       if (id === WATER_CAGE_FULL) return this.inv.selectedSlot()?.itemId === "bucket" ? "E: Scoop Water from the Cage" : "E: The Cage is full of Water";
       if (id === WATER_CAGE) return this.inv.selectedSlot()?.itemId === "bucket_full" ? "E: Fill the Cage with Water" : null;
       if (id === REGULATOR) return "E: Draw neutral air (37 °C)";
@@ -2714,6 +2796,15 @@ export class Game {
       if (id === THRUSTER) return this.inv.has("thruster_nozzle", 1) ? "E: Install Thruster Nozzle" : null;
       if (id === ENGINECORE) return "E: Engine Core — open the fuel ports";
       if (id === FLIGHT_CONTROLS) return (at.sh ?? this.shipAt(at.x, at.y, at.z)) ? "E: Take the controls" : "E: Flight Controls — read what the Ship still needs";
+      if (id === HOVER_SLED) {
+        if (this.riding) return "E: Step off the Hover Sled";
+        const s = this.sleds.get(this.atKey(at));
+        return s && s.charge <= 0 ? "E: The Hover Sled — dead; park it on a powered Dock Pad" : "E: The Hover Sled";
+      }
+      if (id === GUN_TURRET) {
+        const ammo = this.turretAmmo.get(this.atKey(at)) ?? 0;
+        return `E: Gun Turret — ${ammo} Slug${ammo === 1 ? "" : "s"} in the magazine`;
+      }
     }
     if (t.water) return this.world.get(t.water.x, t.water.y, t.water.z) === OIL ? null : "E: Refill canister";
     return null;
@@ -2741,6 +2832,324 @@ export class Game {
     return { ok: true, time: def.breakTime * (def.fastTool && tool && tool.type === def.fastTool ? Math.pow(0.55, tool.tier) : 1) };
   }
 
+  // ---------- Hover Sled ----------
+
+  private openSledPanel(key: string) {
+    if (!this.sleds.has(key)) return;
+    this.openSled = key;
+    this.ui = "sled";
+    this.unlockPointer();
+    this.audio.door();
+    document.getElementById("ui-sled")!.classList.remove("hidden");
+    this.renderSledPanel();
+  }
+
+  private renderSledPanel() {
+    const s = this.openSled ? this.sleds.get(this.openSled) : null;
+    if (!s) { this.closeUI(); return; }
+    document.getElementById("sled-charge")!.textContent = Math.round(s.charge) + " / 100";
+    const board = document.getElementById("sled-board") as HTMLButtonElement;
+    board.disabled = s.charge <= 0;
+    board.textContent = s.charge <= 0 ? "Dead — park it on a powered Dock Pad" : "Board";
+    for (const [id, itemId, label] of [
+      ["sled-up-cargo", "cargo_sled", "Bolt on the Cargo Sled"],
+      ["sled-up-blade", "sled_blade", "Bolt on the Sled Blade"],
+      ["sled-up-drill", "sled_drill", "Bolt on the Sled Drill"],
+    ] as const) {
+      const b = document.getElementById(id) as HTMLButtonElement;
+      if (s.up[itemId]) { b.textContent = label + " — mounted"; b.disabled = true; }
+      else { b.textContent = label; b.disabled = !this.inv.has(itemId, 1); }
+    }
+    const cargoBox = document.getElementById("sled-cargo")!;
+    cargoBox.classList.toggle("hidden", !s.up["cargo_sled"]);
+    if (s.up["cargo_sled"]) {
+      const rows = document.getElementById("sled-cargo-rows")!;
+      rows.textContent = "";
+      if (!s.cargo.length) {
+        const r = document.createElement("div"); r.className = "fl-row";
+        const a = document.createElement("span"); a.textContent = "The sled-chest is empty.";
+        r.appendChild(a); rows.appendChild(r);
+      }
+      for (const c of s.cargo) {
+        const r = document.createElement("div"); r.className = "fl-row";
+        const a = document.createElement("span"); a.textContent = ITEMS[c.itemId].name;
+        const n = document.createElement("b"); n.textContent = "×" + c.n;
+        const btn = document.createElement("button"); btn.textContent = "Unload";
+        btn.onclick = () => { this.giveOrDrop(c.itemId, c.n); s.cargo = s.cargo.filter((x) => x !== c); this.renderHeld(); this.renderSledPanel(); };
+        r.appendChild(a); r.appendChild(n); r.appendChild(btn); rows.appendChild(r);
+      }
+      const sel = document.getElementById("sled-stow-pick") as HTMLSelectElement;
+      sel.textContent = "";
+      const kinds = [...new Set(this.inv.slots.filter((sl) => sl && !sl.stack).map((sl) => sl!.itemId))];
+      for (const itemId of kinds) {
+        const o = document.createElement("option"); o.value = itemId; o.textContent = ITEMS[itemId].name;
+        sel.appendChild(o);
+      }
+      (document.getElementById("sled-stow") as HTMLButtonElement).disabled = kinds.length === 0;
+    }
+  }
+
+  private stowSledCargo() {
+    const s = this.openSled ? this.sleds.get(this.openSled) : null;
+    if (!s) return;
+    const itemId = (document.getElementById("sled-stow-pick") as HTMLSelectElement).value;
+    if (!itemId) return;
+    const entry = s.cargo.find((c) => c.itemId === itemId);
+    if (!entry && s.cargo.length >= 12) { hud.toast("The sled-chest keeps twelve kinds at most."); this.audio.error(); return; }
+    let n = 0;
+    for (const sl of this.inv.slots) if (sl.itemId === itemId && !sl.stack) n++;
+    if (!n) return;
+    this.inv.removeItem(itemId, n);
+    if (entry) entry.n += n; else s.cargo.push({ itemId, n });
+    this.renderSledPanel();
+  }
+
+  private installSledUpgrade(itemId: "cargo_sled" | "sled_blade" | "sled_drill") {
+    const s = this.openSled ? this.sleds.get(this.openSled) : null;
+    if (!s || s.up[itemId] || !this.inv.has(itemId, 1)) { this.audio.error(); return; }
+    this.inv.removeItem(itemId, 1);
+    s.up[itemId] = true;
+    this.audio.place();
+    hud.toast(`${ITEMS[itemId].name} bolted on.`);
+    this.renderSledPanel();
+  }
+
+  private mountSled() {
+    const key = this.openSled;
+    const s = key ? this.sleds.get(key) : null;
+    if (!s || s.charge <= 0) { this.audio.error(); return; }
+    this.riding = key!;
+    this.closeUI();
+    this.audio.door();
+    const ups = Object.keys(s.up);
+    hud.toast("Aboard the Hover Sled - E steps off." + (ups.length ? " Bolted on: " + ups.map((u) => ITEMS[u].name).join(", ") + "." : ""));
+  }
+
+  private dismountSled(msg = "Off the sled. It hums where you left it.") {
+    if (!this.riding) return;
+    this.riding = null;
+    hud.toast(msg);
+  }
+
+  private updateSleds(dt: number) {
+    this.sledTick += dt;
+    if (this.sledTick < 1) return;
+    const step = Math.min(this.sledTick, 5);
+    this.sledTick = 0;
+    for (const [key, s] of [...this.sleds]) {
+      const [x, y, z] = key.split(",").map(Number);
+      if (this.world.get(x, y, z) !== HOVER_SLED) {
+        this.sleds.delete(key);
+        if (this.riding === key) this.dismountSled("The sled is gone from under you.");
+        continue;
+      }
+      if (this.riding === key || s.charge >= 100) continue;
+      if (this.dockPadFeeds(x, y, z)) {
+        s.charge = Math.min(100, s.charge + step * 8);
+        if (this.ui === "sled" && this.openSled === key) this.renderSledPanel();
+      }
+    }
+  }
+
+  /** A Dock Pad beside the sled that a powered Grid reaches feeds its charge. */
+  private dockPadFeeds(x: number, y: number, z: number): boolean {
+    for (const [px, py, pz] of [[x + 1, y, z], [x - 1, y, z], [x, y - 1, z], [x, y + 1, z], [x, y, z + 1], [x, y, z - 1]]) {
+      if (this.world.get(px, py, pz) !== DOCK_PAD) continue;
+      for (const g of this.grids) {
+        if (!g.powered) continue;
+        for (const k of g.cells.keys()) {
+          if (k[0] === "s") continue; // ship-borne wires feed nothing here
+          const [cx, cy, cz] = k.split(",").map(Number);
+          if (Math.abs(cx - px) <= DEVICE_REACH && Math.abs(cy - py) <= DEVICE_REACH && Math.abs(cz - pz) <= DEVICE_REACH) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** The Blade: snow, leaves, grass and shallow water part in the sled's path. */
+  private sledBlade(mx: number, mz: number) {
+    const p = this.player.pos;
+    const fy = Math.floor(p.y + 0.1);
+    const cells: [number, number, number][] = [
+      [Math.floor(p.x + Math.sign(mx) * 0.8), fy, Math.floor(p.z + Math.sign(mz) * 0.8)],
+      [Math.floor(p.x + Math.sign(mx) * 0.8), fy - 1, Math.floor(p.z + Math.sign(mz) * 0.8)],
+      [Math.floor(p.x), fy, Math.floor(p.z)],
+    ];
+    for (const [x, y, z] of cells) {
+      const id = this.world.get(x, y, z);
+      if (id === AIR) continue;
+      if (id === SNOW || id === LEAVES || id === GRASS || id === SPIKE_BARRICADE) {
+        this.world.set(x, y, z, AIR);
+        if (id === SPIKE_BARRICADE) this.giveOrDrop("spike_barricade", 1);
+        this.audio.blockBreak();
+      } else if ((id === WATER || id === OIL) && this.shallowFluid(x, y, z)) {
+        this.world.set(x, y, z, AIR);
+      }
+    }
+  }
+
+  /** A puddle parts; the Sea does not. */
+  private shallowFluid(x: number, y: number, z: number): boolean {
+    let n = 0;
+    for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]])
+      if (isFluid(this.world.get(x + dx, y + dy, z + dz))) n++;
+    return n <= 2;
+  }
+
+  /** The Drill bites at 2.5x on Cache digs and Machine-Camp wreckage. */
+  private drillZone(x: number, z: number): boolean {
+    if (this.planet !== "silvaris") return false;
+    for (const c of this.caches)
+      if (Math.abs(c.x - x) <= 3 && Math.abs(c.z - z) <= 3) return true;
+    for (let tx = Math.floor((x - 20) / SIL_CAMP_L); tx <= Math.floor((x + 20) / SIL_CAMP_L); tx++)
+      for (let tz = Math.floor((z - 20) / SIL_CAMP_L); tz <= Math.floor((z + 20) / SIL_CAMP_L); tz++) {
+        const c = campNodeAt(tx, tz, this.world.seed);
+        if (c && Math.hypot(c.x - x, c.z - z) <= 20) return true;
+      }
+    for (let tx = Math.floor((x - 20) / SIL_RELAY_L); tx <= Math.floor((x + 20) / SIL_RELAY_L); tx++)
+      for (let tz = Math.floor((z - 20) / SIL_RELAY_L); tz <= Math.floor((z + 20) / SIL_RELAY_L); tz++) {
+        const c = relayNodeAt(tx, tz, this.world.seed);
+        if (c && Math.hypot(c.x - x, c.z - z) <= 20) return true;
+      }
+    return false;
+  }
+
+  // ---------- Defenses ----------
+
+  private hurtMob(m: Mob, dmg: number) {
+    m.hp -= dmg;
+    m.hitFlash = 0.18;
+    if (m.hp <= 0) this.killMob(m, 0);
+  }
+
+  private isHostileMob(m: Mob): boolean {
+    const def = MOB_DEFS[m.kind];
+    return !!def.machine || def.aggroR > 0;
+  }
+
+  private updateDefenses(dt: number) {
+    const now = this.timeSec;
+    for (const g of this.grids) {
+      if (!g.powered) continue;
+      for (const [k, id] of g.cells) {
+        if (k[0] === "s") continue; // hull-borne defenses hold their own counsel later
+        const [x, y, z] = k.split(",").map(Number);
+        if (id === GUN_TURRET) {
+          if ((this.turretReady.get(k) ?? 0) > now) continue;
+          const ammo = this.turretAmmo.get(k) ?? 0;
+          if (ammo <= 0) continue;
+          const target = this.turretTarget(x, y, z, k);
+          if (!target) continue;
+          this.turretAmmo.set(k, ammo - 1);
+          this.turretReady.set(k, now + 1.2);
+          this.audio.tick();
+          this.hurtMob(target, 6);
+        } else if (id === SHOCK_COIL) {
+          if ((this.coilPulse.get(k) ?? 0) > now) continue;
+          let zapped = false;
+          for (const m of [...this.mobs]) {
+            if (Math.hypot(m.x - x - 0.5, m.z - z - 0.5) > 4 || Math.abs(m.y - y) > 3) continue;
+            zapped = true;
+            this.hurtMob(m, MOB_DEFS[m.kind].machine ? 12 : 4);
+          }
+          if (zapped) { this.coilPulse.set(k, now + 2); this.audio.thud(); }
+        } else if (id === ALARM_CHIME) {
+          const seen = this.mobs.some((m) => m.kind !== "trader" && this.isHostileMob(m) &&
+            Math.hypot(m.x - x - 0.5, m.z - z - 0.5) <= 10 && Math.abs(m.y - y) <= 4);
+          const was = this.chimeSeen.get(k) ?? false;
+          this.chimeSeen.set(k, seen);
+          if (seen && !was) {
+            this.audio.warn();
+            hud.hitFlash();
+            hud.toast("The Alarm Chime rings - something hostile walks within ten cells.");
+          }
+        }
+      }
+    }
+    // Spike Barricades hurt whatever presses into them; Guests are never pressed
+    this.spikeTick += dt;
+    if (this.spikeTick >= 1.5) {
+      this.spikeTick = 0;
+      for (const m of [...this.mobs]) {
+        if (m.kind === "trader") continue;
+        const bx = Math.floor(m.x), bz = Math.floor(m.z), by = Math.floor(m.y);
+        for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]])
+          if (this.world.get(bx + dx, by, bz + dz) === SPIKE_BARRICADE || this.world.get(bx + dx, by - 1, bz + dz) === SPIKE_BARRICADE) {
+            this.hurtMob(m, 3);
+            break;
+          }
+      }
+    }
+  }
+
+  private turretTarget(x: number, y: number, z: number, key: string): Mob | null {
+    let best: Mob | null = null;
+    let bd = 8.1;
+    for (const m of this.mobs) {
+      if (m.kind === "trader") continue;
+      const def = MOB_DEFS[m.kind];
+      if (!def.machine && !(def.aggroR > 0 && !this.turretNoFauna.has(key))) continue;
+      const d = Math.hypot(m.x - x - 0.5, m.z - z - 0.5);
+      if (d > 8 || Math.abs(m.y - y) > 4) continue;
+      if (d < bd) { bd = d; best = m; }
+    }
+    return best;
+  }
+
+  private openTurretPanel(key: string) {
+    this.openTurret = key;
+    this.ui = "turret";
+    this.unlockPointer();
+    this.audio.door();
+    document.getElementById("ui-turret")!.classList.remove("hidden");
+    this.renderTurretPanel();
+  }
+
+  private turretSlug(): "slug" | "lead_slug" | null {
+    // feed a Turret whatever Slugs the pack holds; this planet's cast first
+    if (this.inv.countOf(this.planet === "silvaris" ? "lead_slug" : "slug") > 0)
+      return this.planet === "silvaris" ? "lead_slug" : "slug";
+    if (this.inv.countOf("slug") > 0) return "slug";
+    if (this.inv.countOf("lead_slug") > 0) return "lead_slug";
+    return null;
+  }
+
+  private renderTurretPanel() {
+    if (!this.openTurret) { this.closeUI(); return; }
+    const ammo = this.turretAmmo.get(this.openTurret) ?? 0;
+    const slug = this.turretSlug();
+    const held = slug ? this.inv.countOf(slug) : 0;
+    document.getElementById("turret-mag")!.textContent = `${ammo} / 30`;
+    const load = document.getElementById("turret-load") as HTMLButtonElement;
+    load.textContent = `Load ${slug === "lead_slug" ? "Lead Slugs" : "Slugs"} (${held})`;
+    load.disabled = held <= 0 || ammo >= 30;
+    const fauna = this.turretNoFauna.has(this.openTurret);
+    const toggle = document.getElementById("turret-fauna") as HTMLButtonElement;
+    toggle.textContent = fauna ? "Fauna targets: OFF" : "Fauna targets: ON";
+  }
+
+  private loadTurret() {
+    if (!this.openTurret) return;
+    const slug = this.turretSlug();
+    if (!slug) { this.audio.error(); return; }
+    const room = 30 - (this.turretAmmo.get(this.openTurret) ?? 0);
+    const take = Math.min(room, this.inv.countOf(slug));
+    if (take <= 0) { this.audio.error(); return; }
+    this.inv.removeItem(slug, take);
+    this.turretAmmo.set(this.openTurret, (this.turretAmmo.get(this.openTurret) ?? 0) + take);
+    this.audio.place();
+    this.renderHeld();
+    this.renderTurretPanel();
+  }
+
+  private toggleTurretFauna() {
+    if (!this.openTurret) return;
+    if (this.turretNoFauna.has(this.openTurret)) this.turretNoFauna.delete(this.openTurret);
+    else this.turretNoFauna.add(this.openTurret);
+    this.renderTurretPanel();
+  }
+
   private showBreakBar(frac: number | null) {
     const bar = document.getElementById("breakbar")!;
     if (frac === null) { bar.classList.add("hidden"); return; }
@@ -2759,16 +3168,26 @@ export class Game {
         const sel = this.inv.selectedSlot();
         const it = sel ? ITEMS[sel.itemId] : null;
         const weapon = it?.weapon;
-        mb.hp -= weapon ? weapon.dmg : 3 + (it?.tool?.tier ?? 0);
-        mb.hitFlash = 0.18;
-        // neutral until struck: a Tideback remembers who hit it while payback burns
-        if (MOB_DEFS[mb.kind].retaliateR) mb.enraged = 12;
-        this.audio.thud();
-        const kx = mb.x - this.player.pos.x, kz = mb.z - this.player.pos.z;
-        const kl = Math.max(0.2, Math.hypot(kx, kz));
-        const kb = weapon ? 1.1 : 0.6;
-        if (this.mobCanStand(mb, mb.x + (kx / kl) * kb, mb.z + (kz / kl) * kb)) { mb.x += (kx / kl) * kb; mb.z += (kz / kl) * kb; mb.y = this.mobGround(mb, mb.x, mb.z); }
-        if (mb.hp <= 0) this.killMob(mb);
+        if (mb.kind === "tideback" && !it?.harpoon) {
+          // the hide swallows everything but a Harpoon point (canon)
+          this.audio.error();
+          hud.toast("The Tideback's hide swallows the blow — only a Harpoon brings it down.");
+        } else {
+          mb.hp -= weapon ? weapon.dmg : 3 + (it?.tool?.tier ?? 0);
+          mb.hitFlash = 0.18;
+          // neutral until struck: a Tideback remembers who hit it while payback burns
+          if (MOB_DEFS[mb.kind].retaliateR) mb.enraged = 12;
+          // striking a Machine rings the camp: every Machine within earshot turns on you
+          if (MOB_DEFS[mb.kind].machine)
+            for (const o of this.mobs)
+              if (o !== mb && MOB_DEFS[o.kind].machine && Math.hypot(o.x - mb.x, o.z - mb.z) < 24) o.enraged = 12;
+          this.audio.thud();
+          const kx = mb.x - this.player.pos.x, kz = mb.z - this.player.pos.z;
+          const kl = Math.max(0.2, Math.hypot(kx, kz));
+          const kb = weapon ? 1.1 : 0.6;
+          if (this.mobCanStand(mb, mb.x + (kx / kl) * kb, mb.z + (kz / kl) * kb)) { mb.x += (kx / kl) * kb; mb.z += (kz / kl) * kb; mb.y = this.mobGround(mb, mb.x, mb.z); }
+          if (mb.hp <= 0) this.killMob(mb, it?.skin ?? 0);
+        }
       }
       return;
     }
@@ -2787,6 +3206,7 @@ export class Game {
       : this.breaking.shId === undefined && this.breaking.x === x && this.breaking.y === y && this.breaking.z === z);
     if (!same) {
       const cb = this.canBreakWith(id);
+      if (this.riding && this.sleds.get(this.riding)?.up["sled_drill"] && this.drillZone(x, z)) cb.time *= 0.4;
       if (!cb.ok) {
         if (cb.why && !this.breakMsg) {
           this.breakMsg = true;
@@ -2841,6 +3261,39 @@ export class Game {
       this.audio.blockBreak();
       return;
     }
+    if (id === CAMP_ANTENNA) {
+      this.atSet(a, AIR);
+      this.giveOrDrop("scrap", 2);
+      this.audio.blockBreak();
+      // Cut the antenna (PLAN): a Camp that loses one stands its patrols down
+      // for good and answers with a Reclaimer squad; a Relay mast that falls
+      // cancels every raid machine it ever dispatched.
+      if (this.planet === "silvaris") {
+        for (let tx = Math.floor((x - 20) / SIL_CAMP_L); tx <= Math.floor((x + 20) / SIL_CAMP_L); tx++)
+          for (let tz = Math.floor((z - 20) / SIL_CAMP_L); tz <= Math.floor((z + 20) / SIL_CAMP_L); tz++) {
+            const c = campNodeAt(tx, tz, this.world.seed);
+            if (!c || Math.hypot(c.x - x, c.z - z) > 10) continue;
+            this.silentCamps.add(tx + "," + tz);
+            this.questBump("camp");
+            this.spawnSquad(c, null);
+            hud.toast("The Camp antenna falls — the patrols stand down. Something is coming for you.");
+            // news travels the trade roads: a deed this bold reaches the nearest Keeper
+            const nc = nearestTraderCamp(c.x, c.z, this.world.seed, 320);
+            if (nc) this.trustCamp("s:" + nc.tx + "," + nc.tz, "Word travels the trade roads — a Keeper will hear you now.");
+            return;
+          }
+        for (let tx = Math.floor((x - 20) / SIL_RELAY_L); tx <= Math.floor((x + 20) / SIL_RELAY_L); tx++)
+          for (let tz = Math.floor((z - 20) / SIL_RELAY_L); tz <= Math.floor((z + 20) / SIL_RELAY_L); tz++) {
+            const c = relayNodeAt(tx, tz, this.world.seed);
+            if (!c || Math.hypot(c.x - x, c.z - z) > 10) continue;
+            for (const m of this.mobs) if (m.raid && m.raid.tx === tx && m.raid.tz === tz) this.renderer.removeSceneObject(m.vis.group);
+            this.mobs = this.mobs.filter((m) => !(m.raid && m.raid.tx === tx && m.raid.tz === tz));
+            hud.toast("The Relay dies — the raid machines it dispatched stop mid-stride.");
+            return;
+          }
+      }
+      return;
+    }
     if (id === CACTUS) {
       // every cactus column block carries fruit: one Prickly Pear plus the block itself
       this.atSet(a, AIR);
@@ -2879,10 +3332,19 @@ export class Game {
       this.audio.blockBreak();
       return;
     }
-    if (id === MELON_2 || id === MELON_1 || id === WHEAT_2 || id === WHEAT_1 || id === SUGARCANE_2 || id === SUGARCANE_1) {
+    if (id === EMBER_FRUIT) {
+      // a wild bush's berry top: knocking it loose leaves the bush standing
+      this.atSet(a, AIR);
+      this.giveOrDrop("ember_berry", 1);
+      this.audio.blockBreak();
+      return;
+    }
+    if (id === MELON_2 || id === MELON_1 || id === WHEAT_2 || id === WHEAT_1 || id === SUGARCANE_2 || id === SUGARCANE_1 ||
+        id === TUNDROOT_2 || id === TUNDROOT_1 || id === EMBERBUSH_2 || id === EMBERBUSH_1 || id === OAT_2 || id === OAT_1) {
       // breaking a crop by hand or tool yields its harvest too — rougher than
       // picking it (E) but never a wasted plant
       this.atSet(a, AIR); // wheat sits ON farmland: breaking it must not stack a second tilled block
+      if (id === EMBERBUSH_2 && this.atGet(a, 0, 1, 0) === EMBER_FRUIT) this.atSet(a, AIR, 0, 1, 0); // the wild topper falls with its bush
       this.crops.delete(this.atKey(a));
       if (id === MELON_2) { this.giveOrDrop("dune_melon", 1); if (this.seedLuck(x, z, 97)) this.giveOrDrop("seed_melon", 1); }
       if (id === WHEAT_2) { this.giveOrDrop("wheat", 1); this.giveOrDrop("seed_wheat", 1); if (this.seedLuck(x, z, 83)) this.giveOrDrop("seed_wheat", 1); }
@@ -2890,6 +3352,12 @@ export class Game {
       if (id === WHEAT_1) this.giveOrDrop("seed_wheat", 1); // unripe wheat: just the seed
       if (id === SUGARCANE_2) { this.giveOrDrop("sugar_cane", 2); if (this.seedLuck(x, z, 89)) this.giveOrDrop("sugar_cane", 1); }
       if (id === SUGARCANE_1) this.giveOrDrop("sugar_cane", 1); // young shoot: just the stalk
+      if (id === TUNDROOT_2) { this.giveOrDrop("tundroot", 1); this.giveOrDrop("seed_tundroot", 1); if (this.seedLuck(x, z, 101)) this.giveOrDrop("seed_tundroot", 1); }
+      if (id === TUNDROOT_1) this.giveOrDrop("seed_tundroot", 1); // unripe root: just the seed
+      if (id === EMBERBUSH_2) { this.giveOrDrop("ember_berry", 1); this.giveOrDrop("seed_emberbush", 1); if (this.seedLuck(x, z, 103)) this.giveOrDrop("ember_berry", 1); }
+      if (id === EMBERBUSH_1) this.giveOrDrop("seed_emberbush", 1); // unripe shoot: just the seed
+      if (id === OAT_2) { this.giveOrDrop("frost_oat", 1); this.giveOrDrop("seed_oats", 1); if (this.seedLuck(x, z, 107)) this.giveOrDrop("seed_oats", 1); }
+      if (id === OAT_1) this.giveOrDrop("seed_oats", 1); // unripe shoot: just the seed
       this.audio.blockBreak();
       return;
     }
@@ -3039,6 +3507,7 @@ export class Game {
     if (isPowerBlock(id)) {
       const pk = this.atKey(a);
       this.powerCells.delete(pk); this.genFuel.delete(pk); this.batteryCharge.delete(pk);
+      this.turretAmmo.delete(pk); this.turretReady.delete(pk); this.chimeSeen.delete(pk); this.coilPulse.delete(pk);
       if (id === ELEC_LAMP) this.renderer.removePointLight(x, y, z);
       if (id === POWER_PANEL) {
         this.trippedPanels.delete(pk);
@@ -3136,7 +3605,7 @@ export class Game {
     this.mobs.push(m);
   }
 
-  private killMob(m: Mob) {
+  private killMob(m: Mob, hides = 0) {
     this.renderer.removeSceneObject(m.vis.group);
     this.mobs = this.mobs.filter((x) => x !== m);
     const def = MOB_DEFS[m.kind];
@@ -3144,6 +3613,8 @@ export class Game {
       const p = def.dropChance?.[i] ?? 1;
       if (p >= 1 || Math.random() < p) this.giveOrDrop(d.itemId, d.count);
     });
+    // one pelt off every hide species; the Skinner's skin number buys the rest
+    if (def.hide) this.giveOrDrop(def.hide, Math.max(1, hides));
     hud.toast(`${def.name} killed.`);
   }
 
@@ -3151,13 +3622,13 @@ export class Game {
    *  community (snakes, rats, vultures, tortoises, fennecs) plus the Caves'
    *  own fauna; Silvaris answers to its biome tables - Brushbuck herds on the
    *  plains, Tidebacks along the shallows, Snow Stalkers off the peaks.
-   *  Traders are not spawned by chance: each Desertis camp within reach gets
+   *  Nomads are not spawned by chance: each Desertis camp within reach gets
    *  exactly one, and it never despawns while you keep coming back. */
   private topUpMobs() {
     // species and caps come from the fauna layer (setFauna keyed it to planet+seed)
     const targets = faunaTargets();
     const counts = Object.fromEntries(Object.keys(targets).map((k) => [k, 0])) as Record<MobKind, number>;
-    // anything strayed far from the player gives its slot back — except a Trader
+    // anything strayed far from the player gives its slot back — except a Nomad
     const p0 = this.player.pos;
     this.mobs = this.mobs.filter((m) => {
       if (m.kind !== "trader" && Math.abs(m.x - p0.x) + Math.abs(m.z - p0.z) > 190) { this.renderer.removeSceneObject(m.vis.group); return false; }
@@ -3195,7 +3666,7 @@ export class Game {
           if (Math.hypot(x, z) < 24) continue; // keep the crash site quiet
           if (this.beaconMarks.some((b) => { const [bx, , bz2] = this.beaconWorld(b); return Math.hypot(bx + 0.5 - x, bz2 + 0.5 - z) < 16; })) continue; // save points stay safe
           const camp = structuresOf(this.seed).nearestCamp(x, z);
-          if (camp && Math.hypot(camp.x - x, camp.z - z) < 34) continue; // camps are the Trader's patch
+          if (camp && Math.hypot(camp.x - x, camp.z - z) < 34) continue; // camps are the Nomads' patch
           const gy = this.mobSurface(x, z);
           if (gy <= 1 || this.world.get(Math.floor(x), gy, Math.floor(z)) !== AIR ||
               this.world.get(Math.floor(x), gy + 1, Math.floor(z)) !== AIR) continue;
@@ -3209,9 +3680,125 @@ export class Game {
       }
     }
     if (this.planet === "desertis") this.ensureTraders();
+    this.ensureKeepers();
+    this.ensureMachines();
   }
 
-  /** One immovable Trader standing in front of each nearby camp's stall. */
+  /** The Machine Dominion keeps its posts manned: every Silvaris Camp stands
+   *  a Warden, a Breaker and a Hauler; every Relay two Sentries; and the
+   *  desert Wreck — the old guard-post — keeps three Wardens circling it.
+   *  Machines despawn with distance like any mob and re-man the post when
+   *  you come back. */
+  private ensureMachines() {
+    const p = this.player.pos, seed = this.world.seed;
+    const near = (kind: MobKind, x: number, z: number) =>
+      this.mobs.reduce((n, m) => n + (m.kind === kind && Math.hypot(m.homeX - x, m.homeZ - z) < 30 ? 1 : 0), 0);
+    const post = (kind: MobKind, x: number, z: number) => {
+      const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 8;
+      const sx = Math.floor(x + Math.cos(a) * r) + 0.5, sz = Math.floor(z + Math.sin(a) * r) + 0.5;
+      const gy = this.mobSurface(sx, sz);
+      if (gy <= 1 || this.world.get(Math.floor(sx), gy, Math.floor(sz)) !== AIR ||
+          this.world.get(Math.floor(sx), gy + 1, Math.floor(sz)) !== AIR) return; // site not streamed in yet
+      this.spawnMob(kind, sx, gy, sz);
+    };
+    if (this.planet === "silvaris") {
+      const R = 130;
+      for (let tx = Math.floor((p.x - R) / SIL_CAMP_L); tx <= Math.floor((p.x + R) / SIL_CAMP_L); tx++)
+        for (let tz = Math.floor((p.z - R) / SIL_CAMP_L); tz <= Math.floor((p.z + R) / SIL_CAMP_L); tz++) {
+          const c = campNodeAt(tx, tz, seed);
+          if (!c || this.silentCamps.has(tx + "," + tz) || Math.hypot(c.x - p.x, c.z - p.z) > R) continue;
+          for (const kind of ["warden", "breaker", "hauler"] as const)
+            if (near(kind, c.x, c.z) < 1) post(kind, c.x, c.z);
+        }
+      for (let tx = Math.floor((p.x - R) / SIL_RELAY_L); tx <= Math.floor((p.x + R) / SIL_RELAY_L); tx++)
+        for (let tz = Math.floor((p.z - R) / SIL_RELAY_L); tz <= Math.floor((p.z + R) / SIL_RELAY_L); tz++) {
+          const c = relayNodeAt(tx, tz, seed);
+          if (!c || Math.hypot(c.x - p.x, c.z - p.z) > R) continue;
+          for (let i = near("sentry", c.x, c.z); i < 2; i++) post("sentry", c.x, c.z);
+        }
+    } else {
+      const s = this.world.gen.secondShip;
+      if (Math.hypot(s.x - p.x, s.z - p.z) < 190) {
+        for (let i = near("warden", s.x, s.z); i < 3; i++) {
+          const a = Math.random() * Math.PI * 2, r = 16 + Math.random() * 18;
+          const sx = Math.floor(s.x + Math.cos(a) * r) + 0.5, sz = Math.floor(s.z + Math.sin(a) * r) + 0.5;
+          const gy = this.mobSurface(sx, sz);
+          if (gy > 1) this.spawnMob("warden", sx, gy, sz);
+        }
+      }
+    }
+  }
+
+  /** Squad support (PLAN canon): expansion is never on a timer. Cutting a
+   *  Camp antenna draws a Reclaimer squad out of the site — after whoever
+   *  cut it; a live Relay Tower answers an energize beat in wild country
+   *  with one raid squad out to eat the exposed Grid. Squads walk and die
+   *  at dawn. The (tx,tz) stamp says which mast dispatched a machine —
+   *  drop the mast mid-march and its machines drop with it. */
+  private spawnSquad(from: { x: number; z: number }, relay: { tx: number; tz: number } | null) {
+    const eats: string[] = [];
+    if (relay) {
+      const c = relayNodeAt(relay.tx, relay.tz, this.world.seed);
+      if (c) {
+        const cands: { k: string; d: number }[] = [];
+        for (const g of this.grids) if (g.powered) for (const k of g.cells.keys()) {
+          const [gx, , gz] = k.split(",").map(Number);
+          const d = Math.hypot(gx - c.x, gz - c.z);
+          if (d < 48) cands.push({ k, d });
+        }
+        cands.sort((a, b) => a.d - b.d);
+        for (const cd of cands) eats.push(cd.k);
+      }
+    }
+    // the provocation ledger: every squad the Dominion has already sent
+    // thickens the next one (save.ts: `wrath`)
+    this.wrath++;
+    const kinds: MobKind[] = ["sentry", "sentry", "sentry", "breaker"];
+    for (let e = Math.min(2, this.wrath - 1); e > 0; e--) kinds.push("sentry");
+    for (let i = 0; i < kinds.length; i++) {
+      const a = (i / kinds.length) * Math.PI * 2 + Math.random() * 0.7;
+      const sx = Math.floor(from.x + Math.cos(a) * 3.5) + 0.5, sz = Math.floor(from.z + Math.sin(a) * 3.5) + 0.5;
+      const gy = this.mobSurface(sx, sz);
+      if (gy <= 1) continue; // the site has not streamed in yet
+      this.spawnMob(kinds[i], sx, gy, sz);
+      const m = this.mobs[this.mobs.length - 1];
+      // NaN mast = Reclaimer: no mast to cancel it by
+      m.raid = { tx: relay?.tx ?? Number.NaN, tz: relay?.tz ?? Number.NaN, eat: eats.length ? eats[i % eats.length] : undefined };
+      m.enraged = 1e9;
+    }
+  }
+
+  /** The next exposed Grid cell for a raid machine: nearest live cell to its
+   *  mast, 48 m leashed; null when there is nothing left to eat. */
+  private nextRaidTarget(tx: number, tz: number): string | null {
+    if (Number.isNaN(tx)) return null;
+    const c = relayNodeAt(tx, tz, this.world.seed);
+    if (!c) return null;
+    let best: string | null = null, bd = 48;
+    for (const g of this.grids) if (g.powered) for (const k of g.cells.keys()) {
+      const [gx, , gz] = k.split(",").map(Number);
+      const d = Math.hypot(gx - c.x, gz - c.z);
+      if (d < bd) { bd = d; best = k; }
+    }
+    return best;
+  }
+
+  /** Energize beat in wild country: a live Relay within earshot of a Grid
+   *  that has just gone live answers once per day with one raid squad. */
+  private relayEnergizeBeat(px: number, pz: number) {
+    for (let tx = Math.floor((px - 48) / SIL_RELAY_L); tx <= Math.floor((px + 48) / SIL_RELAY_L); tx++)
+      for (let tz = Math.floor((pz - 48) / SIL_RELAY_L); tz <= Math.floor((pz + 48) / SIL_RELAY_L); tz++) {
+        const c = relayNodeAt(tx, tz, this.world.seed);
+        if (!c || Math.hypot(c.x - px, c.z - pz) > 48) continue;
+        const key = tx + "|" + tz + "|" + this.dayNumber();
+        if (this.raidedRelays.has(key)) continue;
+        this.raidedRelays.add(key);
+        this.spawnSquad(c, { tx, tz });
+        hud.toast("A Relay answers your power — machine shapes leave the mast and march.");
+      }
+  }
+
+  /** One immovable Nomad standing in front of each nearby camp's stall. */
   private ensureTraders() {
     const stx = structuresOf(this.seed);
     const p = this.player.pos, R = 110;
@@ -3235,19 +3822,117 @@ export class Game {
     }
   }
 
-  /** The Trader you are standing in front of, if any. */
+  /** Trust at a camp is earned by deeds (glossary: Keeper): three good-faith
+   *  trades at the stall, or the antenna of the Machine Camp threatening it. */
+  private trustCamp(key: string, news: string) {
+    if (this.campTrust.has(key)) return;
+    this.campTrust.add(key);
+    hud.toast(news);
+    this.audio.pickup();
+  }
+
+  /** Each trusted camp keeps one named Keeper by the stall — a Nomad with the
+   *  camp's chapter of the world's true story. Untrusted camps keep their
+   *  Keeper in the hut: no mob, no conversation. */
+  private ensureKeepers() {
+    const p = this.player.pos, R = 110, sil = this.planet === "silvaris";
+    const L = sil ? TRADER_L : CAMP_L;
+    const pre = sil ? "s:" : "d:";
+    const tx0 = Math.floor((p.x - R) / L), tx1 = Math.floor((p.x + R) / L);
+    const tz0 = Math.floor((p.z - R) / L), tz1 = Math.floor((p.z + R) / L);
+    for (let tx = tx0; tx <= tx1; tx++) for (let tz = tz0; tz <= tz1; tz++) {
+      const key = pre + tx + "," + tz;
+      if (!this.campTrust.has(key)) continue;
+      const cur = this.keeperAt.get(key);
+      if (cur && this.mobs.includes(cur)) continue;
+      let cx: number, cz: number;
+      if (sil) {
+        if (!traderCellAt(tx, tz, this.world.seed)) continue;
+        const c = traderCellCenter(tx, tz, this.world.seed);
+        cx = c.x + 2.5; cz = c.z + 1; // beside the stall counter
+      } else {
+        const stx = structuresOf(this.seed);
+        if (!stx.campAt(tx, tz)) continue;
+        const spot = campTraderSpot(stx.campCenter(tx, tz));
+        cx = spot.x - 1.4; cz = spot.z + 1.4; // a step off the Nomad's stall
+      }
+      const gy = this.mobSurface(cx, cz);
+      if (gy <= 1) continue; // camp chunks not streamed in yet — next round
+      this.spawnMob("trader", cx, gy, cz);
+      const m = this.mobs[this.mobs.length - 1];
+      m.keeperKey = key;
+      this.keeperAt.set(key, m);
+    }
+    for (const [key, m] of this.keeperAt) if (!this.mobs.includes(m)) this.keeperAt.delete(key);
+  }
+
+  /** Which Keeper stands at this mob's camp: name and chapter, fixed per seed. */
+  private keeperOf(m: Mob): { tx: number; tz: number; name: string; title: string } {
+    const key = m.keeperKey!;
+    const comma = key.indexOf(",");
+    const tx = +key.slice(2, comma), tz = +key.slice(comma + 1);
+    return { tx, tz, name: keeperName(this.planet, this.world.seed, tx, tz), title: keeperChapter(this.world.seed, tx, tz).title };
+  }
+
+  /** E on a Keeper: their chapter, one text card at a time (PLAN: dialogue UI). */
+  private openKeeperStory(m: Mob) {
+    const k = this.keeperOf(m);
+    if (this.chaptersRead.has(m.keeperKey!)) { hud.toast(`${k.name}: "You have heard my whole story already."`); return; }
+    const ch = keeperChapter(this.world.seed, k.tx, k.tz);
+    this.story = { key: m.keeperKey!, title: k.title, who: `${k.name} — Keeper of this camp`, cards: ch.cards, card: 0 };
+    this.ui = "story";
+    this.unlockPointer();
+    (document.getElementById("story-next")!).onclick = () => this.advanceStory();
+    this.renderStory();
+    document.getElementById("ui-story")!.classList.remove("hidden");
+    this.audio.pickup();
+  }
+
+  private renderStory() {
+    if (!this.story) return;
+    const s = this.story;
+    (document.getElementById("story-title")!).textContent = s.title;
+    (document.getElementById("story-who")!).textContent = s.who;
+    (document.getElementById("story-card")!).textContent = s.cards[s.card];
+    (document.getElementById("story-page")!).textContent = `${s.card + 1} / ${s.cards.length}`;
+    (document.getElementById("story-next")!).textContent = s.card + 1 < s.cards.length ? "Next" : "Finish the story";
+  }
+
+  /** Next card; past the last, the chapter is heard and sticks in the save. */
+  private advanceStory() {
+    if (!this.story || this.ui !== "story") return;
+    if (this.story.card + 1 < this.story.cards.length) { this.story.card++; this.renderStory(); this.audio.pickup(); return; }
+    this.chaptersRead.add(this.story.key);
+    this.story = null;
+    this.closeUI();
+    this.questBump("nomad");
+  }
+
+  /** The Nomad you are standing in front of, if any. */
   private nearestTrader(): Mob | null {
     const p = this.player.pos;
     let best: Mob | null = null, bd = 3.6;
     for (const m of this.mobs) {
-      if (m.kind !== "trader") continue;
+      if (m.kind !== "trader" || m.keeperKey) continue;
       const d = Math.hypot(m.x - p.x, m.z - p.z);
       if (d < bd) { bd = d; best = m; }
     }
     return best;
   }
 
-  // ---------- Trader barter ----------
+  /** The Keeper standing at a trusted camp, if you are in front of one. */
+  private nearestKeeper(): Mob | null {
+    const p = this.player.pos;
+    let best: Mob | null = null, bd = 3.6;
+    for (const m of this.mobs) {
+      if (!m.keeperKey) continue;
+      const d = Math.hypot(m.x - p.x, m.z - p.z);
+      if (d < bd) { bd = d; best = m; }
+    }
+    return best;
+  }
+
+  // ---------- Nomad barter ----------
   // No coin: every offer swaps goods, five per camp per day, deterministic —
   // leave and come back the same in-game day and the table is identical.
 
@@ -3263,7 +3948,7 @@ export class Game {
   }
 
   /** The Silvaris stall: a camp's Chest opens its barter table. No walking
-   *  Trader stands here — Fauna keeps the camps quiet — so the counter itself
+   *  Nomad stands here — Fauna keeps the camps quiet — so the counter itself
    *  is the shop, and it trades the second world's own goods. */
   private openSilTrade(camp: { x: number; z: number }) {
     this.tradeCamp = { x: camp.x, z: camp.z };
@@ -3292,7 +3977,7 @@ export class Game {
       box.appendChild(row);
     }
     (document.getElementById("trade-note")!).textContent =
-      `Day ${this.dayNumber()} — the Trader restocks the table at every dawn.`;
+      `Day ${this.dayNumber()} — the Nomad restocks the table at every dawn.`;
   }
 
   private trade(i: number) {
@@ -3307,6 +3992,14 @@ export class Game {
     }
     for (const w of o.want) this.inv.removeItem(w.itemId, w.count);
     for (const g of o.give) this.giveOrDrop(g.itemId, g.count);
+    if (this.tradeCamp) {
+      // three good-faith trades and they know your face: the Keeper will speak
+      const L = this.planet === "silvaris" ? TRADER_L : CAMP_L;
+      const key = (this.planet === "silvaris" ? "s:" : "d:") + Math.round(this.tradeCamp.x / L) + "," + Math.round(this.tradeCamp.z / L);
+      const n = (this.campTrade[key] ?? 0) + 1;
+      this.campTrade[key] = n;
+      if (n === 3) this.trustCamp(key, "They know your face now — the camp's Keeper will speak with you.");
+    }
     hud.toast("Traded.");
     this.audio.drink();
     this.renderTrade();
@@ -3341,7 +4034,7 @@ export class Game {
       : Infinity;
     let best: Mob | null = null, bestT = Infinity;
     for (const m of this.mobs) {
-      if (m.kind === "trader") continue; // you cannot pick a fight with the Trader
+      if (m.kind === "trader") continue; // you cannot pick a fight with a Nomad
       const def = MOB_DEFS[m.kind];
       const cx = m.x - o.x, cy = m.y + def.height / 2 - o.y, cz = m.z - o.z;
       const t = cx * dir.x + cy * dir.y + cz * dir.z;
@@ -3415,7 +4108,48 @@ export class Game {
       // chases anyone who walks into its radius
       const aggroR = Math.max(def.aggroR, (m.enraged ?? 0) > 0 ? def.retaliateR ?? 0 : 0);
       const fleeR = def.fleeR;
-      if (aggroR > 0 && dist < aggroR && dist > 0.01 && canReach) {
+      // Phase-1 foreshadowing beat: the Warden posted nearest the Wreck
+      // remembers the Ship. Step within 12 of the second hull and it — and
+      // only it — breaks patrol and retreats into the dunes.
+      const wreck = this.planet === "desertis" ? this.world.gen.secondShip : null;
+      const wreckFlee = wreck !== null && m.kind === "warden" &&
+        Math.hypot(p.x - wreck.x, p.z - wreck.z) < 12 &&
+        this.mobs.every((o) => !(o.kind === "warden" &&
+          Math.hypot(o.homeX - wreck.x, o.homeZ - wreck.z) < Math.hypot(m.homeX - wreck.x, m.homeZ - wreck.z)));
+      // March orders (squad events): a dispatched machine walks to its Grid
+      // cell and chews through it; when the Grid is gone it comes for you.
+      if (m.raid) {
+        if (m.raid.eat) {
+          const c0 = m.raid.eat.split(",").map(Number);
+          if (this.world.get(c0[0], c0[1], c0[2]) === AIR) m.raid.eat = this.nextRaidTarget(m.raid.tx, m.raid.tz) ?? undefined;
+        }
+        const ep = m.raid.eat ? m.raid.eat.split(",").map(Number) : null;
+        const gx = ep ? ep[0] + 0.5 : p.x, gz = ep ? ep[2] + 0.5 : p.z;
+        const gdx = gx - m.x, gdz = gz - m.z, gd = Math.hypot(gdx, gdz);
+        m.yaw = Math.atan2(gdx, gdz);
+        if (ep && gd < 1.6 + def.hitR && Math.abs(m.y - ep[1]) < 3) {
+          m.chew = (m.chew ?? 0) + dt * (def.biteDmg / 6);
+          if (m.chew >= Math.max(1, BLOCKS[this.world.get(ep[0], ep[1], ep[2])].breakTime)) {
+            this.world.set(ep[0], ep[1], ep[2], AIR);
+            this.powerDirty = true;
+            m.chew = 0;
+            this.audio.blockBreak();
+            m.raid.eat = this.nextRaidTarget(m.raid.tx, m.raid.tz) ?? undefined;
+          }
+        } else if (gd > 0.01) {
+          vx = (gdx / gd) * def.speed; vz = (gdz / gd) * def.speed;
+        }
+        if (!ep && dist < 1.2 + def.hitR && m.biteCd <= 0 && canReach) {
+          m.biteCd = def.biteCd;
+          const armor = 1 - (this.equip.body ? (ITEMS[this.equip.body.itemId].armor ?? 0) : 0);
+          this.survival.hurt(def.biteDmg * armor, `${def.name.toLowerCase()} strike`);
+          hud.toast(armor < 1 ? `A ${def.name.toLowerCase()} strikes you — the armour soaks some of it.` : `A ${def.name.toLowerCase()} strikes you!`);
+        }
+      } else if (wreckFlee && dist > 0.01) {
+        vx = (-dx / dist) * def.speed * 1.4; vz = (-dz / dist) * def.speed * 1.4;
+        m.yaw = Math.atan2(vx, vz);
+        if (!m.fled) { m.fled = true; hud.toast("The Warden watches you near the Wreck — then backs away into the dunes."); }
+      } else if (aggroR > 0 && dist < aggroR && dist > 0.01 && canReach) {
         vx = (dx / dist) * def.speed; vz = (dz / dist) * def.speed;
         m.yaw = Math.atan2(vx, vz);
         if (dist < 1.2 + def.hitR && m.biteCd <= 0) {
@@ -3430,7 +4164,12 @@ export class Game {
       } else {
         m.wanderT -= dt;
         if (m.wanderT <= 0) { m.wanderT = 2 + Math.random() * 4; m.wanderYaw = Math.random() * Math.PI * 2; m.wanderOn = Math.random() < 0.55; }
-        if (m.wanderOn) { vx = Math.sin(m.wanderYaw) * def.speed * 0.35; vz = Math.cos(m.wanderYaw) * def.speed * 0.35; m.yaw = m.wanderYaw; }
+        if (m.wanderOn) {
+          // posted machines stay on their post: idle wander walks them home when it drifts
+          const wy = def.machine && Math.hypot(m.x - m.homeX, m.z - m.homeZ) > 12
+            ? Math.atan2(m.homeX - m.x, m.homeZ - m.z) : m.wanderYaw;
+          vx = Math.sin(wy) * def.speed * 0.35; vz = Math.cos(wy) * def.speed * 0.35; m.yaw = wy;
+        }
       }
       m.biteCd -= dt;
       let moving = 0;
@@ -3692,7 +4431,8 @@ export class Game {
     if (doorPlace && def.block === doorPlace.base) {
       if (!floorAt(0, 0)) { hud.toast("A Door needs solid ground under it."); this.audio.error(); return; }
     }
-    if (def.block === MELON_1 || def.block === WHEAT_1 || def.block === CACTUS || def.block === SAPLING || def.block === SUGARCANE_1 || def.block === APPLE_SAPLING) {
+    if (def.block === MELON_1 || def.block === WHEAT_1 || def.block === CACTUS || def.block === SAPLING || def.block === SUGARCANE_1 || def.block === APPLE_SAPLING ||
+        def.block === TUNDROOT_1 || def.block === EMBERBUSH_1 || def.block === OAT_1) {
       // seeds only take in tilled ground; a cactus pad also accepts loose sand;
       // a Tree Seed wants real soil — Dirt or Farm Land; Cane is hardy anywhere soft
       const under = this.atGet(at, ox, oy - 1, oz);
@@ -3718,7 +4458,7 @@ export class Game {
       this.atSet(at, BED_EXT, ox + bedPeer[0], oy, oz + bedPeer[2], slot.blockRot || undefined);
     }
     const key = this.atKey(at, ox, oy, oz);
-    if (def.block === MELON_1 || def.block === WHEAT_1 || def.block === SUGARCANE_1) { this.crops.set(key, 0); this.tut?.notify("plant"); }
+    if (def.block === MELON_1 || def.block === WHEAT_1 || def.block === SUGARCANE_1 || def.block === TUNDROOT_1 || def.block === EMBERBUSH_1 || def.block === OAT_1) { this.crops.set(key, 0); this.tut?.notify("plant"); }
     if (def.block === SAPLING) { this.trees.set(key, 0); this.tut?.notify("plant"); hud.toast("Seed in the soil. Keep water within 10 blocks and it climbs, stage by stage."); }
     if (def.block === APPLE_SAPLING) { this.appleTrees.set(key, 0); this.tut?.notify("plant"); hud.toast("A Pip in the soil. Keep water within 10 blocks and an Apple Tree climbs, stage by stage."); }
     if (def.block === FRAME_CORNER) {
@@ -3758,6 +4498,7 @@ export class Game {
       else if (def.block === HARVESTER) this.lesson("harvester");
     }
     if (def.block === CHEST || def.block === CHEST_INTERFACE) this.linkChests(this.shiftAt(at, ox, oy, oz), chestOld);
+    if (def.block === HOVER_SLED) this.sleds.set(key, { charge: 30, up: {}, cargo: [] });
     this.inv.slots.splice(this.inv.selected, 1);
     this.inv.selected = Math.min(this.inv.selected, Math.max(0, this.inv.slots.length - 1));
     this.renderHeld();
@@ -3766,7 +4507,10 @@ export class Game {
 
   private act() {
     if (this.ui || this.paused || this.cine) return;
+    if (this.riding) { this.dismountSled(); return; }
     const t = this.raycastTarget();
+    const keeper = this.nearestKeeper();
+    if (keeper) { this.openKeeperStory(keeper); return; }
     const trader = this.nearestTrader();
     if (trader) { this.openTrade(trader); return; }
     const at = this.atOf(t);
@@ -3783,7 +4527,7 @@ export class Game {
     if (at) {
       const { x, y, z } = at;
       const id = this.atGet(at);
-      if (id === MELON_2 || id === WHEAT_2 || id === CACTUS_FRUIT || id === SUGARCANE_2 || id === APPLE_FRUIT) { this.harvest(at, id); return; }
+      if (id === MELON_2 || id === WHEAT_2 || id === CACTUS_FRUIT || id === SUGARCANE_2 || id === APPLE_FRUIT || id === TUNDROOT_2 || id === OAT_2 || id === EMBERBUSH_2) { this.harvest(at, id); return; }
       if (id === POWER_PANEL) { this.panelAct(this.atKey(at)); return; }
       if (id === BED || id === BED_EXT) { this.sleep(); return; }
       if (id === ALAB_GATE || id === ALAB_GATE_OPEN) {
@@ -3853,6 +4597,8 @@ export class Game {
         else hud.toast("This world is not saved — the beacon only marks it.");
         return;
       }
+      if (id === HOVER_SLED) { this.openSledPanel(this.atKey(at)); return; }
+      if (id === GUN_TURRET) { this.openTurretPanel(this.atKey(at)); return; }
       if (id === BENCH || id === BENCH_EXT) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("bench"); return; }
       if (id === ARMORY) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("armory"); return; }
       if (id === REFINERY) { this.openStation = [x, y, z]; this.ui = "bench"; this.unlockPointer(); this.renderCraft("refinery"); return; }
@@ -4010,6 +4756,32 @@ export class Game {
       this.giveOrDrop("apple", 1);
       this.audio.pickup();
       hud.toast("Apple picked - the bough will fruit again.");
+    } else if (id === EMBERBUSH_2) {
+      this.atSet(a, EMBERBUSH_1); // the bush keeps its roots and fruits again
+      this.crops.set(key, 30);
+      this.giveOrDrop("ember_berry", 2);
+      if (this.seedLuck(x, z, 103)) this.giveOrDrop("ember_berry", 1);
+      this.questBump("farm");
+      this.audio.pickup();
+      hud.toast("Ember Berries picked - the bush goes on fruiting.");
+    } else if (id === TUNDROOT_2) {
+      this.atSet(a, AIR); // the tilled Farmland under the root stays put
+      this.crops.delete(key);
+      this.giveOrDrop("tundroot", 2);
+      this.giveOrDrop("seed_tundroot", 1);
+      if (this.seedLuck(x, z, 101)) this.giveOrDrop("seed_tundroot", 1);
+      this.questBump("farm");
+      this.audio.pickup();
+      hud.toast("Tundra Root dug - the Farmland stays tilled.");
+    } else if (id === OAT_2) {
+      this.atSet(a, AIR); // the tilled Farmland under the cut stays put
+      this.crops.delete(key);
+      this.giveOrDrop("frost_oat", 2);
+      this.giveOrDrop("seed_oats", 1);
+      if (this.seedLuck(x, z, 107)) this.giveOrDrop("seed_oats", 1);
+      this.questBump("farm");
+      this.audio.pickup();
+      hud.toast("Frost Oats cut - the Farmland stays tilled.");
     } else {
       this.atSet(a, CACTUS);
       this.giveOrDrop("prickly_pear", 2);
@@ -4061,7 +4833,8 @@ export class Game {
     const ak = (yy: number) => this.keyAtWorld(x, yy, z); // aboard, the plant hangs off its Ship key
     if (id === FARMLAND) {
       const up = world.get(x, y + 1, z);
-      if (up === MELON_1 || up === MELON_2 || up === WHEAT_1 || up === WHEAT_2 || up === SUGARCANE_1 || up === SUGARCANE_2) { id = up; cy = y + 1; }
+      if (up === MELON_1 || up === MELON_2 || up === WHEAT_1 || up === WHEAT_2 || up === SUGARCANE_1 || up === SUGARCANE_2 ||
+          up === TUNDROOT_1 || up === TUNDROOT_2 || up === EMBERBUSH_1 || up === EMBERBUSH_2 || up === OAT_1 || up === OAT_2) { id = up; cy = y + 1; }
     }
     // a planted Apple Tree reads like its Living Tree cousin
     if (id === APPLE_SAPLING || (id === WOOD && this.appleTrees.has(ak(y)))) {
@@ -4072,6 +4845,7 @@ export class Game {
       return `Apple Tree — ${pct}% — ${this.cropPause(x, y, z, 10, null, "")}`;
     }
     if (id === APPLE_FRUIT) return "Apple — ripe (E to pick)";
+    if (id === EMBER_FRUIT) return "Ember Berry — ripe (E to pick)";
     // a planted Living Tree reads like a crop: percent + pause reason
     if (id === SAPLING || (id === WOOD && this.trees.has(ak(y)))) {
       const p = this.trees.get(ak(y));
@@ -4080,19 +4854,26 @@ export class Game {
       if (p >= 480) return "Living Tree — full grown";
       return `Living Tree — ${pct}% — ${this.cropPause(x, y, z, 10, null, "")}`;
     }
-    if (id !== MELON_1 && id !== MELON_2 && id !== WHEAT_1 && id !== WHEAT_2 && id !== SUGARCANE_1 && id !== SUGARCANE_2) return blockDisplayName(id);
+    if (id !== MELON_1 && id !== MELON_2 && id !== WHEAT_1 && id !== WHEAT_2 && id !== SUGARCANE_1 && id !== SUGARCANE_2 &&
+        id !== TUNDROOT_1 && id !== TUNDROOT_2 && id !== EMBERBUSH_1 && id !== EMBERBUSH_2 && id !== OAT_1 && id !== OAT_2) return blockDisplayName(id);
     const name = blockDisplayName(id);
-    if (id === MELON_2 || id === WHEAT_2 || id === SUGARCANE_2) return `${name} — ripe`;
+    if (id === MELON_2 || id === WHEAT_2 || id === SUGARCANE_2 || id === TUNDROOT_2 || id === OAT_2 || id === EMBERBUSH_2) return `${name} — ripe`;
     const p = this.crops.get(ak(cy));
     if (p === undefined) return name;
     const melon = id === MELON_1, cane = id === SUGARCANE_1;
-    const total = melon ? 60 : cane ? 60 : 90;
+    const total = melon ? 60 : cane ? 60 : id === OAT_1 ? 75 : 90;
     const pct = Math.min(99, Math.floor((p / total) * 100));
     const why = melon
       ? this.cropPause(x, cy, z, 10, [22, 45], "Melon")
       : cane
         ? this.cropPause(x, cy, z, 2, [15, 42], "Cane")
-        : this.cropPause(x, cy, z, 6, [2, 42], "Wheat");
+        : id === TUNDROOT_1
+          ? this.cropPause(x, cy, z, 6, [-45, 15], "Tundra Root")
+          : id === EMBERBUSH_1
+            ? this.cropPause(x, cy, z, 6, [12, 60], "Ember Bush")
+            : id === OAT_1
+              ? this.cropPause(x, cy, z, 6, [-45, 30], "Frost Oats")
+              : this.cropPause(x, cy, z, 6, [2, 42], "Wheat");
     return `${name} — ${pct}% — ${why}`;
   }
 
@@ -4149,7 +4930,9 @@ export class Game {
   }
 
   /** Crops advance only while their cell has water in the species reach (Wheat 6,
-   *  Melon 10, thirsty Cane 2 blocks) and air in its temperature band. */
+   *  Melon 10, thirsty Cane 2 blocks) and air in its temperature band. The
+   *  Silvaris trio keeps its own reach of 6 and bands that suit its climate:
+   *  Tundra Root and Frost Oats thrive in the cold, the Ember Bush at the heat edge. */
   private updateCrops(dt: number) {
     this.cropAcc += dt;
     if (this.cropAcc < 2) return;
@@ -4160,17 +4943,21 @@ export class Game {
       if (!at) { this.crops.delete(key); continue; }
       const { x, y, z } = at; // display cell: water and air are read where the plant stands
       const id = this.atGet(at);
-      if (id !== MELON_1 && id !== MELON_2 && id !== WHEAT_1 && id !== WHEAT_2 && id !== SUGARCANE_1 && id !== SUGARCANE_2) { this.crops.delete(key); continue; }
-      if (id === MELON_2 || id === WHEAT_2 || id === SUGARCANE_2) continue; // ripe, waiting
+      if (id !== MELON_1 && id !== MELON_2 && id !== WHEAT_1 && id !== WHEAT_2 && id !== SUGARCANE_1 && id !== SUGARCANE_2 &&
+          id !== TUNDROOT_1 && id !== TUNDROOT_2 && id !== EMBERBUSH_1 && id !== EMBERBUSH_2 && id !== OAT_1 && id !== OAT_2) { this.crops.delete(key); continue; }
+      if (id === MELON_2 || id === WHEAT_2 || id === SUGARCANE_2 || id === TUNDROOT_2 || id === OAT_2 || id === EMBERBUSH_2) continue; // ripe, waiting
       const melon = id === MELON_1, cane = id === SUGARCANE_1;
+      const tun = id === TUNDROOT_1, emb = id === EMBERBUSH_1, oat = id === OAT_1;
       const wet = this.waterNear(x, y, z, melon ? 10 : cane ? 2 : 6);
       const temp = this.cropAir(x, y, z);
-      const band = melon ? temp >= 22 && temp <= 45 : cane ? temp >= 15 && temp <= 42 : temp >= 2 && temp <= 42;
+      const band = melon ? temp >= 22 && temp <= 45 : cane ? temp >= 15 && temp <= 42
+        : tun ? temp >= -45 && temp <= 15 : emb ? temp >= 12 && temp <= 60 : oat ? temp >= -45 && temp <= 30
+        : temp >= 2 && temp <= 42;
       if (wet && band) {
         const np = p + dtc;
         this.crops.set(key, np);
-        const ripe = melon ? 60 : cane ? 60 : 90;
-        if (np >= ripe) this.atSet(at, melon ? MELON_2 : cane ? SUGARCANE_2 : WHEAT_2);
+        const ripe = melon ? 60 : cane ? 60 : oat ? 75 : 90;
+        if (np >= ripe) this.atSet(at, melon ? MELON_2 : cane ? SUGARCANE_2 : tun ? TUNDROOT_2 : emb ? EMBERBUSH_2 : oat ? OAT_2 : WHEAT_2);
       }
     }
   }
@@ -4555,9 +5342,14 @@ export class Game {
         }
       }
       // a lamp that just went live on a working Grid is the deed Lights On waits for
+      const wasOn = g.powered;
       if (on && !g.powered) for (const id of g.cells.values())
         if (id === ELEC_LAMP) { this.questBump("grid"); break; }
       g.powered = on;
+      if (on && !wasOn && g.panel && this.planet === "silvaris") {
+        const [gx, , gz] = g.panel.split(",").map(Number);
+        this.relayEnergizeBeat(gx, gz);
+      }
       // a LAMP hanging off a live Panel glows; a Lamp with no live Panel is dead
       for (const [pk, pid] of g.cells) {
         if (pid !== POWER_PANEL) continue;
@@ -4748,11 +5540,11 @@ export class Game {
     if (this.world.get(x, y + 1, z) !== FARMLAND || this.world.get(x, y + 2, z) !== AIR) return false;
     const seeds = this.chestSlotsAt(x, y - 1, z);
     if (!seeds) return false;
-    const i = seeds.findIndex((s) => s.itemId === "seed_melon" || s.itemId === "seed_wheat");
+    const i = seeds.findIndex((s) => PLANTABLE_SEEDS[s.itemId] !== undefined);
     if (i < 0) return false;
-    const melon = seeds[i].itemId === "seed_melon";
+    const block = PLANTABLE_SEEDS[seeds[i].itemId];
     seeds.splice(i, 1);
-    this.wset(x, y + 2, z, melon ? MELON_1 : WHEAT_1);
+    this.wset(x, y + 2, z, block);
     this.crops.set(`${x},${y + 2},${z}`, 0);
     return true;
   }
@@ -4783,6 +5575,36 @@ export class Game {
       if (!this.putInChest(x, y + 1, z, "prickly_pear")) return false;
       this.putInChest(x, y + 1, z, "prickly_pear");
       this.wset(x, y - 1, z, CACTUS);
+    } else if (cid === TUNDROOT_2) {
+      if (!this.putInChest(x, y + 1, z, "tundroot")) return false;
+      if (!this.putInChest(x, y + 1, z, "seed_tundroot")) {
+        // no room for both the root and its returned seed — leave the bed standing
+        const cells = this.chestCluster(x, y + 1, z);
+        const slots = this.chests.get(this.chestKey(cells));
+        if (slots && slots[slots.length - 1]?.itemId === "tundroot") slots.pop();
+        return false;
+      }
+      if (this.seedLuck(x, z, 101)) this.putInChest(x, y + 1, z, "seed_tundroot"); // bonus seed fits if the grid has room
+      this.wset(x, y - 1, z, AIR); // the Farmland under the root stays put
+      this.crops.delete(ck);
+    } else if (cid === OAT_2) {
+      if (!this.putInChest(x, y + 1, z, "frost_oat")) return false;
+      if (!this.putInChest(x, y + 1, z, "seed_oats")) {
+        // no room for both the cut and its returned seed — leave the oats standing
+        const cells = this.chestCluster(x, y + 1, z);
+        const slots = this.chests.get(this.chestKey(cells));
+        if (slots && slots[slots.length - 1]?.itemId === "frost_oat") slots.pop();
+        return false;
+      }
+      if (this.seedLuck(x, z, 107)) this.putInChest(x, y + 1, z, "seed_oats"); // bonus seed fits if the grid has room
+      this.wset(x, y - 1, z, AIR); // the Farmland under the cut stays put
+      this.crops.delete(ck);
+    } else if (cid === EMBERBUSH_2) {
+      if (!this.putInChest(x, y + 1, z, "ember_berry")) return false;
+      this.putInChest(x, y + 1, z, "ember_berry"); // the second berry fits if the grid has room
+      if (this.seedLuck(x, z, 103)) this.putInChest(x, y + 1, z, "ember_berry"); // bonus berry fits if the grid has room
+      this.wset(x, y - 1, z, EMBERBUSH_1);
+      this.crops.set(ck, 30); // the bush keeps fruiting from partway
     } else return false;
     this.world.dirty.add(Math.floor(x / CS) + "," + Math.floor(z / CS));
     return true;
@@ -5765,6 +6587,19 @@ export class Game {
     btn.disabled = !superSeated || !this.leaveCheck(this.piloting).ok;
   }
 
+  private wireSledUI() {
+    (document.getElementById("sled-board") as HTMLButtonElement).onclick = () => this.mountSled();
+    (document.getElementById("sled-up-cargo") as HTMLButtonElement).onclick = () => this.installSledUpgrade("cargo_sled");
+    (document.getElementById("sled-up-blade") as HTMLButtonElement).onclick = () => this.installSledUpgrade("sled_blade");
+    (document.getElementById("sled-up-drill") as HTMLButtonElement).onclick = () => this.installSledUpgrade("sled_drill");
+    (document.getElementById("sled-stow") as HTMLButtonElement).onclick = () => { this.stowSledCargo(); this.renderHeld(); };
+  }
+
+  private wireTurretUI() {
+    (document.getElementById("turret-load") as HTMLButtonElement).onclick = () => { this.loadTurret(); };
+    (document.getElementById("turret-fauna") as HTMLButtonElement).onclick = () => this.toggleTurretFauna();
+  }
+
   private wireFlightUI() {
     document.getElementById("flight-outline")!.onclick = () => this.toggleFlyOutline();
     const take = document.getElementById("flight-take");
@@ -6350,8 +7185,8 @@ export class Game {
     if (!this.piloting) document.getElementById("ui-flight")!.classList.add("hidden");
     this.chestInv = null; this.ifcMode = false; this.fire = null; this.openFire = null;
     this.pot = null; this.openPot = null; this.openGen = null; this.gridFocus = "inv";
-    this.openCore = null; this.leaveShip = null;
-    for (const id of ["ui-inventory", "ui-craft", "ui-cache", "ui-trade", "ui-core", "ui-leave"]) document.getElementById(id)!.classList.add("hidden");
+    this.openCore = null; this.leaveShip = null; this.openSled = null; this.openTurret = null; this.story = null;
+    for (const id of ["ui-inventory", "ui-craft", "ui-cache", "ui-trade", "ui-story", "ui-core", "ui-leave", "ui-sled", "ui-turret"]) document.getElementById(id)!.classList.add("hidden");
     // closing any in-game menu also drops the pause menu, if one was open
     if (this.paused) {
       this.paused = false;

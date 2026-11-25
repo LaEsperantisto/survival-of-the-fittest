@@ -1,11 +1,11 @@
 import {
   AIR, SAND, SANDSTONE, ROCK, GRAVEL, SALT, DEADWOOD, DIRT, HULL, DOOR_CLOSED, DOOR_UPPER, LAMP, METAL_PLATING, BEACON, CAMPFIRE,
   WATER, ADOBE, INSGLASS, ENGINECORE, CS, CH, REGULATOR, REGULATOR_HUSK, CACTUS, CACTUS_FRUIT,
-  DOOR_INNER, DOOR_INNER_UPPER, CHEST, BED, BED_EXT, MELON_1, MELON_2, WHEAT_1, WHEAT_2, FARMLAND, GRASS, WOOD, LEAVES,
+  DOOR_INNER, DOOR_INNER_UPPER, CHEST, BED, BED_EXT, MELON_1, MELON_2, WHEAT_1, WHEAT_2, FARMLAND, GRASS, WOOD, LEAVES, SUGARCANE_1, SUGARCANE_2,
   APPLE_FRUIT,
   STORM_BREAKER, STORM_BREAKER_HUSK,
   POWER_PANEL, POWER_POLE, SOLAR_PANEL, BATTERY, ELEC_LAMP,
-  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, COAL_ORE, THRUSTER,
+  CURVED_HULL, HULL_SLOPE, IRON_ORE, COPPER_ORE, ALABASTER, COBALT_ORE, COAL_ORE, THRUSTER, ANTHRACITE_ORE,
   OIL, OIL_SANDS, FRAME_CORNER, THRUSTER_LIT, FLIGHT_CONTROLS,
 } from "./blocks";
 import { fbm2, ridge2, value2, hash2, Rng } from "./noise";
@@ -27,14 +27,14 @@ export interface Seep { x: number; z: number; r: number; key: string; }
  *  2 full trunk + branches, 3 leaf canopy. Stamped in stage order. */
 export interface TreePart { x: number; y: number; z: number; b: number; stage: number }
 export interface Town { x: number; z: number; }
-/** A trader camp on the CAMP_L lattice: 0 windmill, 1 hut, 2 farmstead. */
+/** A Nomad camp on the CAMP_L lattice: 0 windmill, 1 hut, 2 farmstead. */
 export interface Camp { x: number; z: number; type: 0 | 1 | 2; }
 
 /** Towns sit on this lattice: one sparse, jittered settlement per cell, forever —
  *  the desert never runs out of towns. */
 export const TOWN_L = 320;
 
-/** Trader camps sit on their own sparse lattice — a flattened site with a
+/** Nomad camps sit on their own sparse lattice - a flattened site with a
  *  windmill, hut or farmstead and a market stall, never near the crash. */
 export const CAMP_L = 380;
 
@@ -975,6 +975,25 @@ function paintOasis(set: (x: number, y: number, z: number, id: number) => void, 
       set(sx, Math.max(Math.round(heightAt(seed, sx, sz)), hb) + 1, sz, MELON_1);
     }
   }
+  // Wild Sugar Cane at the waterline — the stalk's origin in the world. Break
+  // a ripe stand for two canes; carry one home and Farm Land does the rest.
+  const nCane = 3 + Math.floor(hash2(o.x, o.z, seed + 101) * 3); // 3..5 clumps
+  for (let i = 0; i < nCane; i++) {
+    const a = i * (Math.PI * 2 / nCane) + hash2(o.x + i, o.z - i, seed + 103) * 0.9;
+    let rr = o.r + 1.6 + hash2(o.x - i, o.z + i, seed + 107) * (gring - 1);
+    let tx = o.x + Math.round(Math.cos(a) * rr), tz = o.z + Math.round(Math.sin(a) * rr);
+    for (let t = 0; t < 3 && Math.hypot(tx - o.x, tz - o.z) < o.r + 1; t++) {
+      rr += 1;
+      tx = o.x + Math.round(Math.cos(a) * rr); tz = o.z + Math.round(Math.sin(a) * rr);
+    }
+    if (Math.hypot(tx - o.x, tz - o.z) < o.r + 1) continue;
+    const top = Math.max(Math.round(heightAt(seed, tx, tz)), hb) + 1;
+    set(tx, top, tz, hash2(tx, tz, seed + 109) > 0.35 ? SUGARCANE_2 : SUGARCANE_1);
+    // a companion stalk beside it, mostly ripe
+    const nx = tx + (hash2(tx + 3, tz, seed + 111) < 0.5 ? 1 : -1), nz = tz + (hash2(tx, tz + 3, seed + 113) < 0.5 ? 1 : -1);
+    if (Math.hypot(nx - o.x, nz - o.z) >= o.r + 1)
+      set(nx, Math.max(Math.round(heightAt(seed, nx, nz)), hb) + 1, nz, hash2(nx, nz, seed + 117) > 0.6 ? SUGARCANE_1 : SUGARCANE_2);
+  }
 }
 
 /* ── Oil Seeps and Oil-Sand Fields ───────────────────────────────────────────
@@ -1479,7 +1498,9 @@ export function genChunk(seed: number, st: Structures, cx: number, cz: number, w
               caveC(wx, y - 1, wz) || caveC(wx, y, wz + 1) || caveC(wx, y, wz - 1))) continue;
         // wall crust: rare 3D-noise blobs clinging to the cave skin
         // (thresholds picked so each ore covers ~1/10 of the wall as before)
-        if (y <= 15 && hash2(wx * 5 + y, wz * 7 - y, seed + 333) < 0.4 &&
+        if (y <= 9 && hash2(wx * 7 + y, wz * 3 - y, seed + 343) < 0.35 &&
+            noise3(wx / 5 + 200, y / 5, wz / 5, seed + 341) > 0.893) c[idx] = ANTHRACITE_ORE; // the deep desert's hard coal
+        else if (y <= 15 && hash2(wx * 5 + y, wz * 7 - y, seed + 333) < 0.4 &&
             noise3(wx / 5 + 40, y / 5, wz / 5, seed + 331) > 0.886) c[idx] = COBALT_ORE;
         else if (y >= 12 && noise3(wx / 5, y / 5, wz / 5, seed + 313) > 0.864) c[idx] = IRON_ORE;
         else if (y >= 12 && noise3(wx / 5, y / 5 + 60, wz / 5, seed + 317) > 0.878) c[idx] = COPPER_ORE;

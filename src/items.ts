@@ -13,6 +13,10 @@ import {
   FRAME_CORNER, FLIGHT_CONTROLS,
   ELECTRIC_BENCH, ASSEMBLY_BENCH, FUEL_WORKS, FOUNDRY, INSCRIPTION, DOCK_PAD,
   TITANIUM_ORE, GRAPHITE_ORE, TUNDROOT_1, TUNDROOT_2, EMBERBUSH_1, EMBERBUSH_2, EMBER_FRUIT,
+  RECYCLER, SIL_RECYCLER, HEARTH, WORKBENCH, TANNERY, CAULDRON, OIL_WORKS, WIRING_BENCH, FUEL_STILL,
+  ANTHRACITE_ORE, LEAD_ORE, SALTPETRE_ORE, SIL_WOOD, SIL_LEAVES, SIL_SAPLING, OAT_1, OAT_2,
+  SPIKE_BARRICADE, ALARM_CHIME, GUN_TURRET, SHOCK_COIL, NAV_CORE, HOVER_SLED,
+  WOOD_POST, WOOD_RAILING, STAINED_GLASS, TABLE, BASALT, SNOW,
 } from "./blocks";
 
 export interface ItemDef {
@@ -24,6 +28,8 @@ export interface ItemDef {
   block?: number;            // block it places
   tool?: { type: "pickaxe" | "shovel" | "axe" | "disassembler"; tier: number };
   weapon?: { reach: number; dmg: number };   // swings reach farther and hit harder than fists/tools
+  skin?: number;   // Skinning Knife: skinning a carcass yields this many hides (higher tier = faster)
+  harpoon?: boolean; // the only weapon that brings down a Tideback
   eat?: { water?: number; health?: number };  // eating applies these to the player
   equip?: "backpack" | "head" | "body" | "regulator" | "light"; // goes in that Armour Slot
   bag?: { w: number; h: number }; // Backpack-slot gear: grid size
@@ -152,8 +158,8 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "wurm_hide", name: "Wurm Hide", desc: "Sand Wurm skin - heat-tempered plating for the toughest Body gear.", w: 1, h: 2, mass: 1.2, color: "#8a6a48" }),
   I({ id: "vulture_raw", name: "Vulture Fillet (raw)", desc: "Raw meat off a Sand Vulture. Cook it at a Campfire before eating.", w: 1, h: 1, mass: 0.7, color: "#7a5a4a" }),
   I({ id: "vulture_cooked", name: "Roasted Fillet", desc: "Cooked Vulture meat. Eat it: +25 Health.", w: 1, h: 1, mass: 0.6, eat: { health: 25 }, color: "#b0764a" }),
-  I({ id: "tortoise_shell", name: "Thornback Shell", desc: "The spiked dome of a Thornback Tortoise. Three plate a Cuirass; Traders always want them.", w: 2, h: 2, mass: 6.0, color: "#5f5a4e" }),
-  I({ id: "fennec_pelt", name: "Fennec Pelt", desc: "Soft pale fur off a Fennec Fox. Worth a real price at any Trader.", w: 1, h: 2, mass: 0.5, color: "#c99a62" }),
+  I({ id: "tortoise_shell", name: "Thornback Shell", desc: "The spiked dome of a Thornback Tortoise. Three plate a Cuirass; Nomads always want them.", w: 2, h: 2, mass: 6.0, color: "#5f5a4e" }),
+  I({ id: "fennec_pelt", name: "Fennec Pelt", desc: "Soft pale fur off a Fennec Fox. Worth a real price at any Nomad camp.", w: 1, h: 2, mass: 0.5, color: "#c99a62" }),
   I({ id: "tortoise_cuirass", name: "Thornback Cuirass", desc: "Body-slot breastplate of layered Shell and Metal: shrugs off 48% of every blow. Heavy going.", w: 2, h: 2, mass: 9.0, equip: "body", armor: 0.48, color: "#6a6255" }),
   I({ id: "wurmsuit", name: "Wurmsuit", desc: "Body-slot armour of Wurm Hide and Chitin: shrugs off 45% of every blow, and the Chitin turns the Sandstorm aside — blast and wind-thirst bite at a quarter. Warmer against the cold night too.", w: 2, h: 2, mass: 5.0, equip: "body", armor: 0.45, stormResist: true, color: "#7a5c40" }),
   I({ id: "stinger_blade", name: "Stinger Blade", desc: "A Metal Sword tipped with a Scorpion Stinger: hits harder and farther than anything above ground.", w: 1, h: 2, mass: 2.4, weapon: { reach: 5.2, dmg: 12 }, color: "#c9b048" }),
@@ -185,7 +191,7 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "hot_water_pouch", name: "Hot Water Pouch", desc: "A full canister heated at a lit Campfire. Use it (Q): a +10 °C heat pulse toward body-warm, and the empty canister comes back.", w: 1, h: 2, mass: 1.2, color: "#e08a4f" }),
   // ---- the Map kit (needs the Surveyor's Visor worn to see any of it) ----
   I({ id: "surveyor_pin", name: "Surveyor's Pin", desc: "Press E to plant one where you stand: a named mark on the Map, forever. Rename it from the maximised Map. A Pin named \"Base\" is the point your Surveyor's Visor beams you back to.", w: 1, h: 1, mass: 0.2, color: "#66e5f0" }),
-  I({ id: "tracker", name: "Hidden Landmark Tracker", desc: "Use it (Q): wakes the nearest Landmark you have never found — a Town, Trader camp, cave mouth, oasis or buried canister site — and marks it on the Map. One use, then it is gone; it can never find the one-of-a-kind second wreck.", w: 1, h: 1, mass: 0.4, color: "#c08a3c" }),
+  I({ id: "tracker", name: "Hidden Landmark Tracker", desc: "Use it (Q): wakes the nearest Landmark you have never found — a Town, Nomad camp, cave mouth, oasis or buried canister site — and marks it on the Map. One use, then it is gone; it can never find the one-of-a-kind second wreck.", w: 1, h: 1, mass: 0.4, color: "#c08a3c" }),
   I({ id: "sack1", name: "Sack I", desc: "A 1×1 pocket holding up to 10 footprint-units of ONE item type. Loose items fall into an open Sack on their own; machines and Sort never look inside — stuff and empty it from the Open Sack panel.", w: 1, h: 1, mass: 0.3, sack: 10, color: "#a8834a" }),
   I({ id: "sack2", name: "Sack II", desc: "A stitched double layer: up to 20 footprint-units of ONE item type in a single 1×1 cell. Machines never read Sacks — they only ever write into them.", w: 1, h: 1, mass: 0.5, sack: 20, color: "#8f6a3a" }),
   I({ id: "sack3", name: "Sack III", desc: "Cobalt-rimmed canvas: up to 30 footprint-units of ONE item type. A Sack in a Sack never fits, at any tier.", w: 1, h: 1, mass: 0.8, sack: 30, color: "#6d4f2e" }),
@@ -207,10 +213,97 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "seed_emberbush", name: "Ember Bush Seed", desc: "Plant on Farm Land. Grows best at the heat edge — the Scorch Belt suits it.", w: 1, h: 1, mass: 0.1, block: EMBERBUSH_1, color: "#a85a3a" }),
   I({ id: "ember_berry", name: "Ember Berry", desc: "Tart berry picked from a fruiting Ember Bush; the bush re-bears on its own. Eat it: +10 Water, +8 Health.", w: 1, h: 1, mass: 0.15, eat: { water: 10, health: 8 }, color: "#d94f28" }),
   // ---- Silvaris fauna ----
-  I({ id: "frost_pelt", name: "Frost Pelt", desc: "Thick white fur off a Snow Stalker. Warm, and worth a real price at any Trader.", w: 1, h: 2, mass: 0.8, color: "#cddbe6" }),
-  I({ id: "tideback_hide", name: "Tideback Hide", desc: "The heavy wet hide off a Tideback. Thick as a door, and Traders know what it is worth.", w: 2, h: 2, mass: 2.5, color: "#6e8a72" }),
+  I({ id: "frost_pelt", name: "Frost Pelt", desc: "Thick white fur off a Snow Stalker. Warm, and worth a real price at any Nomad camp.", w: 1, h: 2, mass: 0.8, color: "#cddbe6" }),
+  I({ id: "tideback_hide", name: "Tideback Hide", desc: "The heavy wet hide off a Tideback. Thick as a door, and Nomads know what it is worth.", w: 2, h: 2, mass: 2.5, color: "#6e8a72" }),
+  I({ id: "tideback_meat", name: "Tideback Meat (raw)", desc: "Raw meat off a Tideback carcass. Smoke it at a Hearth before eating.", w: 2, h: 1, mass: 2.2, color: "#7c8a70" }),
+  I({ id: "smoked_tideback", name: "Smoked Tideback", desc: "Hearth-smoked Tideback meat. Eat it: +30 Health, +6 Water.", w: 2, h: 1, mass: 1.8, eat: { health: 30, water: 6 }, color: "#5c6a52" }),
   I({ id: "brushbuck_meat", name: "Brushbuck Meat (raw)", desc: "Raw meat off a Brushbuck. Cook it at a Campfire before eating.", w: 1, h: 1, mass: 1.2, color: "#a06552" }),
   I({ id: "cooked_brushbuck_meat", name: "Cooked Brushbuck", desc: "Roasted plains meat. Eat it: +25 Health.", w: 1, h: 1, mass: 1.0, eat: { health: 25 }, color: "#b87c42" }),
+  // ================= Phase 2 fork (2026-11-24) =================
+  // ---- Recyclers and the Scrap economy: the one chain that crosses worlds ----
+  I({ id: "recycler", name: "Recycler", desc: "Desert salvage grind: feed it old-world gear - tools, plating, machine parts - and it comes out as Scrap. Runs on the Grid.", w: 1, h: 1, mass: 9.0, block: RECYCLER, color: "#7c765f" }),
+  I({ id: "sil_recycler", name: "Recycler", desc: "Silvaris salvage grind: any gear - this world's or the other's - comes out as Scrap. Runs on the Grid.", w: 1, h: 1, mass: 9.0, block: SIL_RECYCLER, color: "#6b7885" }),
+  I({ id: "scrap", name: "Scrap", desc: "A grind of mixed metal with no home planet. The Foundry and the Wiring Bench take it anywhere.", w: 1, h: 1, mass: 0.6, color: "#8d8d94" }),
+  I({ id: "machine_part", name: "Machine Part", desc: "A shard of the machines' chassis. The Machine Camps drop them; a Recycler grinds them finer.", w: 1, h: 1, mass: 1.2, color: "#707684" }),
+  I({ id: "machine_heart", name: "Machine Heart", desc: "The core of a Breaker or Warden — a palm of caged light still obeying old orders. The prize of a hard fight.", w: 2, h: 2, mass: 4.0, color: "#c05050" }),
+  I({ id: "slug", name: "Slug", desc: "A cast bullet of Desertis metal. Gun Turrets eat them by the handful.", w: 1, h: 1, mass: 0.1, color: "#9aa0aa" }),
+  I({ id: "lead_slug", name: "Lead Slug", desc: "A cast bullet of Silvaris lead. Gun Turrets eat them by the handful.", w: 1, h: 1, mass: 0.12, color: "#7d8290" }),
+  // ---- Silvaris station twins ----
+  I({ id: "hearth", name: "Hearth", desc: "Silvaris' Campfire: smelts its own ores, cooks, slow-burns Silvertimber into Charcoal and fires Flux.", w: 1, h: 2, mass: 4.0, block: HEARTH, color: "#e08040" }),
+  I({ id: "workbench", name: "Workbench", desc: "Silvaris' Crafting Bench: the whole Basalt→Bone→Titanium→Carbide ladder, timber kit and the stations below it.", w: 1, h: 2, mass: 6.0, block: WORKBENCH, color: "#6b6557" }),
+  I({ id: "tannery", name: "Tannery", desc: "Silvaris' armoury twin: hides into hardhide, and hardhide into gear that holds the cold out.", w: 2, h: 2, mass: 12.0, block: TANNERY, color: "#8c6b4d" }),
+  I({ id: "cauldron", name: "Cauldron", desc: "Silvaris' Cooking Pot: the dishes of roots, berries and oats.", w: 1, h: 2, mass: 5.0, block: CAULDRON, color: "#c87a3a" }),
+  I({ id: "oil_works", name: "Oil Works", desc: "Silvaris' Refinery: Silvaris Oil in a Bucket cooked with Charcoal into Rocket Fuel. The bucket comes back.", w: 1, h: 1, mass: 8.0, block: OIL_WORKS, color: "#5c616c" }),
+  I({ id: "wiring_bench", name: "Wiring Bench", desc: "Silvaris' Electric Bench: the whole power family on Lead, Glass and Saltpetre — Panels, Poles, Batteries, Generators.", w: 1, h: 1, mass: 8.0, block: WIRING_BENCH, color: "#59787f" }),
+  I({ id: "fuel_still", name: "Fuel Still", desc: "The desert's Fuel Works: Rocket Fuel raised with Anthracite Ore into Super Rocket Fuel. Unbuilt until the Sentinel's death-gift.", w: 1, h: 1, mass: 9.0, block: FUEL_STILL, color: "#66687a" }),
+  // ---- New minerals & materials ----
+  I({ id: "anthracite_ore", name: "Anthracite Ore", desc: "Hard black carbon from Desertis' deepest stone (Metal Pickaxe or better). The desert's answer to Graphite.", w: 1, h: 1, mass: 1.4, block: ANTHRACITE_ORE, color: "#2e2b28" }),
+  I({ id: "charcoal", name: "Charcoal", desc: "Silvertimber slow-burned at a Hearth. Silvaris' carbon: Oil Works fuel, Flux, and the Foundry's breath.", w: 1, h: 1, mass: 0.6, color: "#33302e" }),
+  I({ id: "lead_ore", name: "Lead Ore", desc: "Dull heavy ore of Silvaris' mid caves. Smelts at a Hearth into Lead Rods.", w: 1, h: 1, mass: 2.2, block: LEAD_ORE, color: "#80858f" }),
+  I({ id: "saltpetre_ore", name: "Saltpetre Ore", desc: "Bitter salt crusting Silvaris' upper caves. Smelts at a Hearth into Saltpetre.", w: 1, h: 1, mass: 0.9, block: SALTPETRE_ORE, color: "#d8d4c2" }),
+  I({ id: "leadrod", name: "Lead Rod", desc: "Smelted from Lead Ore. Silvaris' copper: wires, coils, plating, Slugs.", w: 1, h: 1, mass: 1.2, color: "#8a909c" }),
+  I({ id: "saltpetre", name: "Saltpetre", desc: "The battery salt of the Wiring Bench — bitter, sharp, and common in Silvaris' upper caves.", w: 1, h: 1, mass: 0.8, color: "#d8d4c2" }),
+  I({ id: "flux", name: "Flux", desc: "Lead and Saltpetre fired at a Hearth — the foundry salt that lets Titanium and plating meet.", w: 1, h: 1, mass: 0.5, color: "#b9c4a8" }),
+  I({ id: "titan_plating", name: "Titan Plating", desc: "Titanium sheet rolled at the Foundry. The machines' own armour, and yours if you take it.", w: 1, h: 1, mass: 1.6, color: "#aeb6c2" }),
+  // ---- Silvaris timber & crops ----
+  I({ id: "sil_timber", name: "Silvertimber Log", desc: "Trunk of a Silvertimber tree — Silvaris' wood. Fuel, tools, benches and charcoal.", w: 1, h: 1, mass: 0.5, block: SIL_WOOD, color: "#5c6870" }),
+  I({ id: "seed_silvertimber", name: "Silvertimber Seed", desc: "Plant in Dirt. Grows a Silvertimber tree stage by stage while water stays near; Silvaris' renewable wood.", w: 1, h: 1, mass: 0.1, block: SIL_SAPLING, color: "#7fae9a" }),
+  I({ id: "seed_oats", name: "Oat Seed", desc: "Plant on Farm Land. Frost Oats: the grain that laughs at the cold.", w: 1, h: 1, mass: 0.1, block: OAT_1, color: "#c8c49a" }),
+  I({ id: "frost_oat", name: "Frost Oats", desc: "Cut from ripe Oats. Grind at a Cauldron for flour, or simmer whole into porridge.", w: 1, h: 1, mass: 0.2, color: "#c8c088" }),
+  I({ id: "oat_flour", name: "Oat Flour", desc: "Frost Oats ground at a Cauldron. The flour of Oatbread.", w: 1, h: 1, mass: 0.2, color: "#d4cba4" }),
+  I({ id: "oatbread", name: "Oatbread", desc: "Oat flour baked at a Cauldron. Sweet-heavy and filling. Eat it: +35 Health.", w: 2, h: 1, mass: 0.4, eat: { health: 35 }, color: "#c2a878" }),
+  I({ id: "tundroot_flour", name: "Tundroot Flour", desc: "Tundra Roots ground at a Cauldron. The flour of Flatbread and Ember Pie.", w: 1, h: 1, mass: 0.2, color: "#d8c8a8" }),
+  I({ id: "flatbread", name: "Flatbread", desc: "Tundroot flour baked at a Cauldron. Plain, dense, cold-country bread. Eat it: +30 Health.", w: 1, h: 1, mass: 0.2, eat: { health: 30 }, color: "#c8a86a" }),
+  I({ id: "root_stew", name: "Root Stew", desc: "Tundra Root and Brushbuck meat simmered in a full Canister at a Cauldron. The Canister comes back empty. Eat it: +25 Water, +35 Health.", w: 1, h: 2, mass: 1.2, eat: { water: 25, health: 35 }, color: "#a8783a" }),
+  I({ id: "ember_pie", name: "Ember Pie", desc: "Ember Berries and Tundroot flour baked at a Cauldron. Sweet-fire filling. Eat it: +45 Health.", w: 2, h: 1, mass: 0.8, eat: { health: 45 }, color: "#c76a4a" }),
+  I({ id: "oat_porridge", name: "Oat Porridge", desc: "Frost Oats simmered in a full Canister at a Cauldron. The Canister comes back empty. Eat it: +20 Water, +20 Health.", w: 1, h: 2, mass: 1.0, eat: { water: 20, health: 20 }, color: "#c8b88a" }),
+  I({ id: "smoked_brushbuck", name: "Smoked Brushbuck", desc: "Plains meat hung over Hearth smoke. Keeps for days and travels well. Eat it: +30 Health.", w: 1, h: 1, mass: 0.9, eat: { health: 30 }, color: "#a8653f" }),
+  I({ id: "pear_cordial", name: "Pear Cordial", desc: "Prickly Pears, Salt and Sugar sealed at a Cooking Pot. A desert luxury. Drink it: +20 Water, +10 Health.", w: 1, h: 2, mass: 1.0, eat: { water: 20, health: 10 }, color: "#d65a9a" }),
+  // ---- Hides, leather & armour ----
+  I({ id: "bone", name: "Bone", desc: "Clean bone off a Brushbuck or Stalker. Silvaris' stone: tools, buckets, needles.", w: 1, h: 1, mass: 0.5, color: "#d8d2c2" }),
+  I({ id: "brushbuck_pelt", name: "Brushbuck Pelt", desc: "The hide off a Brushbuck. Skin it properly with a Skinner and you get two. Tan it at a Tannery.", w: 1, h: 2, mass: 0.7, color: "#a88a6a" }),
+  I({ id: "hardhide", name: "Hardhide", desc: "Tanned pelt — stiff, warm, weatherproof. The Tannery's workhorse.", w: 1, h: 1, mass: 0.8, color: "#8c6f52" }),
+  I({ id: "cactus_leather", name: "Cactus Leather", desc: "Cactus pad cured at a Campfire. Desert gear's answer to hide: cool-wearing and tough.", w: 1, h: 1, mass: 0.6, color: "#6f8f5a" }),
+  I({ id: "buckguard", name: "Buckguard", desc: "Body-slot harness of Hardhide: shrugs off 40% of every blow. Silvaris workhorse armour.", w: 2, h: 2, mass: 3.5, equip: "body", armor: 0.4, color: "#8a6f50" }),
+  I({ id: "snowcloak", name: "Snowcloak", desc: "Body cloak of Frost Pelts: shrugs off 30% of every blow and takes the bite out of the cold.", w: 2, h: 2, mass: 3.0, equip: "body", armor: 0.3, color: "#c4d4e0" }),
+  I({ id: "tideback_cuirass", name: "Tideback Cuirass", desc: "Breastplate of Tideback Hide over Hardhide: shrugs off 48% of every blow. Swamp-forged.", w: 2, h: 2, mass: 8.0, equip: "body", armor: 0.48, color: "#5f7a64" }),
+  I({ id: "dune_wrap", name: "Dune Wrap", desc: "Body wrap of Cactus Leather and Snake Skin: shrugs off 35% of every blow and breathes in the heat.", w: 2, h: 2, mass: 2.5, equip: "body", armor: 0.35, color: "#7f9a6a" }),
+  // ---- Silvaris tool ladder: Basalt → Bone → Titanium → Carbide ----
+  toolItem("pickaxe", 1, "basalt", "#4c4846"), toolItem("shovel", 1, "basalt", "#4c4846"), toolItem("axe", 1, "basalt", "#4c4846"),
+  toolItem("pickaxe", 2, "bone", "#d8d2c2"), toolItem("shovel", 2, "bone", "#d8d2c2"), toolItem("axe", 2, "bone", "#d8d2c2"),
+  toolItem("pickaxe", 3, "titanium", "#aeb6c2"), toolItem("shovel", 3, "titanium", "#aeb6c2"), toolItem("axe", 3, "titanium", "#aeb6c2"),
+  toolItem("pickaxe", 4, "carbide", "#3a3f48"), toolItem("shovel", 4, "carbide", "#3a3f48"), toolItem("axe", 4, "carbide", "#3a3f48"),
+  toolItem("disassembler", 1, "bone", "#d8d2c2"),
+  toolItem("disassembler", 2, "carbide", "#3a3f48"),
+  // Skinning Knives: skin = hides from a properly skinned carcass.
+  I({ id: "basalt_knife", name: "Basalt Skinner", desc: "Skinning Knife (tier 1). Skinning a Brushbuck or Stalker carcass yields two hides. Higher tiers skin faster.", w: 1, h: 1, mass: 0.8, skin: 2, color: "#4c4846" }),
+  I({ id: "bone_knife", name: "Bone Skinner", desc: "Skinning Knife (tier 2). Two hides every skin, and quicker about it.", w: 1, h: 1, mass: 0.7, skin: 2, color: "#d8d2c2" }),
+  I({ id: "titanium_knife", name: "Titanium Skinner", desc: "Skinning Knife (tier 3). Two hides, fastest cut.", w: 1, h: 1, mass: 0.8, skin: 2, color: "#aeb6c2" }),
+  I({ id: "carbide_knife", name: "Carbide Skinner", desc: "Skinning Knife (tier 4). Two hides, and the edge never quits.", w: 1, h: 1, mass: 0.9, skin: 2, color: "#3a3f48" }),
+  // Harpoons: the only way down a Tideback.
+  I({ id: "bone_harpoon", name: "Bone Harpoon", desc: "Harpoon (tier 2). A Tideback falls to nothing else: three Hides and a carcass. Doubles as a long spear.", w: 1, h: 2, mass: 1.6, harpoon: true, weapon: { reach: 4.6, dmg: 6 }, color: "#d8d2c2" }),
+  I({ id: "titanium_harpoon", name: "Titanium Harpoon", desc: "Harpoon (tier 3). Hits harder; still the only thing that brings down a Tideback.", w: 1, h: 2, mass: 1.8, harpoon: true, weapon: { reach: 4.8, dmg: 8 }, color: "#aeb6c2" }),
+  I({ id: "carbide_harpoon", name: "Carbide Harpoon", desc: "Harpoon (tier 4). The deadliest point on either planet.", w: 1, h: 2, mass: 2.0, harpoon: true, weapon: { reach: 5.0, dmg: 10 }, color: "#3a3f48" }),
+  I({ id: "bone_bucket", name: "Bone Bucket", desc: "Silvaris' Bucket: scoop a water or oil Source, pour it back anywhere. Same work, different bone.", w: 1, h: 1, mass: 0.8, color: "#d8d2c2" }),
+  // ---- Machine faction ----
+  I({ id: "spikes", name: "Spike Barricade", desc: "A wall of driven spikes — anything that presses into it is hurt. Climbers, raiders and careless foxes alike.", w: 1, h: 1, mass: 1.5, block: SPIKE_BARRICADE, color: "#72593f" }),
+  I({ id: "alarm_chime", name: "Alarm Chime", desc: "Powered: rings a warning when a hostile thing walks near. Wired into the Grid by Pole reach.", w: 1, h: 1, mass: 1.5, block: ALARM_CHIME, color: "#cca64e" }),
+  I({ id: "gun_turret", name: "Gun Turret", desc: "Powered: fires Slugs at hostiles in range — machines, and fauna unless you tell it not to. Load Slugs from the panel (E).", w: 1, h: 1, mass: 9.0, block: GUN_TURRET, color: "#66707c" }),
+  I({ id: "shock_coil", name: "Shock Coil", desc: "Powered: pulses the ground in a ring — twice as hard on metal. The machine's own weakness, thrown back at it.", w: 1, h: 1, mass: 6.0, block: SHOCK_COIL, color: "#8098c0" }),
+  // ---- The Sled and the Nav Core ----
+  I({ id: "hover_sled", name: "Hover Sled", desc: "Place it, board it (E), ride at double speed on a charge. Park on a powered Dock Pad to recharge. Upgrades bolt on from its panel.", w: 1, h: 1, mass: 12.0, block: HOVER_SLED, color: "#808ca4" }),
+  I({ id: "cargo_sled", name: "Cargo Sled", desc: "An upgrade frame for the Hover Sled: a 3×3 sled-chest rides along, fed and emptied from the Sled panel.", w: 2, h: 2, mass: 8.0, color: "#6f6a58" }),
+  I({ id: "sled_blade", name: "Sled Blade", desc: "A Sled upgrade: while riding, snow, leaves and shallow water part in your path — for a sip of charge.", w: 2, h: 1, mass: 4.0, color: "#8a90a0" }),
+  I({ id: "sled_drill", name: "Sled Drill", desc: "A Sled upgrade: digs Caches and machine wreckage at the yoke — no dismounting, no swinging.", w: 2, h: 1, mass: 5.0, color: "#9a8a5a" }),
+  I({ id: "nav_core", name: "Nav Core", desc: "The Ship's chartering brain: where it has been, what worlds answer, and how to reach them. Crafted at the Assembly Bench after the Sentinel falls.", w: 1, h: 2, mass: 5.0, block: NAV_CORE, color: "#8a6ac8" }),
+  // ---- Phase-2 stone & snow: the materials tools are cut from ----
+  I({ id: "basalt", name: "Basalt", desc: "Silvaris' dark stone, torn from the rock faces. Its wood-equivalent: tools, hearths, walls.", w: 1, h: 1, mass: 1.1, block: BASALT, color: "#4c4846" }),
+  I({ id: "snow_block", name: "Snow Block", desc: "Packed from Powder Snow. Melts fast in a Sealed Space; good enough for a winter wall.", w: 1, h: 1, mass: 0.4, block: SNOW, color: "#e6ecf2" }),
+  // ---- Furniture ----
+  I({ id: "timber_post", name: "Timber Post", desc: "A turned Silvertimber post: porches, pens, fence lines.", w: 1, h: 1, mass: 0.8, block: WOOD_POST, color: "#806a4a" }),
+  I({ id: "timber_railing", name: "Timber Railing", desc: "Post and rail, auto-linking. You can lean into it but not hop it.", w: 1, h: 1, mass: 0.7, block: WOOD_RAILING, color: "#85704d" }),
+  I({ id: "table", name: "Table", desc: "A worked table: the hearth of a settled room. Cut at a Crafting Bench or Workbench.", w: 2, h: 1, mass: 4.0, block: TABLE, color: "#8c6b45" }),
+  I({ id: "stained_glass", name: "Stained Glass", desc: "Glass with color in it — the settlements' windows. Conducts heat like plain glass.", w: 1, h: 1, mass: 0.6, block: STAINED_GLASS, color: "#8a5a72" }),
 ];
 
 export const ITEMS: Record<string, ItemDef> = Object.fromEntries(ITEM_LIST.map((d) => [d.id, d]));
@@ -244,6 +337,14 @@ BLOCK_TO_ITEM[TUNDROOT_2] = "tundroot";
 BLOCK_TO_ITEM[EMBERBUSH_1] = "seed_emberbush";
 BLOCK_TO_ITEM[EMBERBUSH_2] = "ember_berry";
 BLOCK_TO_ITEM[EMBER_FRUIT] = "ember_berry";
+// Phase-2 fork fallbacks (explicit handlers give the real drops)
+BLOCK_TO_ITEM[SIL_WOOD] = "sil_timber";
+BLOCK_TO_ITEM[SIL_LEAVES] = "kindling"; // silvertimber leaves crumble too
+BLOCK_TO_ITEM[OAT_1] = "seed_oats";
+BLOCK_TO_ITEM[OAT_2] = "frost_oat";
+// The machines leave parts, not placeable wreckage
+BLOCK_TO_ITEM[136] = "machine_part"; // CAMP_ANTENNA
+BLOCK_TO_ITEM[137] = "machine_part"; // RELAY_TOWER
 
 // ---------------- Inventory Grid ----------------
 

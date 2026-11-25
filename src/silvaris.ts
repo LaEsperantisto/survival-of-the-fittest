@@ -10,11 +10,12 @@
 // too: a solid Source column from floor up to sea level).
 
 import {
-  AIR, ROCK, SAND, DIRT, GRASS, WATER, SALT, SNOW, BASALT, GRAVEL,
-  TITANIUM_ORE, GRAPHITE_ORE, TUNDROOT_1, TUNDROOT_2, EMBERBUSH_1, EMBERBUSH_2,
+  AIR, ROCK, SAND, DIRT, GRASS, WATER, SALT, SNOW, BASALT, GRAVEL, WOOD, LEAVES,
+  TITANIUM_ORE, GRAPHITE_ORE, TUNDROOT_1, TUNDROOT_2, EMBERBUSH_1, EMBERBUSH_2, EMBER_FRUIT,
+  SIL_WOOD, SIL_LEAVES, OAT_1, OAT_2,
   INSCRIPTION, DOCK_PAD, METAL_PLATING, GLASS, DOOR_CLOSED, DOOR_UPPER,
-  BED, BED_EXT, CHEST, LAMP, IRON_ORE, COPPER_ORE, COAL_ORE, CAMPFIRE,
-  COBALT_ORE, ALABASTER, OIL, OIL_SANDS,
+  BED, BED_EXT, CHEST, LAMP, CAMPFIRE,
+  ALABASTER, OIL, OIL_SANDS, LEAD_ORE, SALTPETRE_ORE, CAMP_ANTENNA,
   CS, CH,
 } from "./blocks";
 import { fbm2, ridge2, value2, hash2, Rng } from "./noise";
@@ -174,15 +175,15 @@ function surfaceBlock(x: number, z: number, y: number, h: number, bi: number, se
   if (bi === SB_ALPINE) {
     if (y === h) { // ore outcrops weather out of the high rock, in plain sight
       const r = hash2(x, z, seed + 261);
-      if (r < 0.05) return IRON_ORE;
-      if (r < 0.08) return COAL_ORE;
+      if (r < 0.05) return LEAD_ORE;
+      if (r < 0.065) return TITANIUM_ORE; // the peaks give up their deep metal
     }
     return y >= h - 1 && h - 1 >= 115 ? SNOW : ROCK; // snow cap above ~115
   }
   if (bi === SB_SCORCH) {
     // graphite veins near the surface of the volcanic highlands
     if (y >= h - 7 && y <= h - 2 && noise3(x / 7, y / 7, z / 7, seed + 641) > 0.84) return GRAPHITE_ORE;
-    if (y === h && hash2(x, z, seed + 263) < 0.04) return COAL_ORE; // coal seams crop out
+    if (y === h && hash2(x, z, seed + 263) < 0.04) return LEAD_ORE; // lead slag crops out
     return y >= h - 4 ? BASALT : ROCK;
   }
   if (bi === SB_DEEP)
@@ -367,6 +368,27 @@ function settleNear(x: number, z: number, rad: number, seed: number): boolean {
   return false;
 }
 
+/** Is there a trader camp on lattice cell (tx,tz)? */
+export const traderCellAt = (tx: number, tz: number, seed: number): boolean => traderAtSeed(tx, tz, seed);
+
+/** Jittered centre of the trader camp on lattice cell (tx,tz). */
+export const traderCellCenter = (tx: number, tz: number, seed: number): { x: number; z: number } => traderCenter(tx, tz, seed);
+
+/** The trader camp nearest (x,z) within `rad`, with its lattice cell — the
+ *  Nomad whose Keeper hears news of a deed done here. */
+export function nearestTraderCamp(x: number, z: number, seed: number, rad: number): { tx: number; tz: number; x: number; z: number } | null {
+  const t0 = Math.floor((x - rad) / TRADER_L), t1 = Math.floor((x + rad) / TRADER_L);
+  const s0 = Math.floor((z - rad) / TRADER_L), s1 = Math.floor((z + rad) / TRADER_L);
+  let best: { tx: number; tz: number; x: number; z: number } | null = null, bd = rad;
+  for (let tx = t0; tx <= t1; tx++) for (let tz = s0; tz <= s1; tz++) {
+    if (!traderAtSeed(tx, tz, seed)) continue;
+    const c = traderCenter(tx, tz, seed);
+    const d = Math.hypot(c.x - x, c.z - z);
+    if (d <= bd) { bd = d; best = { tx, tz, x: c.x, z: c.z }; }
+  }
+  return best;
+}
+
 /** The trader camp whose site holds (x,z) — centre and ground — or null.
  *  Same unattackable barter rules as the desert camps; new goods. */
 export function traderAt(x: number, z: number, seed: number): SilTrader | null {
@@ -403,6 +425,133 @@ function paintTrader(set: (x: number, y: number, z: number, id: number) => void,
   }
   set(c.x - 5, f + 1, c.z - 1, CHEST); // the camp's own stores
 }
+
+/* ── Machine Camps and Relay Towers ─────────────────────────────────────────
+ * The Dominion's grip on Silvaris, on lattices coprime with every other site
+ * (176 = 2^4·11, 233 prime — never sharing a cell with settle 240, trader 300
+ * or seep 220). A Camp is a wreck the machines never cleared: chassis slabs,
+ * a dead antenna, and a store chest the machines never bothered to lock.
+ * A Relay Tower is a mast with an antenna still screaming into the sky: the
+ * land-mark the raid-on-Grid answers to, and a beacon on the Map. */
+
+export const CAMP_L = 176;
+export const RELAY_L = 233;
+const CAMP_J = 40, RELAY_J = 45;
+const CAMP_R = 8, RELAY_R = 7;
+
+const silSeepNear = (x: number, z: number, rad: number, seed: number): boolean => {
+  const i0 = Math.floor((x - rad) / SIL_SEEP_L), i1 = Math.floor((x + rad) / SIL_SEEP_L);
+  const j0 = Math.floor((z - rad) / SIL_SEEP_L), j1 = Math.floor((z + rad) / SIL_SEEP_L);
+  for (let ix = i0; ix <= i1; ix++) for (let iz = j0; iz <= j1; iz++) {
+    const s = silSeepOf(ix, iz, seed);
+    if (s && Math.hypot(s.x - x, s.z - z) <= rad + s.r + 4) return true;
+  }
+  return false;
+};
+
+const campAtSeed = (tx: number, tz: number, seed: number): boolean => {
+  if (hash2(tx, tz, seed + 701) >= 0.62) return false;
+  const c = campCenter(tx, tz, seed);
+  if (c.x * c.x + c.z * c.z < 3200) return false; // arrival country stays quiet
+  if (settleSiteAt(c.x, c.z, seed) !== null || settleNear(c.x, c.z, 26, seed)) return false;
+  if (silSeepNear(c.x, c.z, 16, seed)) return false;
+  const rx = Math.floor(c.x / RELAY_L), rz = Math.floor(c.z / RELAY_L);
+  for (let ax = rx - 1; ax <= rx + 1; ax++) for (let az = rz - 1; az <= rz + 1; az++) {
+    if (!relayAtSeed(ax, az, seed)) continue;
+    const rc = relayCenter(ax, az, seed);
+    if (Math.hypot(rc.x - c.x, rc.z - c.z) < 48) return false; // the mast outranks the wreck
+  }
+  if (Math.round(heightRaw(c.x, c.z, seed)) <= SIL_SEA) return false;
+  return true;
+};
+
+const campCenter = (tx: number, tz: number, seed: number): { x: number; z: number } => {
+  const jx = (hash2(tx, tz, seed + 703) - 0.5) * 2 * CAMP_J;
+  const jz = (hash2(tx, tz, seed + 705) - 0.5) * 2 * CAMP_J;
+  return { x: Math.round(tx * CAMP_L + jx), z: Math.round(tz * CAMP_L + jz) };
+};
+
+export function campAt(x: number, z: number, seed: number): { x: number; z: number; y: number } | null {
+  const tx = Math.floor(x / CAMP_L), tz = Math.floor(z / CAMP_L);
+  for (let ax = tx - 1; ax <= tx + 1; ax++) for (let az = tz - 1; az <= tz + 1; az++) {
+    if (Math.abs(x - ax * CAMP_L) > CAMP_L / 2 || Math.abs(z - az * CAMP_L) > CAMP_L / 2) continue;
+    if (!campAtSeed(ax, az, seed)) continue;
+    const c = campCenter(ax, az, seed);
+    if (Math.max(Math.abs(c.x - x), Math.abs(c.z - z)) <= CAMP_R)
+      return { x: c.x, z: c.z, y: Math.max(Math.round(heightAt(c.x, c.z, seed)), SIL_SEA + 1) };
+  }
+  return null;
+}
+
+function paintMachineCamp(set: (x: number, y: number, z: number, id: number) => void, c: { x: number; z: number }, seed: number) {
+  const f = Math.max(Math.round(heightAt(c.x, c.z, seed)), SIL_SEA + 1);
+  for (let x = c.x - 4; x <= c.x + 4; x++) for (let z = c.z - 4; z <= c.z + 4; z++) set(x, f, z, BASALT);
+  // chassis slabs: three low mounds of old plating, half-buried
+  for (let i = 0; i < 3; i++) {
+    const mx = c.x - 3 + Math.floor(hash2(c.x + i, c.z - i, seed + 711) * 6);
+    const mz = c.z - 3 + Math.floor(hash2(c.x - i, c.z + i, seed + 713) * 6);
+    const hh = 1 + Math.floor(hash2(mx, mz, seed + 715) * 2);
+    for (let y = 1; y <= hh; y++) set(mx, f + y, mz, METAL_PLATING);
+    if (hash2(mx, mz, seed + 717) > 0.5) set(mx + 1, f + 1, mz, METAL_PLATING);
+    if (hash2(mx, mz, seed + 719) > 0.6) set(mx, f + 1, mz + 1, BASALT); // rubble
+  }
+  // the dead antenna: a stubby mast with its dish still pointed at nothing
+  for (let y = 1; y <= 3; y++) set(c.x + 3, f + y, c.z - 3, BASALT);
+  set(c.x + 3, f + 4, c.z - 3, CAMP_ANTENNA);
+  // the store the machines never bothered to lock
+  set(c.x - 3, f + 1, c.z + 3, CHEST);
+}
+
+const relayAtSeed = (tx: number, tz: number, seed: number): boolean => {
+  if (hash2(tx, tz, seed + 731) >= 0.45) return false;
+  const c = relayCenter(tx, tz, seed);
+  if (c.x * c.x + c.z * c.z < 5200) return false;
+  if (settleSiteAt(c.x, c.z, seed) !== null || settleNear(c.x, c.z, 30, seed)) return false;
+  if (Math.round(heightRaw(c.x, c.z, seed)) <= SIL_SEA) return false;
+  return true;
+};
+
+const relayCenter = (tx: number, tz: number, seed: number): { x: number; z: number } => {
+  const jx = (hash2(tx, tz, seed + 733) - 0.5) * 2 * RELAY_J;
+  const jz = (hash2(tx, tz, seed + 735) - 0.5) * 2 * RELAY_J;
+  return { x: Math.round(tx * RELAY_L + jx), z: Math.round(tz * RELAY_L + jz) };
+};
+
+export function relayAt(x: number, z: number, seed: number): { x: number; z: number; y: number } | null {
+  const tx = Math.floor(x / RELAY_L), tz = Math.floor(z / RELAY_L);
+  for (let ax = tx - 1; ax <= tx + 1; ax++) for (let az = tz - 1; az <= tz + 1; az++) {
+    if (Math.abs(x - ax * RELAY_L) > RELAY_L / 2 || Math.abs(z - az * RELAY_L) > RELAY_L / 2) continue;
+    if (!relayAtSeed(ax, az, seed)) continue;
+    const c = relayCenter(ax, az, seed);
+    if (Math.max(Math.abs(c.x - x), Math.abs(c.z - z)) <= RELAY_R)
+      return { x: c.x, z: c.z, y: Math.max(Math.round(heightAt(c.x, c.z, seed)), SIL_SEA + 1) };
+  }
+  return null;
+}
+
+function paintRelay(set: (x: number, y: number, z: number, id: number) => void, c: { x: number; z: number }, seed: number) {
+  const f = Math.max(Math.round(heightAt(c.x, c.z, seed)), SIL_SEA + 1);
+  for (let x = c.x - 3; x <= c.x + 3; x++) for (let z = c.z - 3; z <= c.z + 3; z++) set(x, f, z, BASALT);
+  const hh = 12 + Math.floor(hash2(c.x, c.z, seed + 737) * 5); // 12..16 tall
+  for (let y = 1; y <= hh; y++) set(c.x, f + y, c.z, BASALT);
+  // corner braces up to half height, plating bands where the mast passes through
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+    for (let y = 1; y <= hh >> 1; y += 2) set(c.x + dx, f + y, c.z + dz, METAL_PLATING);
+    for (let y = (hh >> 1) + 2; y <= hh; y += 4) set(c.x + dx, f + y, c.z + dz, METAL_PLATING);
+  }
+  set(c.x, f + hh + 1, c.z, CAMP_ANTENNA); // still screaming
+  set(c.x + 2, f + 1, c.z - 2, LAMP);       // the watcher's light
+  set(c.x - 2, f + 1, c.z + 2, CHEST);      // the mast crew's stores
+}
+
+export const campNodeAt = (tx: number, tz: number, seed: number): { x: number; z: number; y: number } | null =>
+  campAtSeed(tx, tz, seed)
+    ? (() => { const c = campCenter(tx, tz, seed); return { x: c.x, z: c.z, y: Math.max(Math.round(heightAt(c.x, c.z, seed)), SIL_SEA + 1) }; })()
+    : null;
+export const relayNodeAt = (tx: number, tz: number, seed: number): { x: number; z: number; y: number } | null =>
+  relayAtSeed(tx, tz, seed)
+    ? (() => { const c = relayCenter(tx, tz, seed); return { x: c.x, z: c.z, y: Math.max(Math.round(heightAt(c.x, c.z, seed)), SIL_SEA + 1) }; })()
+    : null;
 
 /* ── Oil seeps ───────────────────────────────────────────────────────────────
  * The desert's black liquid, on its own lattice (coprime with both the
@@ -611,47 +760,55 @@ export function genSilvarisChunk(args: SilvarisChunkArgs): void {
         if (base !== ROCK && base !== BASALT) continue;
         if (!(caveC(wx + 1, y, wz) || caveC(wx - 1, y, wz) || caveC(wx, y + 1, wz) ||
               caveC(wx, y - 1, wz) || caveC(wx, y, wz + 1) || caveC(wx, y, wz - 1))) continue;
-        // wall crust: the desert's ore bands, raised ~8 for Silvaris ground —
-        // every Desertis ore is here, plus TITANIUM in the deep band and
-        // GRAPHITE in the mid band; SALT veins only under the Shallows
+        // wall crust (ADR-0014): Silvaris stone carries Lead and Saltpetre,
+        // not the desert's Iron/Copper/Cobalt/Coal; TITANIUM runs deep,
+        // GRAPHITE the mid band; SALT veins only under the Shallows
         if (bi === SB_ALPINE && y >= 92 && hash2(wx, wz + y, seed + 611) < 0.2) {
           safeSet(wx, y, wz, SNOW); // ice caves high in the peaks
         } else if (y <= 22 && hash2(wx * 5 + y, wz * 7 - y, seed + 333) < 0.4 &&
                    noise3(wx / 5 + 40, y / 5, wz / 5, seed + 431) > 0.886) {
           safeSet(wx, y, wz, TITANIUM_ORE);
-        } else if (y <= 23 && hash2(wx * 5 + y, wz * 7 - y, seed + 433) < 0.4 &&
-                   noise3(wx / 5 + 90, y / 5, wz / 5, seed + 437) > 0.886) {
-          safeSet(wx, y, wz, COBALT_ORE); // deep stone, Metal pick or better
         } else if (bi === SB_SHALLOWS && noise3(wx / 5 + 200, y / 5, wz / 5, seed + 451) > 0.85) {
           safeSet(wx, y, wz, SALT);
-        } else if (y >= 20 && noise3(wx / 5, y / 5, wz / 5, seed + 413) > 0.864) safeSet(wx, y, wz, IRON_ORE);
-        else if (y >= 20 && noise3(wx / 5, y / 5 + 60, wz / 5, seed + 417) > 0.878) safeSet(wx, y, wz, COPPER_ORE);
-        else if (y >= 12 && noise3(wx / 5 + 120, y / 5 + 30, wz / 5, seed + 429) > 0.842) safeSet(wx, y, wz, COAL_ORE);
-        else if (y >= 16 && y <= 32 && noise3(wx / 5 + 40, y / 5, wz / 5, seed + 425) > 0.883) safeSet(wx, y, wz, ALABASTER);
-        else if (y >= 26 && y <= 46 && noise3(wx / 5, y / 5, wz / 5 + 70, seed + 421) > 0.883) safeSet(wx, y, wz, GRAPHITE_ORE);
+        } else if (y >= 24 && y <= 52 && noise3(wx / 5 + 40, y / 5, wz / 5, seed + 415) > 0.872) {
+          safeSet(wx, y, wz, LEAD_ORE); // the Wiring Bench's metal, in the middle band
+        } else if (y >= 34 && noise3(wx / 5 + 300, y / 5 + 90, wz / 5, seed + 447) > 0.868) {
+          safeSet(wx, y, wz, SALTPETRE_ORE); // the battery salt crusting the upper caves
+        } else if (y >= 16 && y <= 32 && noise3(wx / 5 + 40, y / 5, wz / 5, seed + 425) > 0.883) {
+          safeSet(wx, y, wz, ALABASTER); // the old world's stone still veins here
+        } else if (y >= 26 && y <= 46 && noise3(wx / 5, y / 5, wz / 5 + 70, seed + 421) > 0.883) safeSet(wx, y, wz, GRAPHITE_ORE);
       }
 
       // ── flora ──
       if (atOrigin) continue; // the arrival zone stands bare
       const inSettle = settleSiteAt(wx, wz, seed) !== null;
       if (inSettle) continue; // settlements own their ground
-      // Boreal: dense WOOD trunks under LEAVES canopies; Plains: occasional
-      // trees. Reuse the desert's mature Living Tree plan, seeded by the base.
+      // Boreal: dense Silvertimber trunks under SIL_LEAVES canopies; Plains:
+      // occasional trees. Same mature-tree plan as the desert, own wood.
       const growGate = bi === SB_BOREAL ? 0.905 : bi === SB_PLAINS ? 0.978 : 2;
       if (bi === SB_BOREAL || bi === SB_PLAINS) {
         if (h > SIL_SEA + 1 && h + 9 <= SIL_PEAK_MAX && hash2(wx, wz, seed + 601) > growGate) {
           const rnd = new Rng(((hash2(wx, wz, seed + 607) * 4294967296) >>> 0) || 1);
-          for (const p of treePlan(wx, h + 1, wz, () => rnd.next())) safeSet(p.x, p.y, p.z, p.b);
+          for (const p of treePlan(wx, h + 1, wz, () => rnd.next()))
+            safeSet(p.x, p.y, p.z, p.b === WOOD ? SIL_WOOD : p.b === LEAVES ? SIL_LEAVES : p.b);
         }
         // Tundra Root scattered across the plains: ripe stands with sprouts
         if (bi === SB_PLAINS && h > SIL_SEA + 1 && hash2(wx, wz, seed + 613) > 0.987) {
           safeSet(wx, h + 1, wz, hash2(wx, wz, seed + 617) > 0.5 ? TUNDROOT_2 : TUNDROOT_1);
         }
+        // Frost Oats in wild stands on the plains — break ripe for grain and seed
+        if (bi === SB_PLAINS && h > SIL_SEA + 1 && hash2(wx, wz, seed + 631) > 0.982) {
+          safeSet(wx, h + 1, wz, hash2(wx, wz, seed + 637) > 0.4 ? OAT_2 : OAT_1);
+        }
         // Ember Bush along the Boreal edge of the Scorch Belt
         if (bi === SB_BOREAL) {
           const nearScorch = fbm2(wx / 320 + 0.3, wz / 320 - 0.7, seed + 205, 3);
-          if (nearScorch > 0.64 && hash2(wx, wz, seed + 623) > 0.96)
-            safeSet(wx, h + 1, wz, hash2(wx, wz, seed + 629) > 0.66 ? EMBERBUSH_2 : EMBERBUSH_1);
+          if (nearScorch > 0.64 && hash2(wx, wz, seed + 623) > 0.96) {
+            const grown = hash2(wx, wz, seed + 629) > 0.66;
+            safeSet(wx, h + 1, wz, grown ? EMBERBUSH_2 : EMBERBUSH_1);
+            // a grown bush tops itself with Ember Fruit — pick the fruit, the bush stays
+            if (grown && hash2(wx, wz, seed + 643) > 0.45) safeSet(wx, h + 2, wz, EMBER_FRUIT);
+          }
         }
       }
       // basalt knobs on the scorch highlands and alpine tors
@@ -703,5 +860,26 @@ export function genSilvarisChunk(args: SilvarisChunkArgs): void {
     if (cx * CS <= c.x + TRADER_R && cx * CS + CS - 1 >= c.x - TRADER_R &&
         cz * CS <= c.z + TRADER_R && cz * CS + CS - 1 >= c.z - TRADER_R)
       paintTrader(safeSet, c, seed);
+  }
+  // Machine Camps and Relay Towers on their own lattices (jitter ±40/±45).
+  const cm = CAMP_J + CAMP_R + 1;
+  const vx0 = Math.floor((cx * CS - cm) / CAMP_L), vx1 = Math.floor((cx * CS + CS - 1 + cm) / CAMP_L);
+  const vz0 = Math.floor((cz * CS - cm) / CAMP_L), vz1 = Math.floor((cz * CS + CS - 1 + cm) / CAMP_L);
+  for (let tx = vx0; tx <= vx1; tx++) for (let tz = vz0; tz <= vz1; tz++) {
+    if (!campAtSeed(tx, tz, seed)) continue;
+    const c = campCenter(tx, tz, seed);
+    if (cx * CS <= c.x + CAMP_R && cx * CS + CS - 1 >= c.x - CAMP_R &&
+        cz * CS <= c.z + CAMP_R && cz * CS + CS - 1 >= c.z - CAMP_R)
+      paintMachineCamp(safeSet, c, seed);
+  }
+  const rm = RELAY_J + RELAY_R + 1;
+  const wx0 = Math.floor((cx * CS - rm) / RELAY_L), wx1 = Math.floor((cx * CS + CS - 1 + rm) / RELAY_L);
+  const wz0 = Math.floor((cz * CS - rm) / RELAY_L), wz1 = Math.floor((cz * CS + CS - 1 + rm) / RELAY_L);
+  for (let tx = wx0; tx <= wx1; tx++) for (let tz = wz0; tz <= wz1; tz++) {
+    if (!relayAtSeed(tx, tz, seed)) continue;
+    const c = relayCenter(tx, tz, seed);
+    if (cx * CS <= c.x + RELAY_R && cx * CS + CS - 1 >= c.x - RELAY_R &&
+        cz * CS <= c.z + RELAY_R && cz * CS + CS - 1 >= c.z - RELAY_R)
+      paintRelay(safeSet, c, seed);
   }
 }

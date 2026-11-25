@@ -1,5 +1,5 @@
-// Trader barter: every offer is a straight swap — what the Trader wants,
-// what the Trader gives. No coin in the desert. Each camp keeps a rotating
+// Nomad barter: every offer is a straight swap — what the Nomad wants,
+// what the Nomad gives. No coin in the desert. Each camp keeps a rotating
 // window of five offers, deterministic for its (x, z) and the in-game day,
 // so the stock visibly changes at dawn and two visits on the same day
 // always find the same table.
@@ -41,6 +41,7 @@ export const SILVARIS_GOODS: Offer[] = [
   { want: [{ itemId: "coal_ore", count: 6 }], give: [{ itemId: "graphite_ore", count: 2 }] },
   { want: [{ itemId: "tideback_hide", count: 1 }], give: [{ itemId: "canister_full", count: 2 }] },
   { want: [{ itemId: "ember_berry", count: 5 }], give: [{ itemId: "seed_emberbush", count: 1 }] },
+  { want: [{ itemId: "leadrod", count: 2 }], give: [{ itemId: "seed_oats", count: 3 }] },
 ];
 
 /** The five offers on this camp's table for this in-game day. */

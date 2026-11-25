@@ -22,9 +22,9 @@ export const LESSONS: Lesson[] = [
     text: "The desert was lived in before you. Towns are adobe shells with Chests — the first chest of a cluster holds the loot. Take what you need; the dwellers are not coming back.",
   },
   {
-    id: "camp", title: "First Trader Camp",
-    hint: "no coin — barter goods with the Trader",
-    text: "A windmill, a hut, a market stall — and a Trader who never moves. There is no coin here: every deal swaps goods, five per camp per day. Bring shells, pelts and worked metal.",
+    id: "camp", title: "First Nomad Camp",
+    hint: "no coin — barter goods with the Nomad",
+    text: "A windmill, a hut, a market stall — and a Nomad who never moves. There is no coin here: every deal swaps goods, five per camp per day. Bring shells, pelts and worked metal.",
   },
   {
     id: "mouth", title: "First Cave Mouth",

@@ -3,7 +3,7 @@
 
 export interface QuestDef {
   id: string;
-  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "bread" | "dish" | "wreck" | "core" | "yoke" | "grid" | "factory" | "thruster" | "core_set" | "ship_grid" | "refine" | "liftoff" | "leave" | "arrive" | "dock" | "settle" | "electric" | "foundry_set" | "core2" | "superfuel";
+  kind: "sky" | "mine" | "oasis" | "water_home" | "tool" | "farm" | "supplies" | "bread" | "dish" | "wreck" | "core" | "yoke" | "grid" | "factory" | "thruster" | "core_set" | "ship_grid" | "refine" | "liftoff" | "leave" | "arrive" | "dock" | "settle" | "electric" | "foundry_set" | "core2" | "superfuel" | "nomad" | "camp";
   title: string;
   desc: string;
   goal: number;

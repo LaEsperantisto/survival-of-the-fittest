@@ -6,7 +6,8 @@ import { SIL_SEA, SB_BOREAL, biomeAt, silvarisSpawns } from "./silvaris";
 
 export type MobKind =
   | "snake" | "rat" | "scorpion" | "wurm" | "trader" | "vulture" | "tortoise" | "fennec"
-  | "stalker" | "tideback" | "brushbuck";
+  | "stalker" | "tideback" | "brushbuck"
+  | "warden" | "sentry" | "breaker" | "hauler";
 
 export interface MobDef {
   kind: MobKind;
@@ -23,6 +24,8 @@ export interface MobDef {
   dropChance?: number[];      // per-drop probability, aligned with drops (default 1)
   retaliateR?: number;        // neutral-until-hit: radius it chases in after the player damages it (game.ts AI hook)
   herd?: { min: number; max: number }; // spawn batch size at one site (herd species; default 1)
+  machine?: boolean;          // a Machine Dominion construct: never eats, never fears, drops metal not meat
+  hide?: string;              // pelt item: one per carcass, a Skinner's skin number buys the rest
 }
 
 export const MOB_DEFS: Record<MobKind, MobDef> = {
@@ -53,7 +56,7 @@ export const MOB_DEFS: Record<MobKind, MobDef> = {
     dropChance: [1, 0.5],
   },
   trader: {
-    kind: "trader", name: "Trader", hp: 9999, speed: 1.1,
+    kind: "trader", name: "Nomad", hp: 9999, speed: 1.1,
     aggroR: 0, fleeR: 0, biteDmg: 0, biteCd: 0,
     hitR: 0.5, height: 1.8,
     drops: [],
@@ -83,16 +86,16 @@ export const MOB_DEFS: Record<MobKind, MobDef> = {
     kind: "stalker", name: "Snow Stalker", hp: 24, speed: 5.2,
     aggroR: 6, fleeR: 10, biteDmg: 8, biteCd: 1.8,
     hitR: 0.6, height: 0.85,
-    drops: [{ itemId: "frost_pelt", count: 1 }, { itemId: "frost_pelt", count: 1 }],
-    dropChance: [1, 0.2],
+    drops: [],
+    hide: "frost_pelt",
   },
   tideback: {
     kind: "tideback", name: "Tideback", hp: 70, speed: 0.55,
     aggroR: 0, fleeR: 0, biteDmg: 10, biteCd: 2.5,
     hitR: 1.4, height: 1.4,
     retaliateR: 8,
-    drops: [{ itemId: "tideback_hide", count: 1 }, { itemId: "tideback_hide", count: 1 }],
-    dropChance: [1, 0.5],
+    // only a Harpoon gets through the hide — the kill is always a harpoon kill
+    drops: [{ itemId: "tideback_hide", count: 3 }, { itemId: "tideback_meat", count: 2 }],
   },
   brushbuck: {
     kind: "brushbuck", name: "Brushbuck", hp: 10, speed: 4.6,
@@ -101,6 +104,38 @@ export const MOB_DEFS: Record<MobKind, MobDef> = {
     herd: { min: 2, max: 4 },
     drops: [{ itemId: "brushbuck_meat", count: 1 }, { itemId: "brushbuck_meat", count: 1 }],
     dropChance: [1, 0.5],
+    hide: "brushbuck_pelt",
+  },
+  // the Machine Dominion's line-up (ADR: machines never eat, never flee —
+  // except the desert's lone Warden, which remembers the Ship and runs)
+  warden: {
+    kind: "warden", name: "Warden", hp: 20, speed: 1.1,
+    aggroR: 5, fleeR: 0, biteDmg: 5, biteCd: 2.2,
+    hitR: 0.6, height: 1.2, machine: true,
+    drops: [{ itemId: "scrap", count: 2 }, { itemId: "machine_part", count: 1 }],
+  },
+  sentry: {
+    kind: "sentry", name: "Sentry", hp: 60, speed: 2.2,
+    aggroR: 7, fleeR: 0, biteDmg: 9, biteCd: 2,
+    hitR: 0.7, height: 1.7, machine: true,
+    drops: [{ itemId: "metal", count: 2 }, { itemId: "scrap", count: 2 }, { itemId: "machine_part", count: 1 }],
+    dropChance: [1, 1, 0.6],
+  },
+  breaker: {
+    kind: "breaker", name: "Breaker", hp: 220, speed: 1.2,
+    aggroR: 6, fleeR: 0, biteDmg: 16, biteCd: 3,
+    hitR: 1.1, height: 1.9, machine: true,
+    drops: [{ itemId: "metal", count: 4 }, { itemId: "machine_part", count: 2 },
+            { itemId: "machine_heart", count: 1 }, { itemId: "scrap", count: 3 }],
+    dropChance: [1, 1, 0.5, 1],
+  },
+  hauler: {
+    kind: "hauler", name: "Hauler", hp: 40, speed: 1.6,
+    aggroR: 0, fleeR: 0, biteDmg: 6, biteCd: 2,
+    hitR: 0.9, height: 1.4, machine: true,
+    retaliateR: 12, // neutral until struck — and the strike calls the neighbours down
+    drops: [{ itemId: "metal", count: 3 }, { itemId: "scrap", count: 2 }, { itemId: "machine_part", count: 1 }],
+    dropChance: [1, 1, 0.8],
   },
 };
 
@@ -318,7 +353,7 @@ function fennecTex(): THREE.CanvasTexture {
   });
 }
 
-/** Trader robe: deep teal woven base, plum hem/chest bands, pale gold trim. */
+/** Nomad robe: deep teal woven base, plum hem/chest bands, pale gold trim. */
 function traderTex(): THREE.CanvasTexture {
   return canvasTex((g, rnd) => {
     g.fillStyle = "#27474a";
@@ -1090,7 +1125,7 @@ function makeFennec(): MobShape {
   return { group, animate };
 }
 
-// trader: 1.8 m tall robed humanoid merchant; paces its stall, faces +Z
+// trader: 1.8 m tall robed humanoid merchant — Nomads and their Keepers share the road-worn look
 function makeTrader(): MobShape {
   const mats = getTraderMats();
   const group = new THREE.Group();
@@ -1341,6 +1376,140 @@ function makeBrushbuck(): MobShape {
   return { group, animate };
 }
 
+// machine chassis plate: dull gunmetal, panel seams, bolt heads, rust bloom
+function metalTex(): THREE.CanvasTexture {
+  return canvasTex((g, rnd) => {
+    g.fillStyle = "#5a606a";
+    g.fillRect(0, 0, 64, 64);
+    for (let i = 0; i < 350; i++) {
+      const v = 0.5 + (rnd() - 0.5) * 0.18;
+      g.fillStyle = v > 0.5 ? "#666c76" : "#4d535c";
+      g.fillRect((rnd() * 64) | 0, (rnd() * 64) | 0, 1, 1);
+    }
+    // panel seams
+    g.fillStyle = "#3c4148";
+    g.fillRect(0, 21, 64, 1); g.fillRect(0, 43, 64, 1);
+    g.fillRect(27, 0, 1, 21); g.fillRect(46, 43, 1, 21);
+    // bolt heads along the seams
+    g.fillStyle = "#7a808a";
+    for (const [bx, by] of [[6, 18], [18, 18], [34, 18], [50, 18], [10, 46], [28, 46], [52, 46]] as const) {
+      g.fillRect(bx, by, 2, 2);
+      g.fillStyle = "#2e3238"; g.fillRect(bx + 2, by, 1, 2); g.fillStyle = "#7a808a";
+    }
+    // rust blooms at the edges
+    for (let i = 0; i < 26; i++) {
+      g.fillStyle = i % 2 ? "#7a4a2c" : "#8a5a36";
+      const rx = rnd() * 64, ry = rnd() * 64, s = 1 + rnd() * 3;
+      g.fillRect(rx | 0, ry | 0, s | 0, s | 0);
+    }
+  });
+}
+
+interface MachineMats { plate: THREE.Material; dark: THREE.Material; optic: THREE.Material; accent: THREE.Material; }
+let machineMats: MachineMats | null = null;
+function getMachineMats(): MachineMats {
+  if (!machineMats) machineMats = {
+    plate: new THREE.MeshLambertMaterial({ map: metalTex() }),
+    dark: new THREE.MeshLambertMaterial({ color: 0x2e3238 }),
+    optic: new THREE.MeshBasicMaterial({ color: 0xd84040 }),
+    accent: new THREE.MeshLambertMaterial({ color: 0x8a6a35 }),
+  };
+  return machineMats;
+}
+
+// the machine rig: three-part box chassis — legs/base, torso, head with a red
+// optic — shared skeleton, per-kind proportions and attachments. Faces +Z.
+function makeMachine(kind: "warden" | "sentry" | "breaker" | "hauler"): MobShape {
+  const mats = getMachineMats();
+  const group = new THREE.Group();
+  const pivot = new THREE.Group();
+  group.add(pivot);
+  const legs: THREE.Object3D[] = [];
+  let torso: THREE.Mesh, headRoot: THREE.Group, optic: THREE.Mesh;
+
+  if (kind === "hauler") {
+    // a battered cart on four stub wheels with a cab at the front
+    for (const side of [-1, 1]) for (const z of [0.55, -0.55]) {
+      const wheel = box(0.18, 0.44, 0.44, mats.dark, side * 0.55, 0.22, z);
+      wheel.rotation.z = Math.PI / 2; // disc facing sideways
+      legs.push(wheel); pivot.add(wheel);
+    }
+    torso = box(1.1, 0.6, 1.5, mats.plate, 0, 0.78, 0);
+    pivot.add(torso);
+    pivot.add(box(1.0, 0.16, 1.4, mats.dark, 0, 1.16, -0.05)); // cargo deck lip
+    headRoot = new THREE.Group();
+    headRoot.position.set(0, 1.35, 0.55);
+    headRoot.add(box(0.44, 0.34, 0.36, mats.plate, 0, 0, 0));
+    optic = box(0.1, 0.1, 0.03, mats.optic, 0, 0.04, 0.19);
+    headRoot.add(optic);
+    pivot.add(headRoot);
+    // a Crane-Arm stub — the Dominion's forklift
+    const arm = box(0.14, 0.14, 0.7, mats.dark, 0, 1.0, 1.05);
+    pivot.add(arm);
+  } else {
+    const tall = kind === "sentry";
+    const heavy = kind === "breaker";
+    const legH = tall ? 0.75 : heavy ? 0.6 : 0.55;
+    const legW = heavy ? 0.3 : 0.18;
+    for (const side of [-1, 1]) {
+      const leg = box(legW, legH, legW * 1.2, mats.dark, side * (heavy ? 0.34 : 0.2), legH / 2, 0);
+      legs.push(leg); pivot.add(leg);
+      pivot.add(box(legW * 1.3, 0.1, legW * 1.9, mats.dark, side * (heavy ? 0.34 : 0.2), 0.05, 0.05)); // foot
+    }
+    const tw = heavy ? 1.1 : tall ? 0.55 : 0.45;
+    const th = heavy ? 0.9 : tall ? 0.85 : 0.7;
+    torso = box(tw, th, heavy ? 0.75 : 0.42, mats.plate, 0, legH + th / 2, 0);
+    pivot.add(torso);
+    if (heavy) {
+      // drum arms: twin grinders on stubby shoulders
+      for (const side of [-1, 1]) {
+        pivot.add(box(0.24, 0.24, 0.5, mats.dark, side * (tw / 2 + 0.2), legH + th - 0.25, 0.15));
+        const drum = box(0.3, 0.3, 0.34, mats.accent, side * (tw / 2 + 0.42), legH + th - 0.55, 0.3);
+        legs.push(drum); pivot.add(drum);
+      }
+      pivot.add(box(tw * 0.8, 0.14, 0.5, mats.dark, 0, legH + th + 0.05, 0)); // shoulder yoke
+    } else if (tall) {
+      // soldier: shoulder pads and a spear-arm held forward
+      for (const side of [-1, 1]) pivot.add(box(0.2, 0.14, 0.34, mats.plate, side * 0.36, legH + th + 0.02, 0));
+      const arm = box(0.12, 0.12, 0.8, mats.dark, 0.28, legH + th * 0.55, 0.5);
+      legs.push(arm); pivot.add(arm);
+      pivot.add(box(0.06, 0.06, 0.5, mats.accent, 0.28, legH + th * 0.55, 1.05)); // the lance
+    } else {
+      // warden: a single sensor mast and one clutching claw-arm
+      pivot.add(box(0.06, 0.5, 0.06, mats.dark, 0, legH + th + 0.25, -0.1));
+      const tip = box(0.1, 0.1, 0.1, mats.optic, 0, legH + th + 0.55, -0.1);
+      legs.push(tip); pivot.add(tip);
+      const arm = box(0.1, 0.1, 0.55, mats.dark, 0.3, legH + th * 0.6, 0.3);
+      legs.push(arm); pivot.add(arm);
+    }
+    headRoot = new THREE.Group();
+    headRoot.position.set(0, legH + th + (heavy ? 0.25 : tall ? 0.22 : 0.18), 0);
+    const hw = heavy ? 0.5 : 0.32;
+    headRoot.add(box(hw, 0.26, 0.3, mats.plate, 0, 0.13, 0));
+    optic = heavy
+      ? box(0.3, 0.07, 0.03, mats.optic, 0, 0.15, 0.16)
+      : box(0.1, 0.1, 0.03, mats.optic, 0, 0.14, 0.16);
+    headRoot.add(optic);
+    pivot.add(headRoot);
+  }
+
+  const animate = (t: number, moving: number): void => {
+    const mv = Math.max(0, Math.min(1, moving));
+    // machine gait: no breathing, a hard even stomp; idle is a sensor sweep
+    const lp = t * (kind === "hauler" ? 0 : 2.2 + 1.6 * mv);
+    for (let i = 0; i < legs.length; i++) {
+      const o = legs[i];
+      if (kind === "hauler") o.rotation.x = t * 4 * mv; // wheels roll
+      else o.rotation.x = Math.sin(lp + (i % 2) * Math.PI) * 0.5 * mv;
+    }
+    if (kind === "hauler") pivot.position.y = Math.abs(Math.sin(t * 6)) * 0.02 * mv;
+    else pivot.position.y = Math.abs(Math.sin(lp)) * 0.03 * mv;
+    headRoot.rotation.y = mv === 0 ? Math.sin(t * 0.9) * 0.5 : 0; // sweeps when it stands
+    optic.scale.setScalar(1 + Math.sin(t * (2.6 + mv * 2)) * 0.12); // optic pulse
+  };
+  return { group, animate };
+}
+
 // what the model factories build; the wrapper adds hit-flash
 type MobShape = { group: THREE.Group; animate(t: number, moving: number): void; setFlash?(on: boolean): void };
 
@@ -1368,6 +1537,10 @@ export function makeMobMesh(kind: MobKind): MobVisual {
     case "stalker": return attachFlash(makeStalker());
     case "tideback": return attachFlash(makeTideback());
     case "brushbuck": return attachFlash(makeBrushbuck());
+    case "warden": return attachFlash(makeMachine("warden"));
+    case "sentry": return attachFlash(makeMachine("sentry"));
+    case "breaker": return attachFlash(makeMachine("breaker"));
+    case "hauler": return attachFlash(makeMachine("hauler"));
   }
 }
 
@@ -1397,9 +1570,11 @@ const SIL_MOB_KIND: Record<string, MobKind> = {
 /** Per-species live caps for the current planet (0 = never spawn here).
  *  Desertis values are exactly the ones the top-up loop hardcoded before. */
 export function faunaTargets(): Record<MobKind, number> {
+  // machines never stock by chance: game.ts stations them at sites (Camps,
+  // Relays, the Wreck) — the random loop keeps its hands off them
   if (faunaPlanet === "desertis")
-    return { snake: 4, rat: 8, scorpion: 4, wurm: 1, trader: 0, vulture: 3, tortoise: 2, fennec: 2, stalker: 0, tideback: 0, brushbuck: 0 };
-  return { snake: 0, rat: 0, scorpion: 0, wurm: 0, trader: 0, vulture: 0, tortoise: 0, fennec: 0, stalker: 3, tideback: 3, brushbuck: 6 };
+    return { snake: 4, rat: 8, scorpion: 4, wurm: 1, trader: 0, vulture: 3, tortoise: 2, fennec: 2, stalker: 0, tideback: 0, brushbuck: 0, warden: 0, sentry: 0, breaker: 0, hauler: 0 };
+  return { snake: 0, rat: 0, scorpion: 0, wurm: 0, trader: 0, vulture: 0, tortoise: 0, fennec: 0, stalker: 3, tideback: 3, brushbuck: 6, warden: 0, sentry: 0, breaker: 0, hauler: 0 };
 }
 
 /** The kinds the top-up loop should try, in spawn order. */

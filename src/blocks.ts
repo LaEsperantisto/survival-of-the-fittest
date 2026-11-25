@@ -27,7 +27,17 @@ export const AIR = 0, SAND = 1, SANDSTONE = 2, ROCK = 3, GRAVEL = 4, DIRT = 5, S
   ELECTRIC_BENCH = 104, ASSEMBLY_BENCH = 105, FUEL_WORKS = 106, FOUNDRY = 107,
   INSCRIPTION = 108, DOCK_PAD = 109, TITANIUM_ORE = 110, GRAPHITE_ORE = 111,
   SNOW = 112, BASALT = 113, TUNDROOT_1 = 114, TUNDROOT_2 = 115,
-  EMBERBUSH_1 = 116, EMBERBUSH_2 = 117, EMBER_FRUIT = 118;
+  EMBERBUSH_1 = 116, EMBERBUSH_2 = 117, EMBER_FRUIT = 118,
+  // ---- Phase 2 fork (2026-11-24): twin stations, new minerals, Silvaris timber
+  // and oats, the Machine faction, Defenses and the Hover Sled. ----
+  RECYCLER = 119, SIL_RECYCLER = 120, HEARTH = 121, WORKBENCH = 122,
+  TANNERY = 123, CAULDRON = 124, OIL_WORKS = 125, WIRING_BENCH = 126, FUEL_STILL = 127,
+  ANTHRACITE_ORE = 128, LEAD_ORE = 129, SALTPETRE_ORE = 130,
+  SIL_WOOD = 131, SIL_LEAVES = 132, SIL_SAPLING = 133, OAT_1 = 134, OAT_2 = 135,
+  CAMP_ANTENNA = 136, RELAY_TOWER = 137,
+  SPIKE_BARRICADE = 138, ALARM_CHIME = 139, GUN_TURRET = 140, SHOCK_COIL = 141,
+  NAV_CORE = 142, HOVER_SLED = 143, WOOD_POST = 144, WOOD_RAILING = 145,
+  STAINED_GLASS = 146, TABLE = 147;
 
 export type ToolType = "pickaxe" | "shovel" | "axe" | "disassembler";
 
@@ -85,7 +95,9 @@ const NATURAL = new Set<number>([SAND, SANDSTONE, ROCK, GRAVEL, DIRT, SALT, GRAS
   WOOD, LEAVES, SAPLING, APPLE_SAPLING, APPLE_FRUIT, CACTUS, CACTUS_FRUIT, MELON_1, MELON_2, WHEAT_1, WHEAT_2,
   SUGARCANE_1, SUGARCANE_2, FARMLAND,
   IRON_ORE, COPPER_ORE, COBALT_ORE, ALABASTER, COAL_ORE, TITANIUM_ORE, GRAPHITE_ORE, SNOW, BASALT,
-  TUNDROOT_1, TUNDROOT_2, EMBERBUSH_1, EMBERBUSH_2, EMBER_FRUIT]);
+  ANTHRACITE_ORE, LEAD_ORE, SALTPETRE_ORE,
+  TUNDROOT_1, TUNDROOT_2, EMBERBUSH_1, EMBERBUSH_2, EMBER_FRUIT,
+  SIL_WOOD, SIL_LEAVES, SIL_SAPLING, OAT_1, OAT_2]);
 const NO_ROT = new Set<number>([DOOR_CLOSED, DOOR_UPPER, DOOR_OPEN, DOOR_INNER, DOOR_INNER_UPPER,
   DOOR_INNER_OPEN, ALAB_DOOR, ALAB_DOOR_UPPER, ALAB_DOOR_OPEN, ALAB_GATE_OPEN,
   COOKPOT, WATER_CAGE, WATER_CAGE_FULL,
@@ -307,10 +319,59 @@ export const BLOCKS: BlockDef[] = [
   def({ id: EMBERBUSH_1, name: "Ember Bush Shoot", solid: false, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: true, color: [0.32, 0.46, 0.30] }),
   def({ id: EMBERBUSH_2, name: "Ember Bush", solid: false, opaque: true, transparent: false, emissive: false, R: 0, breakTime: 0.3, tool: null, minTier: 0, placeable: false, color: [0.50, 0.42, 0.26] }),
   def({ id: EMBER_FRUIT, name: "Ember Fruit", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: false, color: [0.85, 0.35, 0.20] }),
+  // ---- Phase 2 fork ----
+  // Recyclers: cross-world salvage — grind any old-world (or new-world) gear to
+  // Scrap. Desertis recipe burns coal; Silvaris burns Charcoal. Plain stations:
+  // hand-built, hand-mined, no power.
+  def({ id: RECYCLER, name: "Recycler", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.48, 0.46, 0.4] }),
+  def({ id: SIL_RECYCLER, name: "Recycler", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.42, 0.48, 0.5] }),
+  // Silvaris station twins: each planet's chain hangs on its own materials.
+  def({ id: HEARTH, name: "Hearth", solid: true, opaque: false, transparent: false, emissive: true, R: 0, breakTime: 0.6, tool: null, minTier: 0, placeable: true, color: [0.9, 0.5, 0.25] }),
+  def({ id: WORKBENCH, name: "Workbench", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.0, tool: null, minTier: 0, placeable: true, color: [0.42, 0.4, 0.34] }),
+  def({ id: TANNERY, name: "Tannery", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.55, 0.42, 0.3] }),
+  def({ id: CAULDRON, name: "Cauldron", solid: true, opaque: false, transparent: false, emissive: true, R: 0.2, breakTime: 1.0, tool: null, minTier: 0, placeable: true, color: [0.85, 0.5, 0.25] }),
+  def({ id: OIL_WORKS, name: "Oil Works", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.36, 0.38, 0.42] }),
+  def({ id: WIRING_BENCH, name: "Wiring Bench", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.35, 0.48, 0.5] }),
+  // Fuel Still: the desert's route to Super Rocket Fuel — Anthracite, not Graphite.
+  def({ id: FUEL_STILL, name: "Fuel Still", solid: true, opaque: true, transparent: false, emissive: false, R: 0.5, breakTime: 1.5, tool: null, minTier: 0, placeable: true, color: [0.4, 0.42, 0.5] }),
+  // New minerals: Anthracite deep in Desertis caves; Lead and Saltpetre in Silvaris.
+  def({ id: ANTHRACITE_ORE, name: "Anthracite Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 3.0, tool: "pickaxe", minTier: 3, placeable: false, color: [0.18, 0.17, 0.16] }),
+  def({ id: LEAD_ORE, name: "Lead Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.5, breakTime: 2.8, tool: "pickaxe", minTier: 1, placeable: false, color: [0.5, 0.52, 0.58] }),
+  def({ id: SALTPETRE_ORE, name: "Saltpetre Ore", solid: true, opaque: true, transparent: false, emissive: false, R: 1.3, breakTime: 1.6, tool: "pickaxe", minTier: 1, placeable: false, color: [0.82, 0.8, 0.72] }),
+  // Silvertimber: Silvaris' pale bark — a Living Tree of its own, same growth rules.
+  def({ id: SIL_WOOD, name: "Silvertimber Log", solid: true, opaque: true, transparent: false, emissive: false, R: 0.6, breakTime: 1.1, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.36, 0.4, 0.42] }),
+  def({ id: SIL_LEAVES, name: "Silvertimber Leaves", solid: true, opaque: true, transparent: false, emissive: false, R: 0.7, breakTime: 0.25, tool: null, minTier: 0, placeable: false, color: [0.25, 0.45, 0.4] }),
+  def({ id: SIL_SAPLING, name: "Silvertimber Seedling", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: true, color: [0.32, 0.5, 0.42] }),
+  // Frost Oats: the cold-tolerant Silvaris grain.
+  def({ id: OAT_1, name: "Oat Shoot", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.2, tool: null, minTier: 0, placeable: true, color: [0.6, 0.62, 0.5] }),
+  def({ id: OAT_2, name: "Frost Oats", solid: false, opaque: false, transparent: true, emissive: false, R: 0, breakTime: 0.3, tool: null, minTier: 0, placeable: false, color: [0.78, 0.74, 0.55] }),
+  // Machine faction: a Camp's patrol antenna, and the Relay Tower a player Grid
+  // raises in wild country. Both are the faction's blocks — breakable, not buildable.
+  def({ id: CAMP_ANTENNA, name: "Patrol Antenna", solid: true, opaque: false, transparent: false, emissive: true, R: 0, breakTime: 4, tool: "pickaxe", minTier: 1, placeable: false, color: [0.7, 0.3, 0.3] }),
+  def({ id: RELAY_TOWER, name: "Relay Tower", solid: true, opaque: false, transparent: false, emissive: true, R: 0, breakTime: 5, tool: "pickaxe", minTier: 2, placeable: false, color: [0.4, 0.42, 0.5] }),
+  // Defenses: Spike Barricade (hurts whatever presses into it), Alarm Chime,
+  // Gun Turret and Shock Coil — the last three run on the Grid.
+  def({ id: SPIKE_BARRICADE, name: "Spike Barricade", solid: true, opaque: false, transparent: false, emissive: false, R: 0, breakTime: 1.2, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.45, 0.35, 0.25] }),
+  def({ id: ALARM_CHIME, name: "Alarm Chime", solid: true, opaque: false, transparent: false, emissive: false, R: 0.2, breakTime: 1.0, tool: "disassembler", minTier: 1, placeable: true, color: [0.8, 0.65, 0.3] }),
+  def({ id: GUN_TURRET, name: "Gun Turret", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 3, tool: "disassembler", minTier: 1, placeable: true, color: [0.4, 0.45, 0.5] }),
+  def({ id: SHOCK_COIL, name: "Shock Coil", solid: true, opaque: false, transparent: false, emissive: true, R: 0.2, breakTime: 3, tool: "disassembler", minTier: 1, placeable: true, color: [0.5, 0.6, 0.8] }),
+  // The Nav Core: the Ship's chartering brain. A deep-purple appliance.
+  def({ id: NAV_CORE, name: "Nav Core", solid: true, opaque: true, transparent: false, emissive: true, R: 0.5, breakTime: 4, tool: null, minTier: 0, placeable: true, color: [0.5, 0.4, 0.7] }),
+  // The Hover Sled: a 1×1 vehicle block — board with E, ride, bolt upgrades on.
+  def({ id: HOVER_SLED, name: "Hover Sled", solid: true, opaque: true, transparent: false, emissive: false, R: 0.2, breakTime: 2, tool: "disassembler", minTier: 0, placeable: true, color: [0.5, 0.55, 0.65] }),
+  // Silvaris furniture: post, railing, table.
+  def({ id: WOOD_POST, name: "Timber Post", solid: true, opaque: false, transparent: false, emissive: false, R: 0.4, breakTime: 1.0, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.5, 0.4, 0.28] }),
+  def({ id: WOOD_RAILING, name: "Timber Railing", solid: true, opaque: false, transparent: false, emissive: false, R: 0, breakTime: 1.0, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.52, 0.42, 0.3] }),
+  def({ id: TABLE, name: "Table", solid: true, opaque: true, transparent: false, emissive: false, R: 0.4, breakTime: 1.2, tool: null, fastTool: "axe", minTier: 0, placeable: true, color: [0.55, 0.42, 0.28] }),
+  def({ id: STAINED_GLASS, name: "Stained Glass", solid: true, opaque: false, transparent: true, emissive: false, R: 0.15, breakTime: 0.4, tool: null, minTier: 0, placeable: true, color: [0.5, 0.35, 0.45] }),
 ];
 
-/** Everything that lives on the Grid: the Engine Core plus Panel..Harvester (ADR-0007). */
-export function isPowerBlock(id: number): boolean { return id === ENGINECORE || (id >= POWER_PANEL && id <= HARVESTER); }
+/** Everything that lives on the Grid: the Engine Core plus Panel..Harvester (ADR-0007),
+ *  and the phase-2 Defenses that run on power (Turret, Coil, Chime). */
+const POWERED2 = new Set<number>([GUN_TURRET, SHOCK_COIL, ALARM_CHIME, RECYCLER, SIL_RECYCLER]);
+export function isPowerBlock(id: number): boolean {
+  return id === ENGINECORE || (id >= POWER_PANEL && id <= HARVESTER) || POWERED2.has(id);
+}
 
 /** A Pole links to other Poles within this many blocks; every non-Pole power
  *  block joins the Grid of a Pole within this reach. */

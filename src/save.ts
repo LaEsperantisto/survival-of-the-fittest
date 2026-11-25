@@ -64,6 +64,9 @@ export interface PotSave {
 /** The two worlds a run can hold (ADR-0010). */
 export type Planet = "desertis" | "silvaris";
 
+/** One Hover Sled: cell key -> charge, bolted upgrades, stowed cargo kinds. */
+export type SledSave = [string, { charge: number; up?: Record<string, true>; cargo?: [string, number][] }];
+
 /** Everything that belongs to one planet rather than to the run: chunk edits,
  *  Grid state, stations, farms, Ships, Pins, explored map (ADR-0010). ADR-0011's
  *  per-planet seed lives here; a record made from the run's own seed leaves it
@@ -78,6 +81,8 @@ export interface WorldRun {
   chests?: RunSave["chests"];
   campfires: RunSave["campfires"];
   pots?: RunSave["pots"];
+  recyclers?: RunSave["recyclers"];
+  turretAmmo?: RunSave["turretAmmo"];
   battery?: RunSave["battery"];
   genFuel?: RunSave["genFuel"];
   trippedPanels?: RunSave["trippedPanels"];
@@ -86,6 +91,7 @@ export interface WorldRun {
   appleTrees?: RunSave["appleTrees"];
   fruitRegrow?: RunSave["fruitRegrow"];
   coreFuel?: RunSave["coreFuel"];
+  sleds?: SledSave[];                 // placed Hover Sleds: cell -> charge/upgrades/cargo
   ships?: ShipSnapshot[];
   beaconMarks: RunSave["beaconMarks"];
   entities: RunSave["entities"];
@@ -96,7 +102,7 @@ export interface WorldRun {
 }
 
 export interface RunSave {
-  v: 1 | 2 | 3;
+  v: 1 | 2 | 3 | 4;
   seedStr: string;
   time: number;
   playSec: number;
@@ -124,6 +130,8 @@ export interface RunSave {
   appleTrees?: [string, number][]; // planted Apple Pip key -> growth seconds
   fruitRegrow?: [string, number][]; // picked bough leaf key -> seconds until re-ripe
   pots?: Record<string, PotSave>;   // Cooking Pot key -> state (fires ride campfires)
+  recyclers?: Record<string, PotSave>; // Recycler key -> staging grids (both planets)
+  turretAmmo?: [string, number][];     // Gun Turret cell -> Slugs loaded
   deltas?: Record<string, number[]>;
   rots?: Record<string, number>; // cell "x,y,z" -> quarter-turn for player-placed blocks
   ships?: ShipSnapshot[];                 // airborne/grounded Ships (cells are ship-local)
@@ -139,6 +147,11 @@ export interface RunSave {
   cheats?: { immortal?: boolean; keep?: boolean }; // cheat-menu toggles that persist with the world
   chronicle?: string[];                   // lesson ids seen (chronicle.ts)
   codex?: string[];                       // item ids (and "b:<blockId>") first carried/crafted/mined
+  dominion?: { silentCamps?: string[]; raidedRelays?: string[]; campTrust?: string[]; campTrade?: Record<string, number>; chaptersRead?: string[] }; // cut Camp antennas (tx,tz) / Relays that already raided (tx|tz|day) / trusted Keeper camps ("d:tx,tz"/"s:tx,tz") / trades per camp / chapters already heard
+  // ---- v4: Phase 2 run state (clean break: v3 worlds' block ids no longer exist) ----
+  unlocks?: string[];                     // recipe unlock flags ("still", "nav" - Chronicle-gated)
+  sentinel?: boolean;                     // the Sentinel has fallen
+  wrath?: number;                         // machine provocation level: squads escalate with it
   // ---- v3: one record per planet (ADR-0010) ----
   planet?: Planet;                        // the world the player is standing on
   worlds?: { desertis: WorldRun; silvaris?: WorldRun };
@@ -155,11 +168,12 @@ const V2_PLANET_FIELDS = [
   "ships", "beaconMarks", "entities", "pods", "caches", "collected", "melonHint",
 ] as const;
 
-/** v1/v2 → v3: the planet-scoped fields become the Desertis record (ADR-0010).
- *  Idempotent, so every reader can call it and then trust `worlds`. */
+/** v1/v2 → v3 wrapped the planet-scoped fields into worlds.desertis (ADR-0010);
+ *  v4 (ADR-0014) renumbered every block id, so older saves are a clean break:
+ *  loadRun rejects them outright. */
 export function migrateRun(run: RunSave): RunSave {
-  if (run.v === 3 && run.worlds?.desertis) return run;
-  const out: RunSave = { ...run, v: 3 };
+  if (run.v === 4 && run.worlds?.desertis) return run;
+  const out: RunSave = { ...run, v: 4 };
   const w: WorldRun = run.worlds?.desertis ?? emptyWorldRun(run.seedStr);
   if (run.v < 3) for (const k of V2_PLANET_FIELDS) {
     const v = run[k];
@@ -184,8 +198,10 @@ export function saveRun(meta: WorldMeta, run: RunSave): boolean {
 export function loadRun(id: string): RunSave | null {
   try {
     const s = localStorage.getItem("sotf:w:" + id);
-    // readers always get a v3 shape: a stored v2 save arrives already migrated
-    return s ? migrateRun(JSON.parse(s) as RunSave) : null;
+    if (!s) return null;
+    const run = JSON.parse(s) as RunSave;
+    if (run.v < 4) return null; // clean break: pre-Phase-2 worlds use dead block ids
+    return migrateRun(run);
   } catch { return null; }
 }
 
@@ -200,7 +216,7 @@ export function exportRun(meta: WorldMeta, run: RunSave) {
 
 export async function importRun(file: File): Promise<WorldMeta> {
   const obj = JSON.parse(await file.text());
-  if (!obj || ![1, 2, 3].includes(obj.run?.v)) throw new Error("Not a Survival of the Fittest world file.");
+  if (!obj || obj.run?.v !== 4) throw new Error("Not a Survival of the Fittest world file (Phase 2 worlds only).");
   const meta = createWorld(obj.meta?.name ?? "imported", obj.run.seedStr, obj.run.worldMode);
   saveRun(meta, migrateRun(obj.run));
   return meta;
