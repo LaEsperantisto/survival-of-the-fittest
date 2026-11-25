@@ -177,8 +177,8 @@ export const RECIPES: Recipe[] = [
   { out: "dune_wrap", count: 1, needs: { cactus_leather: 3, snake_skin: 2 }, station: "armory" },
   { out: "bed", count: 1, needs: { sil_timber: 3, frost_pelt: 2 }, station: "workbench" },
   // ---- Building: posts, rails, tables, stained glass — both worlds ----
-  { out: "wood_post", count: 2, needs: { deadwood: 1 }, station: null },
-  { out: "wood_railing", count: 3, needs: { deadwood: 1 }, station: null },
+  { out: "timber_post", count: 2, needs: { deadwood: 1 }, station: null },
+  { out: "timber_railing", count: 3, needs: { deadwood: 1 }, station: null },
   { out: "timber_post", count: 2, needs: { sil_timber: 1 }, station: null },
   { out: "timber_railing", count: 3, needs: { sil_timber: 1 }, station: null },
   { out: "table", count: 1, needs: { deadwood: 4 }, station: "bench" },
@@ -187,7 +187,7 @@ export const RECIPES: Recipe[] = [
   { out: "stained_glass", count: 2, needs: { glass: 2, charcoal: 1 }, station: "foundry" },
   // ---- Oil, Salvage, Parts: the seams between the worlds ----
   { out: "sil_oil", count: 4, needs: { sil_timber: 1 }, station: "oilworks" },
-  { out: "rocket_fuel", count: 1, needs: { sil_oil: 2, charcoal: 1 }, station: "fuel" }, // Silvaris refinery line
+  { out: "rocket_fuel", count: 1, needs: { sil_oil: 2, charcoal: 1 }, station: "oilworks" }, // Silvaris refinery line
   { out: "machine_part", count: 2, needs: { scrap: 3 }, station: "wiring" },
   // ---- Defenses: placed kit, Slugs feed the Turret ----
   { out: "spikes", count: 1, needs: { basalt: 4, bone: 2 }, station: "workbench" },
@@ -209,7 +209,7 @@ export const RECIPES: Recipe[] = [
   { out: "dock_pad", count: 1, needs: { titan_plating: 2, leadrod: 1 }, station: "wiring" },
   // ---- The end of Phase 2: stills and Super Fuel, hidden until the Sentinel falls ----
   { out: "super_fuel", count: 1, needs: { rocket_fuel: 1, anthracite_ore: 2 }, station: "still", locked: true },
-  { out: "super_fuel", count: 1, needs: { rocket_fuel: 1, graphite_ore: 2 }, station: "still", locked: true },
+  { out: "super_fuel", count: 1, needs: { rocket_fuel: 1, graphite_ore: 2 }, station: "fuel", locked: true },
   { out: "nav_core", count: 1, needs: { metal_plating: 6, cobaltrod: 2, glass: 2, machine_heart: 1 }, station: "assembly", locked: true },
   { out: "nav_core", count: 1, needs: { titan_plating: 6, leadrod: 4, glass: 2, machine_heart: 1 }, station: "wiring", locked: true },
 ];

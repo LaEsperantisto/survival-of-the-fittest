@@ -1021,6 +1021,14 @@ function drawArt(id: string, w: number, h: number, color: string, tier = ""): HT
       g.fillStyle = "#6e6862"; g.fillRect(8, 5, 1, 1); g.fillRect(5, 10, 1, 1);  // silvery cleavage
       return cv;
     }
+    case "sil_oil": {                                                        // corked jug of black oil, glossy
+      g.fillStyle = "#6b5a3a"; g.fillRect(13, 2, 6, 3);                       // cork
+      poly(g, [[9, 5], [23, 5], [26, 11], [24, 27], [8, 27], [6, 11]], "#2a2622"); // jug
+      poly(g, [[11, 8], [21, 8], [23, 12], [21, 24], [11, 24], [9, 12]], "#141210"); // oil fill
+      g.fillStyle = "#3c4a52"; g.fillRect(12, 10, 5, 2); g.fillRect(16, 15, 4, 2);   // cold gloss
+      g.fillStyle = "#4a4238"; g.fillRect(9, 26, 14, 2);                      // base band
+      return cv;
+    }
     case "leadrod": {                                                            // dull grey rod, copperrod's kin
       line(g, 4, 12, 12, 4, "#9aa0ac", 3);
       line(g, 4, 12, 12, 4, "#c4cad4", 1);

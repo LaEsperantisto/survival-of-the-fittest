@@ -233,7 +233,7 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "workbench", name: "Workbench", desc: "Silvaris' Crafting Bench: the whole Basalt→Bone→Titanium→Carbide ladder, timber kit and the stations below it.", w: 1, h: 2, mass: 6.0, block: WORKBENCH, color: "#6b6557" }),
   I({ id: "tannery", name: "Tannery", desc: "Silvaris' armoury twin: hides into hardhide, and hardhide into gear that holds the cold out.", w: 2, h: 2, mass: 12.0, block: TANNERY, color: "#8c6b4d" }),
   I({ id: "cauldron", name: "Cauldron", desc: "Silvaris' Cooking Pot: the dishes of roots, berries and oats.", w: 1, h: 2, mass: 5.0, block: CAULDRON, color: "#c87a3a" }),
-  I({ id: "oil_works", name: "Oil Works", desc: "Silvaris' Refinery: Silvaris Oil in a Bucket cooked with Charcoal into Rocket Fuel. The bucket comes back.", w: 1, h: 1, mass: 8.0, block: OIL_WORKS, color: "#5c616c" }),
+  I({ id: "oil_works", name: "Oil Works", desc: "Silvaris' Refinery: presses Oil from Silvertimber, and cooks that Oil with Charcoal into Rocket Fuel.", w: 1, h: 1, mass: 8.0, block: OIL_WORKS, color: "#5c616c" }),
   I({ id: "wiring_bench", name: "Wiring Bench", desc: "Silvaris' Electric Bench: the whole power family on Lead, Glass and Saltpetre — Panels, Poles, Batteries, Generators.", w: 1, h: 1, mass: 8.0, block: WIRING_BENCH, color: "#59787f" }),
   I({ id: "fuel_still", name: "Fuel Still", desc: "The desert's Fuel Works: Rocket Fuel raised with Anthracite Ore into Super Rocket Fuel. Unbuilt until the Sentinel's death-gift.", w: 1, h: 1, mass: 9.0, block: FUEL_STILL, color: "#66687a" }),
   // ---- New minerals & materials ----
@@ -298,9 +298,10 @@ const ITEM_LIST: ItemDef[] = [
   I({ id: "nav_core", name: "Nav Core", desc: "The Ship's chartering brain: where it has been, what worlds answer, and how to reach them. The Keepers give up the design once the scattered story is told.", w: 1, h: 2, mass: 5.0, block: NAV_CORE, color: "#8a6ac8" }),
   // ---- Phase-2 stone & snow: the materials tools are cut from ----
   I({ id: "basalt", name: "Basalt", desc: "Silvaris' dark stone, torn from the rock faces. Its wood-equivalent: tools, hearths, walls.", w: 1, h: 1, mass: 1.1, block: BASALT, color: "#4c4846" }),
+  I({ id: "sil_oil", name: "Silvertimber Oil", desc: "Black oil pressed from Silvertimber at the Oil Works — the black blood of this world. Cook it with Charcoal into Rocket Fuel, or burn it.", w: 1, h: 1, mass: 1.2, color: "#2e2a24" }),
   I({ id: "snow_block", name: "Snow Block", desc: "Packed from Powder Snow. Melts fast in a Sealed Space; good enough for a winter wall.", w: 1, h: 1, mass: 0.4, block: SNOW, color: "#e6ecf2" }),
   // ---- Furniture ----
-  I({ id: "timber_post", name: "Timber Post", desc: "A turned Silvertimber post: porches, pens, fence lines.", w: 1, h: 1, mass: 0.8, block: WOOD_POST, color: "#806a4a" }),
+  I({ id: "timber_post", name: "Timber Post", desc: "A turned timber post — Deadwood or Silvertimber: porches, pens, fence lines.", w: 1, h: 1, mass: 0.8, block: WOOD_POST, color: "#806a4a" }),
   I({ id: "timber_railing", name: "Timber Railing", desc: "Post and rail, auto-linking. You can lean into it but not hop it.", w: 1, h: 1, mass: 0.7, block: WOOD_RAILING, color: "#85704d" }),
   I({ id: "table", name: "Table", desc: "A worked table: the hearth of a settled room. Cut at a Crafting Bench or Workbench.", w: 2, h: 1, mass: 4.0, block: TABLE, color: "#8c6b45" }),
   I({ id: "stained_glass", name: "Stained Glass", desc: "Glass with color in it — the settlements' windows. Conducts heat like plain glass.", w: 1, h: 1, mass: 0.6, block: STAINED_GLASS, color: "#8a5a72" }),

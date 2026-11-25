@@ -5,7 +5,7 @@ import { ITEMS, BLOCK_TO_ITEM } from "./items";
 import { MOB_DEFS } from "./mobs";
 import { QUESTS } from "./quests";
 import { LESSONS } from "./chronicle";
-import { RECIPES, SMELT } from "./crafting";
+import { RECIPES, SMELT, HEARTH_SMELT, POT_RECIPES } from "./crafting";
 import { itemArtUrl, blockTileUrl } from "./icons";
 import {
   WorldMeta, RunSave, Settings, listWorlds, createWorld, loadRun, deleteWorld,
@@ -233,7 +233,7 @@ for (const m of Object.values(MOB_DEFS))
   for (const d of m.drops) (droppedByMob.get(d.itemId) ?? droppedByMob.set(d.itemId, []).get(d.itemId)!).push(m.name);
 
 const stationName = (r: (typeof RECIPES)[number]) =>
-  r.station === null ? "by hand" : r.station === "armory" ? "Armoury" : "Crafting Bench";
+  r.station === null ? "by hand" : STATION_TITLES[r.station].split(" — ")[0];
 
 /** Scroll the linked entry into view and blink it. */
 function catGoto(target: string) {
@@ -402,10 +402,27 @@ function renderCatalog() {
       for (const r of list) {
         const needs = Object.entries(r.needs).map(([id, n]) => `${n}× ${ITEMS[id].name}`).join(" + ");
         row(itemArtUrl(r.out), needs, `${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""}`,
-          r.station === null ? "hands" : r.station === "armory" ? "Armoury" : "Crafting Bench");
+          r.station === null ? "hands" : STATION_TITLES[r.station].split(" — ")[0]);
       }
     }
     let anyRow = groups.some(([, list]) => list.length);
+    const pots: [string, typeof POT_RECIPES][] = [["At a Cooking Pot — one fuel charge per recipe", []], ["At a Cauldron — one fuel charge per recipe", []]];
+    for (const r of POT_RECIPES) pots[r.station === "cauldron" ? 1 : 0][1].push(r);
+    for (const [title, list] of pots) {
+      const hit = list.filter((r) => rmatch(r.out, Object.fromEntries(Object.keys(r.needs).map((k) => [k, 1]))));
+      if (!hit.length) continue;
+      anyRow = true;
+      const h = document.createElement("div");
+      h.className = "cat-section";
+      h.textContent = title;
+      body.append(h);
+      for (const r of hit) {
+        const needs = Object.entries(r.needs).map(([id, n]) =>
+          id.startsWith("*") ? `${n}× any ${id.slice(1)}` : `${n}× ${ITEMS[id].name}`).join(" + ");
+        row(itemArtUrl(r.out), needs, `${ITEMS[r.out].name}${r.count > 1 ? " ×" + r.count : ""}`,
+          r.station === "cauldron" ? "Cauldron" : "Cooking Pot");
+      }
+    }
     const smelts = SMELT.filter((s) => rmatch(s.out, { [s.in]: 1 }));
     if (smelts.length) {
       anyRow = true;
@@ -415,6 +432,16 @@ function renderCatalog() {
       body.append(h);
       for (const s of smelts)
         row(itemArtUrl(s.out), `1× ${ITEMS[s.in].name}`, `${ITEMS[s.out].name}${s.n && s.n > 1 ? " ×" + s.n : ""}`, "Campfire, 1 fuel charge");
+    }
+    const hsmelts = HEARTH_SMELT.filter((s) => rmatch(s.out, { [s.in]: 1 }));
+    if (hsmelts.length) {
+      anyRow = true;
+      const h = document.createElement("div");
+      h.className = "cat-section";
+      h.textContent = "At a Hearth — one fuel charge";
+      body.append(h);
+      for (const s of hsmelts)
+        row(itemArtUrl(s.out), `1× ${ITEMS[s.in].name}`, `${ITEMS[s.out].name}${s.n && s.n > 1 ? " ×" + s.n : ""}`, "Hearth, 1 fuel charge");
     }
     if (!anyRow) {
       const h = document.createElement("div");
